@@ -154,20 +154,27 @@ impl CapabilityGraph {
         }
     }
 
-    /// Registers a provider and rejects duplicate identities.
+    /// Registers one provider and rejects duplicate identities.
     ///
     /// Returns [`ErrorCode::ResourceExhausted`] before growing the graph when
     /// the 256-provider limit has been reached.
     pub fn register(&mut self, provider: CapabilityProvider) -> Result<(), CoreError> {
-        if self.providers.iter().any(|item| item.id() == provider.id()) {
+        self.register_batch(std::slice::from_ref(&provider))
+    }
+
+    /// Atomically registers a bounded provider batch.
+    ///
+    /// Capacity, existing-provider conflicts, and duplicate identities within
+    /// the batch are preflighted before the graph changes. Any error therefore
+    /// leaves every previously registered provider unchanged and exposes none
+    /// of the rejected batch.
+    pub fn register_batch(&mut self, providers: &[CapabilityProvider]) -> Result<(), CoreError> {
+        validate_batch_capacity(self.providers.len(), providers.len())?;
+        if has_existing_provider(&self.providers, providers) || has_batch_duplicate(providers) {
             return Err(CoreError::from_code(ErrorCode::Conflict)
                 .with_internal_context("duplicate capability provider"));
         }
-        if self.providers.len() >= MAX_GRAPH_CAPABILITIES {
-            return Err(CoreError::from_code(ErrorCode::ResourceExhausted)
-                .with_internal_context("capability provider limit reached"));
-        }
-        self.providers.push(provider);
+        self.providers.extend_from_slice(providers);
         Ok(())
     }
 
@@ -210,6 +217,34 @@ impl CapabilityGraph {
     pub fn providers(&self) -> &[CapabilityProvider] {
         &self.providers
     }
+}
+
+fn validate_batch_capacity(current: usize, incoming: usize) -> Result<(), CoreError> {
+    if incoming > MAX_GRAPH_CAPABILITIES.saturating_sub(current) {
+        return Err(CoreError::from_code(ErrorCode::ResourceExhausted)
+            .with_internal_context("capability provider limit reached"));
+    }
+    Ok(())
+}
+
+fn has_existing_provider(
+    existing: &[CapabilityProvider],
+    incoming: &[CapabilityProvider],
+) -> bool {
+    incoming.iter().any(|candidate| {
+        existing
+            .iter()
+            .any(|registered| registered.id() == candidate.id())
+    })
+}
+
+fn has_batch_duplicate(providers: &[CapabilityProvider]) -> bool {
+    providers.iter().enumerate().any(|(index, candidate)| {
+        providers
+            .iter()
+            .skip(index.saturating_add(1))
+            .any(|other| other.id() == candidate.id())
+    })
 }
 
 impl Display for CapabilityRequirement {

@@ -176,8 +176,9 @@ impl LifecycleSupervisor {
         self.startup_order.clear();
         let graph = self.build_capability_graph();
         self.resolve_requirements(&graph);
+        let cycles = cycle_members(&self.modules);
+        self.mark_cycles(&cycles);
         let order = dependency_order(&self.modules);
-        self.mark_cycles(&order);
         self.validate_in_order(&order);
         self.startup_order = order;
         self.report()
@@ -265,19 +266,17 @@ impl LifecycleSupervisor {
             if module.state == ModuleState::Unavailable {
                 continue;
             }
-            match graph.resolve(module.descriptor.required_capabilities()) {
+            let requirements = descriptor_requirements(&module.descriptor);
+            match graph.resolve(&requirements) {
                 Ok(resolution) => module.resolution = Some(resolution),
                 Err(error) => mark_unavailable(module, error.code()),
             }
         }
     }
 
-    fn mark_cycles(&mut self, order: &[usize]) {
-        for index in 0..self.modules.len() {
-            let eligible = self.modules[index].state != ModuleState::Unavailable;
-            if eligible && !order.contains(&index) {
-                mark_unavailable(&mut self.modules[index], ErrorCode::Conflict);
-            }
+    fn mark_cycles(&mut self, cycles: &[usize]) {
+        for index in cycles {
+            mark_unavailable(&mut self.modules[*index], ErrorCode::Conflict);
         }
     }
 
@@ -374,29 +373,52 @@ fn register_module_capabilities(module: &mut ManagedModule, graph: &mut Capabili
     if module.state == ModuleState::Unavailable {
         return;
     }
-    if has_duplicate_provider(module, graph) {
-        mark_unavailable(module, ErrorCode::Conflict);
-        return;
-    }
-    for provider in module.descriptor.provided_capabilities() {
-        if let Err(error) = graph.register(provider.clone()) {
-            mark_unavailable(module, error.code());
-            return;
-        }
+    if let Err(error) = graph.register_batch(module.descriptor.provided_capabilities()) {
+        mark_unavailable(module, error.code());
     }
 }
 
-fn has_duplicate_provider(module: &ManagedModule, graph: &CapabilityGraph) -> bool {
-    module
-        .descriptor
-        .provided_capabilities()
+fn descriptor_requirements(descriptor: &ModuleDescriptor) -> Vec<crate::CapabilityRequirement> {
+    descriptor
+        .required_capabilities()
         .iter()
-        .any(|provider| {
-            graph
-                .providers()
+        .cloned()
+        .chain(
+            descriptor
+                .required_secret_capabilities()
                 .iter()
-                .any(|existing| existing.id() == provider.id())
+                .map(|secret| secret.requirement().clone()),
+        )
+        .collect()
+}
+
+fn cycle_members(modules: &[ManagedModule]) -> Vec<usize> {
+    let dependencies = dependency_indices(modules);
+    modules
+        .iter()
+        .enumerate()
+        .filter(|(index, module)| {
+            module.state != ModuleState::Unavailable
+                && dependency_path_returns_to(*index, &dependencies)
         })
+        .map(|(index, _)| index)
+        .collect()
+}
+
+fn dependency_path_returns_to(origin: usize, dependencies: &[Vec<usize>]) -> bool {
+    let mut pending = VecDeque::from(dependencies[origin].clone());
+    let mut visited = vec![false; dependencies.len()];
+    while let Some(index) = pending.pop_front() {
+        if index == origin {
+            return true;
+        }
+        if visited[index] {
+            continue;
+        }
+        visited[index] = true;
+        pending.extend(dependencies[index].iter().copied());
+    }
+    false
 }
 
 fn dependency_order(modules: &[ManagedModule]) -> Vec<usize> {
@@ -422,7 +444,9 @@ fn dependency_indices(modules: &[ManagedModule]) -> Vec<Vec<usize>> {
         };
         for binding in resolution.bindings() {
             if let Some(provider_index) = module_index(modules, binding.provider().module_id()) {
-                dependencies[consumer_index].push(provider_index);
+                if modules[provider_index].state != ModuleState::Unavailable {
+                    dependencies[consumer_index].push(provider_index);
+                }
             }
         }
         dependencies[consumer_index].sort_unstable();
