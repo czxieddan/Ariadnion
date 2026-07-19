@@ -14,7 +14,12 @@ pub enum PublishError {
     /// Schema validation rejected the proposed document.
     Validation(ValidationReport),
     /// The draft or caller expected another active version.
-    VersionConflict { expected: u64, actual: u64 },
+    VersionConflict {
+        /// Version supplied by the draft or rollback caller.
+        expected: u64,
+        /// Active immutable document version at the swap point.
+        actual: u64,
+    },
     /// No prior published snapshot is retained.
     NoRollbackSnapshot,
     /// The process-local snapshot generation reached its numeric limit.
