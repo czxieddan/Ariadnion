@@ -1,0 +1,3 @@
+[submodule "RNovModularDB"]
+	path = vendor/RNovModularDB
+	url = https://github.com/czxieddan/RNovModularDB/
