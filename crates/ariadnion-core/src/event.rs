@@ -1,13 +1,15 @@
 //! Bounded in-process event envelopes with explicit backpressure.
 
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TrySendError};
-use std::time::{Duration, SystemTime};
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{Duration, Instant, SystemTime};
 
 use crate::context::CancellationToken;
 use crate::error::{CoreError, ErrorCode};
 use crate::ids::ModuleVersion;
 
 const MAX_EVENT_CAPACITY: usize = 1_048_576;
+const CANCELLATION_POLL_INTERVAL: Duration = Duration::from_millis(25);
 
 /// A versioned event value with a monotonic producer sequence.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -69,6 +71,8 @@ pub enum PublishError<E> {
     Full(EventEnvelope<E>),
     /// The subscriber has been dropped.
     Closed(EventEnvelope<E>),
+    /// The event sequence did not increase from the previous publication.
+    OutOfOrder(EventEnvelope<E>),
 }
 
 /// The receive result for a bounded wait.
@@ -87,6 +91,7 @@ pub enum ReceiveOutcome<E> {
 pub struct EventPublisher<E> {
     sender: SyncSender<EventEnvelope<E>>,
     cancellation: CancellationToken,
+    last_sequence: Arc<Mutex<Option<u64>>>,
 }
 
 impl<E> Clone for EventPublisher<E> {
@@ -94,6 +99,7 @@ impl<E> Clone for EventPublisher<E> {
         Self {
             sender: self.sender.clone(),
             cancellation: self.cancellation.clone(),
+            last_sequence: self.last_sequence.clone(),
         }
     }
 }
@@ -104,8 +110,16 @@ impl<E> EventPublisher<E> {
         if self.cancellation.is_cancelled() {
             return Err(PublishError::Cancelled(event));
         }
+        let mut last_sequence = lock_sequence(&self.last_sequence);
+        let sequence = event.sequence();
+        if !sequence_increases(*last_sequence, sequence) {
+            return Err(PublishError::OutOfOrder(event));
+        }
         match self.sender.try_send(event) {
-            Ok(()) => Ok(()),
+            Ok(()) => {
+                *last_sequence = Some(sequence);
+                Ok(())
+            }
             Err(TrySendError::Full(event)) => Err(PublishError::Full(event)),
             Err(TrySendError::Disconnected(event)) => Err(PublishError::Closed(event)),
         }
@@ -128,13 +142,19 @@ impl<E> EventSubscriber<E> {
     /// Waits for an event while respecting cancellation and a bounded timeout.
     #[must_use]
     pub fn receive_timeout(&self, timeout: Duration) -> ReceiveOutcome<E> {
-        if self.cancellation.is_cancelled() {
-            return ReceiveOutcome::Cancelled;
-        }
-        match self.receiver.recv_timeout(timeout) {
-            Ok(event) => ReceiveOutcome::Event(event),
-            Err(RecvTimeoutError::Timeout) => ReceiveOutcome::TimedOut,
-            Err(RecvTimeoutError::Disconnected) => ReceiveOutcome::Closed,
+        let started = Instant::now();
+        loop {
+            if self.cancellation.is_cancelled() {
+                return ReceiveOutcome::Cancelled;
+            }
+            let Some(wait) = next_receive_wait(started, timeout) else {
+                return ReceiveOutcome::TimedOut;
+            };
+            match self.receiver.recv_timeout(wait) {
+                Ok(event) => return ReceiveOutcome::Event(event),
+                Err(RecvTimeoutError::Disconnected) => return ReceiveOutcome::Closed,
+                Err(RecvTimeoutError::Timeout) => {}
+            }
         }
     }
 
@@ -154,16 +174,34 @@ pub fn bounded_event_channel<E>(
 ) -> Result<(EventPublisher<E>, EventSubscriber<E>), CoreError> {
     validate_capacity(capacity)?;
     let (sender, receiver) = mpsc::sync_channel(capacity);
+    let last_sequence = Arc::new(Mutex::new(None));
     Ok((
         EventPublisher {
             sender,
             cancellation: cancellation.clone(),
+            last_sequence,
         },
         EventSubscriber {
             receiver,
             cancellation,
         },
     ))
+}
+
+fn sequence_increases(previous: Option<u64>, candidate: u64) -> bool {
+    previous.is_none_or(|sequence| candidate > sequence)
+}
+
+fn next_receive_wait(started: Instant, timeout: Duration) -> Option<Duration> {
+    let remaining = timeout.saturating_sub(started.elapsed());
+    (!remaining.is_zero()).then(|| remaining.min(CANCELLATION_POLL_INTERVAL))
+}
+
+fn lock_sequence(sequence: &Mutex<Option<u64>>) -> MutexGuard<'_, Option<u64>> {
+    match sequence.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
 }
 
 fn validate_capacity(capacity: usize) -> Result<(), CoreError> {

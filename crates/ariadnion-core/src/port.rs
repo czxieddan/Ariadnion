@@ -80,8 +80,8 @@ impl<T: ?Sized + Send + Sync + 'static> PortSlot<T> {
         service: Arc<T>,
         cancellation: CancellationToken,
     ) -> Result<PortHandle<T>, CoreError> {
-        let generation = self.generation.load(Ordering::Acquire);
         let mut providers = lock_providers(&self.providers);
+        let generation = self.generation.load(Ordering::Acquire);
         validate_registration(&providers, priority)?;
         providers.push(PortProvider {
             priority,
@@ -117,8 +117,9 @@ impl<T: ?Sized + Send + Sync + 'static> PortSlot<T> {
 
     /// Invalidates all handles and removes all registered providers.
     pub fn invalidate(&self) -> Result<u64, CoreError> {
+        let mut providers = lock_providers(&self.providers);
         let next = next_generation(&self.generation)?;
-        lock_providers(&self.providers).clear();
+        providers.clear();
         Ok(next)
     }
 
@@ -179,7 +180,11 @@ impl<T: ?Sized> PortHandle<T> {
 }
 
 fn validate_port_name(name: &str) -> Result<(), CoreError> {
-    if name.is_empty() || name.len() > MAX_PORT_NAME_BYTES || !name.is_ascii() {
+    let invalid = name.is_empty()
+        || name.len() > MAX_PORT_NAME_BYTES
+        || !name.is_ascii()
+        || name.bytes().any(|byte| byte.is_ascii_control());
+    if invalid {
         return Err(CoreError::from_code(ErrorCode::InvalidArgument)
             .with_internal_context("typed port name is invalid"));
     }
