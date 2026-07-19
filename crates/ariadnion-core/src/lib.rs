@@ -42,8 +42,12 @@ pub use lifecycle::{LifecycleReport, LifecycleSupervisor, ModuleState, ModuleSta
 pub use module::{
     ConfigurationContract, ModuleConfigurationSnapshot, ModuleContext, ModuleDescriptor,
     ModuleDescriptorInput, ModuleFactory, ModuleHandle, ModuleShutdownReport,
+    SecretCapabilityRequirement, ShutdownPriority,
 };
 pub use port::{PortHandle, PortKey, PortSlot};
-pub use resource::ResourceBudget;
+pub use resource::{
+    ExecutionBudget, ExecutionBudgetInput, LifecycleBudget, LifecycleBudgetInput, ResourceBudget,
+    WasmBudget, WasmBudgetInput, WasmBudgetLimits,
+};
 pub use shutdown::{ShutdownCoordinator, ShutdownReason, ShutdownReport, ShutdownRequestOutcome};
 pub use version::{BuildInfo, BuildTimeSource, CORE_ABI_VERSION};

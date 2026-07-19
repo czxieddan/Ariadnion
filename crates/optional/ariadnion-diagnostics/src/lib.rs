@@ -9,7 +9,8 @@ use ariadnion_core::{
     CapabilityId, CapabilityProvider, CapabilityResolution, ConfigurationContract, CoreError,
     ErrorCode, HealthReasonCode, HealthStatus, ModuleConfigurationSnapshot, ModuleContext,
     ModuleDescriptor, ModuleDescriptorInput, ModuleFactory, ModuleHandle, ModuleHealthSnapshot,
-    ModuleId, ModuleShutdownReport, ModuleVersion, ResourceBudget, CORE_ABI_VERSION,
+    ModuleId, ModuleShutdownReport, ModuleVersion, ResourceBudget, ShutdownPriority,
+    CORE_ABI_VERSION,
 };
 
 /// A side-effect-free factory for the built-in diagnostics capability.
@@ -38,8 +39,10 @@ impl DiagnosticsModule {
             abi_version: CORE_ABI_VERSION,
             provided: vec![capability],
             required: Vec::new(),
+            required_secret_capabilities: Vec::new(),
             configuration,
             resources: ResourceBudget::conservative(),
+            shutdown_priority: ShutdownPriority::new(100)?,
             sensitive_paths: Vec::new(),
             observability_namespace: "ariadnion.diagnostics".into(),
             audit_namespace: "ariadnion.diagnostics".into(),
