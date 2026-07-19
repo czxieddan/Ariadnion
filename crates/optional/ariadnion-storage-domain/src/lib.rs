@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+use std::collections::BTreeSet;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::time::SystemTime;
@@ -13,6 +14,8 @@ const MAX_INSTANCE_ID_BYTES: usize = 128;
 const MAX_RECORD_KEY_BYTES: usize = 256;
 const MAX_CURSOR_BYTES: usize = 512;
 const MAX_PAGE_SIZE: usize = 1_000;
+const MAX_MIGRATION_ID_BYTES: usize = 128;
+const MAX_MIGRATIONS: usize = 1_024;
 
 /// Stable machine-readable storage failures.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -390,6 +393,369 @@ pub trait RepositoryPort<R>: Send + Sync {
         limit: PageLimit,
         context: &RequestContext,
     ) -> Result<RecordPage<R>, StorageError>;
+}
+
+/// A non-zero application schema version.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct SchemaVersion(NonZeroU64);
+
+impl SchemaVersion {
+    /// Creates a non-zero schema version.
+    pub fn new(value: u64) -> Result<Self, StorageError> {
+        NonZeroU64::new(value)
+            .map(Self)
+            .ok_or_else(|| StorageError::new(StorageErrorCode::InvalidArgument))
+    }
+
+    /// Returns the numeric schema version.
+    #[must_use]
+    pub const fn get(self) -> u64 {
+        self.0.get()
+    }
+}
+
+/// A bounded immutable migration identity.
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct MigrationId(Box<str>);
+
+impl MigrationId {
+    /// Parses a stable ASCII migration identity.
+    pub fn parse(value: &str) -> Result<Self, StorageError> {
+        if !valid_identifier(value, MAX_MIGRATION_ID_BYTES) {
+            return Err(StorageError::new(StorageErrorCode::InvalidArgument));
+        }
+        Ok(Self(value.into()))
+    }
+
+    /// Returns the validated identity.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// A SHA-256 digest of immutable migration content.
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+pub struct MigrationChecksum([u8; 32]);
+
+impl MigrationChecksum {
+    /// Creates a checksum from exactly 32 digest bytes.
+    #[must_use]
+    pub const fn new(bytes: [u8; 32]) -> Self {
+        Self(bytes)
+    }
+
+    /// Returns the digest bytes.
+    #[must_use]
+    pub const fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
+}
+
+impl Display for MigrationChecksum {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        for byte in self.0 {
+            write!(formatter, "{byte:02x}")?;
+        }
+        Ok(())
+    }
+}
+
+impl Debug for MigrationChecksum {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_tuple("MigrationChecksum")
+            .field(&self.to_string())
+            .finish()
+    }
+}
+
+/// Immutable metadata for one forward-only schema transition.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MigrationDescriptor {
+    id: MigrationId,
+    from: SchemaVersion,
+    to: SchemaVersion,
+    checksum: MigrationChecksum,
+    requires_backup: bool,
+}
+
+impl MigrationDescriptor {
+    /// Creates a strictly increasing migration transition.
+    pub fn new(
+        id: MigrationId,
+        from: SchemaVersion,
+        to: SchemaVersion,
+        checksum: MigrationChecksum,
+        requires_backup: bool,
+    ) -> Result<Self, StorageError> {
+        if from >= to {
+            return Err(StorageError::new(StorageErrorCode::InvalidArgument));
+        }
+        Ok(Self {
+            id,
+            from,
+            to,
+            checksum,
+            requires_backup,
+        })
+    }
+
+    /// Returns the migration identity.
+    #[must_use]
+    pub const fn id(&self) -> &MigrationId {
+        &self.id
+    }
+
+    /// Returns the source schema version.
+    #[must_use]
+    pub const fn from(&self) -> SchemaVersion {
+        self.from
+    }
+
+    /// Returns the target schema version.
+    #[must_use]
+    pub const fn to(&self) -> SchemaVersion {
+        self.to
+    }
+
+    /// Returns the immutable content checksum.
+    #[must_use]
+    pub const fn checksum(&self) -> MigrationChecksum {
+        self.checksum
+    }
+
+    /// Returns whether a verified backup is mandatory before execution.
+    #[must_use]
+    pub const fn requires_backup(&self) -> bool {
+        self.requires_backup
+    }
+}
+
+/// A validated, gap-free forward migration catalog.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MigrationCatalog {
+    migrations: Vec<MigrationDescriptor>,
+}
+
+impl MigrationCatalog {
+    /// Sorts and validates a bounded linear migration history.
+    pub fn new(mut migrations: Vec<MigrationDescriptor>) -> Result<Self, StorageError> {
+        if migrations.len() > MAX_MIGRATIONS {
+            return Err(StorageError::new(StorageErrorCode::ResourceExhausted));
+        }
+        migrations.sort_by_key(MigrationDescriptor::from);
+        validate_unique_migrations(&migrations)?;
+        validate_migration_chain(&migrations)?;
+        Ok(Self { migrations })
+    }
+
+    /// Returns migrations in ascending source-version order.
+    #[must_use]
+    pub fn migrations(&self) -> &[MigrationDescriptor] {
+        &self.migrations
+    }
+
+    /// Plans an exact forward path or fails without returning a partial plan.
+    pub fn plan(
+        &self,
+        source: SchemaVersion,
+        target: SchemaVersion,
+    ) -> Result<MigrationPlan, StorageError> {
+        if source >= target {
+            return Err(StorageError::new(StorageErrorCode::InvalidArgument));
+        }
+        let mut current = source;
+        let mut steps = Vec::new();
+        for migration in &self.migrations {
+            if migration.from() == current && migration.to() <= target {
+                current = migration.to();
+                steps.push(migration.clone());
+            }
+            if current == target {
+                return Ok(MigrationPlan {
+                    source,
+                    target,
+                    steps,
+                });
+            }
+        }
+        Err(StorageError::new(StorageErrorCode::MigrationRequired))
+    }
+}
+
+/// An exact immutable sequence of forward migrations.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MigrationPlan {
+    source: SchemaVersion,
+    target: SchemaVersion,
+    steps: Vec<MigrationDescriptor>,
+}
+
+impl MigrationPlan {
+    /// Returns the source schema version.
+    #[must_use]
+    pub const fn source(&self) -> SchemaVersion {
+        self.source
+    }
+
+    /// Returns the final schema version.
+    #[must_use]
+    pub const fn target(&self) -> SchemaVersion {
+        self.target
+    }
+
+    /// Returns the ordered migration steps.
+    #[must_use]
+    pub fn steps(&self) -> &[MigrationDescriptor] {
+        &self.steps
+    }
+
+    /// Returns whether any step requires a verified backup.
+    #[must_use]
+    pub fn requires_backup(&self) -> bool {
+        self.steps
+            .iter()
+            .any(MigrationDescriptor::requires_backup)
+    }
+}
+
+/// Evidence that a migration can proceed without touching the source target.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MigrationPreflight {
+    source_authenticated: bool,
+    target_empty: bool,
+    backup_verified: bool,
+}
+
+impl MigrationPreflight {
+    /// Creates explicit preflight evidence.
+    #[must_use]
+    pub const fn new(
+        source_authenticated: bool,
+        target_empty: bool,
+        backup_verified: bool,
+    ) -> Self {
+        Self {
+            source_authenticated,
+            target_empty,
+            backup_verified,
+        }
+    }
+
+    /// Returns whether all required safety conditions passed.
+    #[must_use]
+    pub fn permits(&self, plan: &MigrationPlan) -> bool {
+        self.source_authenticated
+            && self.target_empty
+            && (!plan.requires_backup() || self.backup_verified)
+    }
+}
+
+/// Evidence returned after a new migration target is verified.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MigrationReceipt {
+    source: StorageInstanceId,
+    target: StorageInstanceId,
+    version: SchemaVersion,
+    verified_at: SystemTime,
+}
+
+impl MigrationReceipt {
+    /// Creates a receipt only after structural and authentication checks pass.
+    #[must_use]
+    pub const fn new(
+        source: StorageInstanceId,
+        target: StorageInstanceId,
+        version: SchemaVersion,
+        verified_at: SystemTime,
+    ) -> Self {
+        Self {
+            source,
+            target,
+            version,
+            verified_at,
+        }
+    }
+
+    /// Returns the immutable source instance identity.
+    #[must_use]
+    pub const fn source(&self) -> &StorageInstanceId {
+        &self.source
+    }
+
+    /// Returns the newly created target instance identity.
+    #[must_use]
+    pub const fn target(&self) -> &StorageInstanceId {
+        &self.target
+    }
+
+    /// Returns the verified target schema version.
+    #[must_use]
+    pub const fn version(&self) -> SchemaVersion {
+        self.version
+    }
+
+    /// Returns the UTC verification time.
+    #[must_use]
+    pub const fn verified_at(&self) -> SystemTime {
+        self.verified_at
+    }
+}
+
+/// Executes migrations into a distinct target and never overwrites the source.
+pub trait MigrationExecutorPort: Send + Sync {
+    /// Checks source authentication, target emptiness, and backup evidence.
+    fn preflight(
+        &self,
+        source: &StorageInstanceId,
+        target: &StorageInstanceId,
+        plan: &MigrationPlan,
+        context: &RequestContext,
+    ) -> Result<MigrationPreflight, StorageError>;
+
+    /// Applies the complete plan to a new target after successful preflight.
+    fn apply_to_new_target(
+        &self,
+        source: &StorageInstanceId,
+        target: &StorageInstanceId,
+        plan: &MigrationPlan,
+        preflight: MigrationPreflight,
+        context: &RequestContext,
+    ) -> Result<(), StorageError>;
+
+    /// Verifies structure and authentication before a caller can switch over.
+    fn verify_target(
+        &self,
+        source: &StorageInstanceId,
+        target: &StorageInstanceId,
+        expected: SchemaVersion,
+        context: &RequestContext,
+    ) -> Result<MigrationReceipt, StorageError>;
+}
+
+fn validate_unique_migrations(migrations: &[MigrationDescriptor]) -> Result<(), StorageError> {
+    let ids = migrations
+        .iter()
+        .map(MigrationDescriptor::id)
+        .collect::<BTreeSet<_>>();
+    let sources = migrations
+        .iter()
+        .map(MigrationDescriptor::from)
+        .collect::<BTreeSet<_>>();
+    if ids.len() != migrations.len() || sources.len() != migrations.len() {
+        return Err(StorageError::new(StorageErrorCode::Conflict));
+    }
+    Ok(())
+}
+
+fn validate_migration_chain(migrations: &[MigrationDescriptor]) -> Result<(), StorageError> {
+    for pair in migrations.windows(2) {
+        if pair[0].to() != pair[1].from() {
+            return Err(StorageError::new(StorageErrorCode::MigrationRequired));
+        }
+    }
+    Ok(())
 }
 
 fn valid_identifier(value: &str, limit: usize) -> bool {
