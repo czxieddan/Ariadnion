@@ -10,6 +10,7 @@ use ariadnion_storage_domain::{StorageError, StorageErrorCode, StorageInstanceId
 use rnmdb_cli::LocalSession;
 use rnmdb_common::{ErrorKind, RnovError};
 use rnmdb_storage::PageCryptoKey;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Secret page-key material that is redacted and cleared on drop.
 pub struct PageKeyMaterial {
@@ -34,9 +35,17 @@ impl Debug for PageKeyMaterial {
     }
 }
 
+impl Zeroize for PageKeyMaterial {
+    fn zeroize(&mut self) {
+        self.bytes.zeroize();
+    }
+}
+
+impl ZeroizeOnDrop for PageKeyMaterial {}
+
 impl Drop for PageKeyMaterial {
     fn drop(&mut self) {
-        self.bytes.fill(0);
+        self.zeroize();
     }
 }
 
