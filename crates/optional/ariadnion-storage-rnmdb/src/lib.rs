@@ -5,6 +5,10 @@
 
 use std::any::type_name;
 
+mod codec;
+
+pub use codec::{CurrencyCode, MoneyValue, NormalizedJson, StorageUuid, UtcTimestampMicros};
+
 /// The reviewed upstream source revision compiled by this adapter.
 pub const REVIEWED_RNMDB_COMMIT: &str = "8d2b65ad1ee3ee542e1307c1693bc4de4f7edbee";
 
@@ -50,10 +54,7 @@ pub fn upstream_crate_inventory() -> [UpstreamCrateUse; 15] {
         ),
         crate_use::<rnmdb_types::SqlValue>("rnmdb-types", "value codecs"),
         crate_use::<rnmdb_sql::ast::Statement>("rnmdb-sql", "bounded SQL parsing"),
-        crate_use::<rnmdb_planner::logical::LogicalPlan>(
-            "rnmdb-planner",
-            "query plan diagnostics",
-        ),
+        crate_use::<rnmdb_planner::logical::LogicalPlan>("rnmdb-planner", "query plan diagnostics"),
         crate_use::<rnmdb_executor::row::RowCodec>("rnmdb-executor", "row execution codecs"),
         crate_use::<rnmdb_txn::IsolationLevel>("rnmdb-txn", "transaction isolation"),
         crate_use::<rnmdb_index::IndexKey>("rnmdb-index", "index keys and access paths"),
