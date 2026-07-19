@@ -12,10 +12,6 @@ The name comes from Ariadne's thread: a clear and dependable path connecting the
 - Sensitive configuration is encrypted by default, and critical operations are auditable.
 - Frontends, command-line tools, identity, accounts, auditing, and operations evolve independently.
 
-## Status
-
-The project is in the architecture and implementation planning stage.
-
 ## License
 
 Ariadnion is offered under a commercial license and the GNU Affero General Public License. See [LICENSE](LICENSE).

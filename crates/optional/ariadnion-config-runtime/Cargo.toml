@@ -1,0 +1,22 @@
+[package]
+name = "ariadnion-config-runtime"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95.0"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[workspace]
+
+[dependencies]
+ariadnion-config-domain = { path = "../ariadnion-config-domain" }
+ariadnion-config-schema = { path = "../ariadnion-config-schema" }
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"

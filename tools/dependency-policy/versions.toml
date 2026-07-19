@@ -1,0 +1,16 @@
+schema_version = 1
+rust = "1.95.0"
+
+[licenses]
+allowed = ["Apache-2.0", "MIT", "Zlib"]
+forbidden = ["GPL-2.0-only", "GPL-2.0-or-later", "GPL-3.0-only", "GPL-3.0-or-later", "AGPL-3.0-only", "AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+repository = "https://github.com/czxieddan/RNovModularDB/"
+commit = "8d2b65a"
+package_prefix = "rnmdb-"
+allowed = ["AGPL-3.0-only"]
+reason = "Repository ownership and distribution terms are controlled by the Ariadnion owner."
+
+[versions]
+ctrlc = "3.5.2"

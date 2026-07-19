@@ -1,0 +1,6 @@
+id = "org.ariadnion.diagnostics"
+version = "0.1.0"
+abi = "rust-1.0.0/wit-1"
+license = "AGPL-3.0-or-later"
+provides = ["org.ariadnion.diagnostics.read@1.0.0"]
+requires = []

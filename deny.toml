@@ -1,0 +1,33 @@
+[advisories]
+yanked = "deny"
+ignore = []
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[licenses]
+confidence-threshold = 0.8
+allow = ["Apache-2.0", "MIT", "Zlib"]
+private = { ignore = true }
+exceptions = [
+    { name = "rnmdb-common", allow = ["AGPL-3.0-only"] },
+    { name = "rnmdb-types", allow = ["AGPL-3.0-only"] },
+    { name = "rnmdb-sql", allow = ["AGPL-3.0-only"] },
+    { name = "rnmdb-planner", allow = ["AGPL-3.0-only"] },
+    { name = "rnmdb-executor", allow = ["AGPL-3.0-only"] },
+    { name = "rnmdb-txn", allow = ["AGPL-3.0-only"] },
+    { name = "rnmdb-index", allow = ["AGPL-3.0-only"] },
+    { name = "rnmdb-fts", allow = ["AGPL-3.0-only"] },
+    { name = "rnmdb-catalog", allow = ["AGPL-3.0-only"] },
+    { name = "rnmdb-storage", allow = ["AGPL-3.0-only"] },
+    { name = "rnmdb-udf", allow = ["AGPL-3.0-only"] },
+    { name = "rnmdb-security", allow = ["AGPL-3.0-only"] },
+    { name = "rnmdb-instance", allow = ["AGPL-3.0-only"] },
+    { name = "rnmdb-server", allow = ["AGPL-3.0-only"] },
+    { name = "rnmdb-cli", allow = ["AGPL-3.0-only"] },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
