@@ -86,6 +86,7 @@ dependencies = [
  "rnmdb-txn",
  "rnmdb-types",
  "rnmdb-udf",
+ "sha2 0.10.9",
 ]
 
 [[package]]

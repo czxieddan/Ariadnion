@@ -8,6 +8,7 @@ use std::any::type_name;
 mod codec;
 mod location;
 mod maintenance;
+mod migration;
 mod module;
 mod session;
 mod transaction;
@@ -17,6 +18,7 @@ pub use location::StorageFileLocation;
 pub use maintenance::{
     BackupSummary, NewTargetSummary, RestorePreflight, RnmdbMaintenance, VerificationSummary,
 };
+pub use migration::platform_initial_migration;
 pub use module::StorageRnmdbModule;
 pub use session::{PageKeyMaterial, RnmdbSessionOwner, SessionOpenOptions};
 pub use transaction::RnmdbTransactionManager;

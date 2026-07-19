@@ -26,6 +26,7 @@ rnmdb-security = { git = "https://github.com/czxieddan/RNovModularDB.git", rev =
 rnmdb-instance = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "8d2b65ad1ee3ee542e1307c1693bc4de4f7edbee", package = "rnmdb-instance" }
 rnmdb-server = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "8d2b65ad1ee3ee542e1307c1693bc4de4f7edbee", package = "rnmdb-server" }
 rnmdb-cli = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "8d2b65ad1ee3ee542e1307c1693bc4de4f7edbee", package = "rnmdb-cli" }
+sha2 = "0.10.9"
 
 [lints.rust]
 unsafe_code = "forbid"
