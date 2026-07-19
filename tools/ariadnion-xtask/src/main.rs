@@ -5,7 +5,7 @@ use std::env;
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode};
+use std::process::ExitCode;
 
 const MAX_MANIFEST_BYTES: u64 = 65_536;
 const MAX_MODULES: usize = 256;
@@ -65,7 +65,7 @@ fn compose(profile: &str) -> Result<String, String> {
     let root = repository_root()?;
     let policy = load_dependency_policy(&root)?;
     let modules = scan_modules(&root, &policy)?;
-    validate_declared_rnmdb_paths(&root, &policy)?;
+    validate_declared_rnmdb_sources(&root, &policy)?;
     validate_rnmdb_lock_sources(&root, &policy)?;
     let selected = resolve_profile(profile, &modules)?;
     let output = root.join("target").join("compositions").join(profile);
@@ -191,7 +191,8 @@ fn load_dependency_policy(root: &Path) -> Result<DependencyPolicy, String> {
         .join("tools")
         .join("dependency-policy")
         .join("versions.toml");
-    let metadata = fs::metadata(&path).map_err(|_| "cannot inspect dependency policy".to_owned())?;
+    let metadata =
+        fs::metadata(&path).map_err(|_| "cannot inspect dependency policy".to_owned())?;
     if metadata.len() > MAX_POLICY_BYTES {
         return Err("dependency policy is too large".into());
     }
@@ -228,7 +229,7 @@ fn validate_rnmdb_lock_sources(root: &Path, policy: &DependencyPolicy) -> Result
     for lock in collect_lock_files(root)? {
         let content = read_bounded_text(&lock, MAX_LOCK_BYTES, "Cargo lock file")?;
         for package in content.split("[[package]]").skip(1) {
-            validate_rnmdb_package(root, package, policy)?;
+            validate_rnmdb_package(package, policy)?;
         }
     }
     Ok(())
@@ -266,11 +267,7 @@ fn add_lock_if_present(path: &Path, locks: &mut Vec<PathBuf>) -> Result<(), Stri
     Ok(())
 }
 
-fn validate_rnmdb_package(
-    root: &Path,
-    package: &str,
-    policy: &DependencyPolicy,
-) -> Result<(), String> {
+fn validate_rnmdb_package(package: &str, policy: &DependencyPolicy) -> Result<(), String> {
     let name = parse_string_field(package, "name")?;
     if !name.starts_with(&policy.rnmdb_package_prefix) {
         return Ok(());
@@ -278,13 +275,12 @@ fn validate_rnmdb_package(
     if !policy.rnmdb_packages.contains(&name) {
         return Err("unapproved RNovModularDB package".into());
     }
-    match parse_string_field(package, "source") {
-        Ok(source) => validate_rnmdb_git_source(&source, policy),
-        Err(_) => validate_rnmdb_submodule_package(root, &name, policy),
-    }
+    let source = parse_string_field(package, "source")
+        .map_err(|_| "RNovModularDB package is not pinned to Git".to_owned())?;
+    validate_rnmdb_git_source(&source, policy)
 }
 
-fn validate_declared_rnmdb_paths(root: &Path, policy: &DependencyPolicy) -> Result<(), String> {
+fn validate_declared_rnmdb_sources(root: &Path, policy: &DependencyPolicy) -> Result<(), String> {
     for manifest in first_party_manifests(root)? {
         let content = read_bounded_text(&manifest, MAX_MANIFEST_BYTES, "crate manifest")?;
         for line in content.lines() {
@@ -317,10 +313,7 @@ fn collect_child_manifests(parent: &Path, manifests: &mut Vec<PathBuf>) -> Resul
     Ok(())
 }
 
-fn validate_rnmdb_dependency_line(
-    line: &str,
-    policy: &DependencyPolicy,
-) -> Result<(), String> {
+fn validate_rnmdb_dependency_line(line: &str, policy: &DependencyPolicy) -> Result<(), String> {
     let Some((candidate, declaration)) = line.split_once('=') else {
         return Ok(());
     };
@@ -331,51 +324,32 @@ fn validate_rnmdb_dependency_line(
     if !policy.rnmdb_packages.contains(package) {
         return Err("unapproved RNovModularDB dependency declaration".into());
     }
-    let expected = format!("vendor/RNovModularDB/crates/{package}");
-    if !declaration.replace('\\', "/").contains(&expected) {
-        return Err("RNovModularDB dependency path is not approved".into());
-    }
-    Ok(())
+    validate_rnmdb_git_declaration(package, declaration, policy)
 }
 
-fn validate_rnmdb_submodule_package(
-    root: &Path,
+fn validate_rnmdb_git_declaration(
     package: &str,
+    declaration: &str,
     policy: &DependencyPolicy,
 ) -> Result<(), String> {
-    validate_rnmdb_submodule_commit(root, policy)?;
-    let manifest = root
-        .join("vendor")
-        .join("RNovModularDB")
-        .join("crates")
-        .join(package)
-        .join("Cargo.toml");
-    let content = read_bounded_text(&manifest, MAX_MANIFEST_BYTES, "RNMDB crate manifest")?;
-    if parse_string_field(&content, "name")? != package {
-        return Err("RNovModularDB package manifest is inconsistent".into());
+    let compact = declaration
+        .chars()
+        .filter(|value| !value.is_ascii_whitespace())
+        .collect::<String>();
+    let required = [
+        format!("git=\"{}\"", policy.rnmdb_repository),
+        format!("rev=\"{}\"", policy.rnmdb_commit),
+        format!("package=\"{package}\""),
+    ];
+    for field in required {
+        if !compact.contains(&field) {
+            return Err("RNovModularDB dependency is not pinned to the approved Git source".into());
+        }
     }
-    Ok(())
-}
-
-fn validate_rnmdb_submodule_commit(
-    root: &Path,
-    policy: &DependencyPolicy,
-) -> Result<(), String> {
-    let repository = root.join("vendor").join("RNovModularDB");
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(repository)
-        .args(["rev-parse", "HEAD"])
-        .output()
-        .map_err(|_| "cannot inspect RNovModularDB submodule commit".to_owned())?;
-    if !output.status.success() || output.stdout.len() > 64 {
-        return Err("RNovModularDB submodule commit is unavailable".into());
-    }
-    let resolved = std::str::from_utf8(&output.stdout)
-        .map_err(|_| "RNovModularDB commit output is invalid UTF-8".to_owned())?
-        .trim();
-    if resolved != policy.rnmdb_commit {
-        return Err("RNovModularDB submodule commit is not approved".into());
+    for field in ["path=", "branch=", "tag="] {
+        if compact.contains(field) {
+            return Err("RNovModularDB dependency uses a forbidden source selector".into());
+        }
     }
     Ok(())
 }

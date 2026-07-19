@@ -5,7 +5,6 @@ exclude = [
     "crates/optional/*",
     "bundles/*",
     "tools/*",
-    "vendor/RNovModularDB",
 ]
 
 [workspace.package]
