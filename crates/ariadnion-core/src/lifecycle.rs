@@ -1015,6 +1015,8 @@ where
     W: FnOnce() -> T + Send + 'static,
     C: FnOnce(T) + Send + 'static,
 {
+    let started = Instant::now();
+    let deadline = started.checked_add(timeout).unwrap_or(started);
     let shared = Arc::new((
         Mutex::new(WorkerState {
             output: None,
@@ -1030,7 +1032,7 @@ where
         return BoundedOutcome::Unavailable;
     }
     drop(worker);
-    await_worker_output(&shared, timeout)
+    await_worker_output(&shared, deadline)
 }
 
 fn publish_worker_output<T, C>(shared: &WorkerShared<T>, output: T, cleanup: C)
@@ -1053,11 +1055,7 @@ where
     }
 }
 
-fn await_worker_output<T>(shared: &WorkerShared<T>, timeout: Duration) -> BoundedOutcome<T> {
-    let Some(deadline) = Instant::now().checked_add(timeout) else {
-        mark_worker_abandoned(shared);
-        return BoundedOutcome::DeadlineExceeded;
-    };
+fn await_worker_output<T>(shared: &WorkerShared<T>, deadline: Instant) -> BoundedOutcome<T> {
     let (lock, condition) = &**shared;
     let mut state = lock_recover(lock);
     loop {
@@ -1070,11 +1068,6 @@ fn await_worker_output<T>(shared: &WorkerShared<T>, timeout: Duration) -> Bounde
         };
         state = wait_worker(condition, state, remaining);
     }
-}
-
-fn mark_worker_abandoned<T>(shared: &WorkerShared<T>) {
-    let (lock, _) = &**shared;
-    lock_recover(lock).abandoned = true;
 }
 
 fn remaining_instant(deadline: Instant) -> Option<Duration> {
