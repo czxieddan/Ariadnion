@@ -10,6 +10,9 @@ use std::process::ExitCode;
 const MAX_MANIFEST_BYTES: u64 = 65_536;
 const MAX_MODULES: usize = 256;
 const MAX_CAPABILITIES: usize = 256;
+const MAX_POLICY_BYTES: u64 = 65_536;
+const MAX_LOCK_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_LOCK_FILES: usize = 512;
 
 fn main() -> ExitCode {
     match run(env::args_os().skip(1)) {
@@ -60,7 +63,9 @@ fn validate_profile(profile: &str) -> Result<(), String> {
 
 fn compose(profile: &str) -> Result<String, String> {
     let root = repository_root()?;
-    let modules = scan_modules(&root)?;
+    let policy = load_dependency_policy(&root)?;
+    let modules = scan_modules(&root, &policy)?;
+    validate_rnmdb_lock_sources(&root, &policy)?;
     let selected = resolve_profile(profile, &modules)?;
     let output = root.join("target").join("compositions").join(profile);
     write_composition(&root, &output, profile, &modules, &selected)?;
@@ -117,7 +122,15 @@ struct AbiVersion {
     component_world_major: u16,
 }
 
-fn scan_modules(root: &Path) -> Result<Vec<ModuleMetadata>, String> {
+struct DependencyPolicy {
+    core_abi: AbiVersion,
+    rnmdb_repository: String,
+    rnmdb_commit: String,
+    rnmdb_package_prefix: String,
+    rnmdb_packages: BTreeSet<String>,
+}
+
+fn scan_modules(root: &Path, policy: &DependencyPolicy) -> Result<Vec<ModuleMetadata>, String> {
     let optional = root.join("crates").join("optional");
     let entries = fs::read_dir(optional).map_err(|_| "cannot scan optional crates".to_owned())?;
     let mut manifests = Vec::new();
@@ -134,10 +147,18 @@ fn scan_modules(root: &Path) -> Result<Vec<ModuleMetadata>, String> {
     if manifests.len() > MAX_MODULES {
         return Err("module scan limit reached".into());
     }
-    manifests.into_iter().map(parse_module_manifest).collect()
+    let modules = manifests
+        .into_iter()
+        .map(|path| parse_module_manifest(path, policy))
+        .collect::<Result<Vec<_>, _>>()?;
+    validate_unique_module_ids(&modules)?;
+    Ok(modules)
 }
 
-fn parse_module_manifest(path: PathBuf) -> Result<ModuleMetadata, String> {
+fn parse_module_manifest(
+    path: PathBuf,
+    policy: &DependencyPolicy,
+) -> Result<ModuleMetadata, String> {
     let metadata = fs::metadata(&path).map_err(|_| "cannot inspect module manifest".to_owned())?;
     if metadata.len() > MAX_MANIFEST_BYTES {
         return Err("module manifest is too large".into());
@@ -159,8 +180,164 @@ fn parse_module_manifest(path: PathBuf) -> Result<ModuleMetadata, String> {
         provides: parse_capability_array(&content, "provides")?,
         requires: parse_capability_array(&content, "requires")?,
     };
-    validate_module_metadata(&module)?;
+    validate_module_metadata(&module, policy)?;
+    validate_crate_manifest(&path, &module)?;
     Ok(module)
+}
+
+fn load_dependency_policy(root: &Path) -> Result<DependencyPolicy, String> {
+    let path = root
+        .join("tools")
+        .join("dependency-policy")
+        .join("versions.toml");
+    let metadata = fs::metadata(&path).map_err(|_| "cannot inspect dependency policy".to_owned())?;
+    if metadata.len() > MAX_POLICY_BYTES {
+        return Err("dependency policy is too large".into());
+    }
+    let content = fs::read_to_string(path)
+        .map_err(|_| "dependency policy is not readable UTF-8".to_owned())?;
+    Ok(DependencyPolicy {
+        core_abi: parse_abi_value(&parse_string_field(&content, "abi")?)?,
+        rnmdb_repository: parse_string_field(&content, "repository")?,
+        rnmdb_commit: parse_string_field(&content, "commit")?,
+        rnmdb_package_prefix: parse_string_field(&content, "package_prefix")?,
+        rnmdb_packages: parse_string_array(&content, "packages")?
+            .into_iter()
+            .collect(),
+    })
+}
+
+fn parse_string_array(content: &str, key: &str) -> Result<Vec<String>, String> {
+    let value = assignment(content, key)?;
+    let inner = value
+        .strip_prefix('[')
+        .and_then(|value| value.strip_suffix(']'))
+        .ok_or_else(|| format!("invalid {key} array"))?;
+    if inner.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    inner
+        .split(',')
+        .map(str::trim)
+        .map(|value| parse_quoted(value).ok_or_else(|| format!("invalid {key} entry")))
+        .collect()
+}
+
+fn validate_rnmdb_lock_sources(root: &Path, policy: &DependencyPolicy) -> Result<(), String> {
+    for lock in collect_lock_files(root)? {
+        let content = read_bounded_text(&lock, MAX_LOCK_BYTES, "Cargo lock file")?;
+        for package in content.split("[[package]]").skip(1) {
+            validate_rnmdb_package(package, policy)?;
+        }
+    }
+    Ok(())
+}
+
+fn collect_lock_files(root: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut locks = Vec::new();
+    add_lock_if_present(&root.join("Cargo.lock"), &mut locks)?;
+    collect_child_locks(&root.join("crates").join("optional"), &mut locks)?;
+    collect_child_locks(&root.join("bundles"), &mut locks)?;
+    collect_child_locks(&root.join("tools"), &mut locks)?;
+    locks.sort();
+    Ok(locks)
+}
+
+fn collect_child_locks(parent: &Path, locks: &mut Vec<PathBuf>) -> Result<(), String> {
+    let entries = fs::read_dir(parent).map_err(|_| "cannot scan Cargo lock roots".to_owned())?;
+    for entry in entries {
+        let path = entry
+            .map_err(|_| "cannot read Cargo lock root".to_owned())?
+            .path()
+            .join("Cargo.lock");
+        add_lock_if_present(&path, locks)?;
+    }
+    Ok(())
+}
+
+fn add_lock_if_present(path: &Path, locks: &mut Vec<PathBuf>) -> Result<(), String> {
+    if path.is_file() {
+        if locks.len() >= MAX_LOCK_FILES {
+            return Err("Cargo lock file limit reached".into());
+        }
+        locks.push(path.to_path_buf());
+    }
+    Ok(())
+}
+
+fn validate_rnmdb_package(package: &str, policy: &DependencyPolicy) -> Result<(), String> {
+    let name = parse_string_field(package, "name")?;
+    if !name.starts_with(&policy.rnmdb_package_prefix) {
+        return Ok(());
+    }
+    if !policy.rnmdb_packages.contains(&name) {
+        return Err("unapproved RNovModularDB package".into());
+    }
+    let source = parse_string_field(package, "source")?;
+    validate_rnmdb_git_source(&source, policy)
+}
+
+fn validate_rnmdb_git_source(source: &str, policy: &DependencyPolicy) -> Result<(), String> {
+    let source = source
+        .strip_prefix("git+")
+        .ok_or_else(|| "RNovModularDB package is not from git".to_owned())?;
+    let (location, resolved) = source
+        .split_once('#')
+        .ok_or_else(|| "RNovModularDB source lacks a resolved commit".to_owned())?;
+    let (repository, query) = location
+        .split_once('?')
+        .ok_or_else(|| "RNovModularDB source lacks a revision query".to_owned())?;
+    let expected = policy.rnmdb_repository.trim_end_matches('/');
+    if repository.trim_end_matches('/') != expected {
+        return Err("RNovModularDB repository is not approved".into());
+    }
+    let revision = format!("rev={}", policy.rnmdb_commit);
+    if !query.split('&').any(|part| part == revision) {
+        return Err("RNovModularDB revision is not approved".into());
+    }
+    if !resolved.starts_with(&policy.rnmdb_commit) {
+        return Err("RNovModularDB resolved commit is not approved".into());
+    }
+    Ok(())
+}
+
+fn validate_crate_manifest(path: &Path, module: &ModuleMetadata) -> Result<(), String> {
+    let manifest = path
+        .parent()
+        .ok_or_else(|| "module directory is missing".to_owned())?
+        .join("Cargo.toml");
+    let content = read_bounded_text(&manifest, MAX_MANIFEST_BYTES, "crate manifest")?;
+    let package_name = parse_string_field(&content, "name")?;
+    let package_version = parse_version_field(&content, "version")?;
+    let package_license = parse_string_field(&content, "license")?;
+    if package_name != module.crate_name {
+        return Err("module crate name differs from Cargo package name".into());
+    }
+    if package_version != module.version {
+        return Err("module version differs from Cargo package version".into());
+    }
+    if package_license != module.license {
+        return Err("module license differs from Cargo package license".into());
+    }
+    Ok(())
+}
+
+fn read_bounded_text(path: &Path, limit: u64, label: &str) -> Result<String, String> {
+    let metadata = fs::metadata(path).map_err(|_| format!("cannot inspect {label}"))?;
+    if metadata.len() > limit {
+        return Err(format!("{label} is too large"));
+    }
+    fs::read_to_string(path).map_err(|_| format!("{label} is not readable UTF-8"))
+}
+
+fn validate_unique_module_ids(modules: &[ModuleMetadata]) -> Result<(), String> {
+    let mut ids = BTreeSet::new();
+    for module in modules {
+        if !ids.insert(module.id.as_str()) {
+            return Err("duplicate module identity".into());
+        }
+    }
+    Ok(())
 }
 
 fn parse_string_field(content: &str, key: &str) -> Result<String, String> {
@@ -175,7 +352,11 @@ fn parse_version_field(content: &str, key: &str) -> Result<Version, String> {
 
 fn parse_abi_field(content: &str) -> Result<AbiVersion, String> {
     let value = parse_string_field(content, "abi")?;
-    parse_abi_version(&value).map_err(|_| "invalid abi field".to_owned())
+    parse_abi_value(&value)
+}
+
+fn parse_abi_value(value: &str) -> Result<AbiVersion, String> {
+    parse_abi_version(value).map_err(|_| "invalid abi field".to_owned())
 }
 
 fn parse_capability_array(content: &str, key: &str) -> Result<Vec<Capability>, String> {
@@ -262,10 +443,16 @@ fn parse_abi_version(value: &str) -> Result<AbiVersion, String> {
     })
 }
 
-fn validate_module_metadata(module: &ModuleMetadata) -> Result<(), String> {
+fn validate_module_metadata(
+    module: &ModuleMetadata,
+    policy: &DependencyPolicy,
+) -> Result<(), String> {
     validate_identifier(&module.id)?;
     validate_implementation_version(module.version)?;
     validate_abi_version(module.abi)?;
+    if module.abi != policy.core_abi {
+        return Err("module ABI is incompatible with the core policy".into());
+    }
     if !module.crate_name.starts_with("ariadnion-") {
         return Err("module crate is not first-party".into());
     }

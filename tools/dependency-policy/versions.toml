@@ -12,6 +12,7 @@ forbidden = ["GPL-2.0-only", "GPL-2.0-or-later", "GPL-3.0-only", "GPL-3.0-or-lat
 repository = "https://github.com/czxieddan/RNovModularDB/"
 commit = "8d2b65a"
 package_prefix = "rnmdb-"
+packages = ["rnmdb-common", "rnmdb-types", "rnmdb-sql", "rnmdb-planner", "rnmdb-executor", "rnmdb-txn", "rnmdb-index", "rnmdb-fts", "rnmdb-catalog", "rnmdb-storage", "rnmdb-udf", "rnmdb-security", "rnmdb-instance", "rnmdb-server", "rnmdb-cli"]
 allowed = ["AGPL-3.0-only"]
 reason = "Repository ownership and distribution terms are controlled by the Ariadnion owner."
 
