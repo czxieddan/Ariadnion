@@ -28,7 +28,6 @@ const PLATFORM_INITIAL_SHA256: [u8; 32] = [
     0xa1, 0x73, 0xea, 0x15, 0xd5, 0x5b, 0x21, 0xcf, 0xf7, 0xa1, 0x3e, 0xa6, 0xab, 0xa8, 0x1a, 0x7b,
     0xca, 0x75, 0x39, 0x48, 0x4e, 0x40, 0x04, 0x2c, 0x3d, 0x05, 0xf7, 0x96, 0xe6, 0xc5, 0x2f, 0xee,
 ];
-const PLATFORM_INITIAL_LOOKUP: &str = "SELECT migration_id, domain, from_version, to_version, checksum FROM platform_schema_migrations WHERE migration_id = 'platform.0001.initial';";
 
 /// Result of applying one immutable migration definition.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -70,9 +69,16 @@ impl RnmdbMigrationRunner {
         context: &RequestContext,
     ) -> Result<MigrationApplyStatus, StorageError> {
         let descriptor = platform_initial_migration()?;
+        let lookup = migration_lookup(&descriptor)?;
         let insert = platform_initial_insert(&descriptor, applied_at)?;
         self.session.with_session(context, |session| {
-            run_platform_initial_transaction(session, &descriptor, &insert)
+            run_migration_transaction(
+                session,
+                &descriptor,
+                &PLATFORM_INITIAL_STATEMENTS,
+                &lookup,
+                &insert,
+            )
         })
     }
 }
@@ -107,6 +113,13 @@ fn platform_initial_insert(
     ))
 }
 
+fn migration_lookup(descriptor: &MigrationDescriptor) -> Result<String, StorageError> {
+    let migration_id = ledger_literal(descriptor.id().as_str())?;
+    Ok(format!(
+        "SELECT migration_id, domain, from_version, to_version, checksum FROM platform_schema_migrations WHERE migration_id = {migration_id};"
+    ))
+}
+
 fn ledger_literal(value: &str) -> Result<String, StorageError> {
     if value.len() > MAX_LEDGER_LITERAL_BYTES || !value.is_ascii() || value.contains('\'') {
         return Err(StorageError::new(StorageErrorCode::IntegrityFailure));
@@ -122,25 +135,29 @@ fn ledger_versions(descriptor: &MigrationDescriptor) -> Result<(i64, i64), Stora
     Ok((from, to))
 }
 
-fn run_platform_initial_transaction(
+fn run_migration_transaction(
     session: &mut LocalSession,
     descriptor: &MigrationDescriptor,
+    statements: &[&str],
+    lookup: &str,
     insert: &str,
 ) -> Result<MigrationApplyStatus, RnovError> {
     session.execute("BEGIN")?;
-    let result = apply_platform_initial_body(session, descriptor, insert);
-    finish_platform_initial_transaction(session, result)
+    let result = apply_migration_body(session, descriptor, statements, lookup, insert);
+    finish_migration_transaction(session, result)
 }
 
-fn apply_platform_initial_body(
+fn apply_migration_body(
     session: &mut LocalSession,
     descriptor: &MigrationDescriptor,
+    statements: &[&str],
+    lookup: &str,
     insert: &str,
 ) -> Result<MigrationApplyStatus, RnovError> {
-    for statement in PLATFORM_INITIAL_STATEMENTS {
+    for statement in statements {
         session.execute(statement)?;
     }
-    let output = session.execute(PLATFORM_INITIAL_LOOKUP)?;
+    let output = session.execute(lookup)?;
     if migration_record_exists(output, descriptor)? {
         return Ok(MigrationApplyStatus::AlreadyApplied);
     }
@@ -148,25 +165,25 @@ fn apply_platform_initial_body(
     Ok(MigrationApplyStatus::Applied)
 }
 
-fn finish_platform_initial_transaction(
+fn finish_migration_transaction(
     session: &mut LocalSession,
     result: Result<MigrationApplyStatus, RnovError>,
 ) -> Result<MigrationApplyStatus, RnovError> {
     match result {
-        Ok(MigrationApplyStatus::Applied) => commit_platform_initial(session),
-        Ok(MigrationApplyStatus::AlreadyApplied) => rollback_existing_platform_initial(session),
+        Ok(MigrationApplyStatus::Applied) => commit_migration(session),
+        Ok(MigrationApplyStatus::AlreadyApplied) => rollback_existing_migration(session),
         Err(error) => rollback_with_error(session, error),
     }
 }
 
-fn commit_platform_initial(session: &mut LocalSession) -> Result<MigrationApplyStatus, RnovError> {
+fn commit_migration(session: &mut LocalSession) -> Result<MigrationApplyStatus, RnovError> {
     if let Err(error) = session.execute("COMMIT") {
         return rollback_with_error(session, error);
     }
     Ok(MigrationApplyStatus::Applied)
 }
 
-fn rollback_existing_platform_initial(
+fn rollback_existing_migration(
     session: &mut LocalSession,
 ) -> Result<MigrationApplyStatus, RnovError> {
     session.execute("ROLLBACK")?;
