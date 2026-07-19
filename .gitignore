@@ -1,0 +1,31 @@
+/target/
+/AGENTS.md
+/plans/
+
+# Test code is injected from a separate test workspace and is not tracked.
+crates/**/tests/
+crates/**/tests/**
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+
+# Build, coverage, and benchmark artifacts
+coverage/
+artifacts/
+bench-results/
+*.profraw
+*.profdata
+
+# Editor and operating system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.rs.bk
