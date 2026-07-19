@@ -1,0 +1,21 @@
+[package]
+name = "ariadnion-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "The standalone Ariadnion core runtime and typed foundation."
+publish = false
+
+[dependencies]
+ctrlc.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "ariadniond-core"
+path = "src/bin/ariadniond_core.rs"
+
+[lints]
+workspace = true
