@@ -10,7 +10,20 @@ use crate::ids::{PrincipalId, RequestId, TenantId, TraceId};
 /// A cloneable cancellation handle shared across request boundaries.
 #[derive(Clone, Debug)]
 pub struct CancellationToken {
-    cancelled: Arc<AtomicBool>,
+    state: Arc<CancellationState>,
+}
+
+#[derive(Debug)]
+struct CancellationState {
+    cancelled: AtomicBool,
+    parent: Option<Arc<CancellationState>>,
+}
+
+impl CancellationState {
+    fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Acquire)
+            || self.parent.as_ref().is_some_and(|parent| parent.is_cancelled())
+    }
 }
 
 impl CancellationToken {
@@ -18,19 +31,37 @@ impl CancellationToken {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            cancelled: Arc::new(AtomicBool::new(false)),
+            state: Arc::new(CancellationState {
+                cancelled: AtomicBool::new(false),
+                parent: None,
+            }),
+        }
+    }
+
+    /// Creates an independently cancellable child linked to this token.
+    ///
+    /// Cancelling the child does not affect its parent. Cancelling the parent
+    /// makes the child observe cancellation without a registration callback or
+    /// mutable global state.
+    #[must_use]
+    pub fn child(&self) -> Self {
+        Self {
+            state: Arc::new(CancellationState {
+                cancelled: AtomicBool::new(false),
+                parent: Some(self.state.clone()),
+            }),
         }
     }
 
     /// Requests cancellation and returns `true` only for the first request.
     pub fn cancel(&self) -> bool {
-        !self.cancelled.swap(true, Ordering::AcqRel)
+        !self.state.cancelled.swap(true, Ordering::AcqRel)
     }
 
     /// Returns whether cancellation has been requested.
     #[must_use]
     pub fn is_cancelled(&self) -> bool {
-        self.cancelled.load(Ordering::Acquire)
+        self.state.is_cancelled()
     }
 
     /// Returns a stable cancellation error when cancellation was requested.
