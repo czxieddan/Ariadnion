@@ -19,6 +19,8 @@ pub enum PublishError {
     NoRollbackSnapshot,
     /// The process-local snapshot generation reached its numeric limit.
     GenerationExhausted,
+    /// The immutable document version reached its numeric limit.
+    VersionExhausted,
 }
 
 /// A cheap immutable view used by read paths without database access.
@@ -108,24 +110,37 @@ impl ConfigRuntime {
         })
     }
 
-    /// Atomically swaps back to the retained prior snapshot.
+    /// Atomically republishes the retained prior content as a new version.
     ///
     /// The caller must provide the exact active document version. A successful
-    /// rollback keeps the replaced snapshot as the next rollback target.
+    /// rollback keeps the replaced content as the next rollback target. The
+    /// restored content receives a new monotonically increasing version, so a
+    /// previously published version number is never reused.
     pub fn rollback(&self, expected_active: u64) -> Result<ConfigSnapshot, PublishError> {
         let mut state = write_state(&self.state);
         ensure_version(expected_active, state.active.document().version())?;
+        let generation = next_generation(state.generation)?;
+        let version = next_document_version(state.active.document().version())?;
         let previous = state
             .previous
-            .take()
+            .as_ref()
+            .cloned()
             .ok_or(PublishError::NoRollbackSnapshot)?;
-        let generation = next_generation(state.generation)?;
-        let replaced = std::mem::replace(&mut state.active, previous.clone());
+        let document = previous
+            .document()
+            .clone_at_version(version)
+            .map_err(|_| PublishError::VersionExhausted)?;
+        let restored = Arc::new(
+            self.schema
+                .validate(document)
+                .map_err(PublishError::Validation)?,
+        );
+        let replaced = std::mem::replace(&mut state.active, restored.clone());
         state.previous = Some(replaced);
         state.generation = generation;
         Ok(ConfigSnapshot {
             generation,
-            configuration: previous,
+            configuration: restored,
         })
     }
 
@@ -147,6 +162,10 @@ fn next_generation(current: u64) -> Result<u64, PublishError> {
     current
         .checked_add(1)
         .ok_or(PublishError::GenerationExhausted)
+}
+
+fn next_document_version(current: u64) -> Result<u64, PublishError> {
+    current.checked_add(1).ok_or(PublishError::VersionExhausted)
 }
 
 fn read_state(lock: &RwLock<RuntimeState>) -> RwLockReadGuard<'_, RuntimeState> {

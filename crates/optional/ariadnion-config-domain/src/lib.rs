@@ -175,6 +175,24 @@ impl ConfigDocument {
             .ok()
             .map(|index| self.fields[index].value())
     }
+
+    /// Copies the same schema and fields into a new immutable version.
+    ///
+    /// This supports rollback-as-publication without reusing an earlier
+    /// version number. Version zero is rejected and the original document is
+    /// left unchanged.
+    pub fn clone_at_version(&self, version: u64) -> Result<Self, CoreError> {
+        if version == 0 {
+            return Err(CoreError::from_code(ErrorCode::InvalidArgument)
+                .with_internal_context("configuration document version must be positive"));
+        }
+        Ok(Self {
+            schema_id: self.schema_id.clone(),
+            schema_version: self.schema_version,
+            version,
+            fields: self.fields.clone(),
+        })
+    }
 }
 
 /// A draft tied to the exact published version it was derived from.
