@@ -3,19 +3,84 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::SystemTime;
 
 use ariadnion_core::{
     CapabilityId, CapabilityProvider, CapabilityResolution, ConfigurationContract, CoreError,
     ErrorCode, HealthReasonCode, HealthStatus, ModuleConfigurationSnapshot, ModuleContext,
     ModuleDescriptor, ModuleDescriptorInput, ModuleFactory, ModuleHandle, ModuleHealthSnapshot,
-    ModuleId, ModuleShutdownReport, ModuleVersion, ResourceBudget, ShutdownPriority,
+    ModuleId, ModuleShutdownReport, ModuleVersion, PortKey, ResourceBudget, ShutdownPriority,
     CORE_ABI_VERSION,
 };
+
+/// SHA-256 of the canonical empty diagnostics configuration.
+pub const DEFAULT_CONFIGURATION_DIGEST: &str =
+    "81686777e9becb24f4ded0eaebfeb030434ed9091c1b171143b44e3f5262d96d";
+
+const DIAGNOSTICS_BUILD_ID: &str = concat!("ariadnion-diagnostics-", env!("CARGO_PKG_VERSION"));
+const DIAGNOSTICS_PORT_NAME: &str = "org.ariadnion.diagnostics.read.port";
+
+/// A typed, read-only diagnostics operation exposed by the module.
+pub trait DiagnosticsReadPort: Send + Sync {
+    /// Reads a bounded metadata and lifecycle snapshot without side effects.
+    fn read(&self) -> DiagnosticsSnapshot;
+}
+
+/// A safe immutable diagnostics response.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DiagnosticsSnapshot {
+    module_id: ModuleId,
+    version: ModuleVersion,
+    status: HealthStatus,
+}
+
+impl DiagnosticsSnapshot {
+    /// Returns the diagnostics module identity.
+    #[must_use]
+    pub const fn module_id(&self) -> &ModuleId {
+        &self.module_id
+    }
+
+    /// Returns the diagnostics module implementation version.
+    #[must_use]
+    pub const fn version(&self) -> ModuleVersion {
+        self.version
+    }
+
+    /// Returns the current module status.
+    #[must_use]
+    pub const fn status(&self) -> HealthStatus {
+        self.status
+    }
+}
+
+struct DiagnosticsService {
+    module_id: ModuleId,
+    version: ModuleVersion,
+    status: Mutex<HealthStatus>,
+}
+
+impl DiagnosticsReadPort for DiagnosticsService {
+    fn read(&self) -> DiagnosticsSnapshot {
+        DiagnosticsSnapshot {
+            module_id: self.module_id.clone(),
+            version: self.version,
+            status: *lock_status(&self.status),
+        }
+    }
+}
+
+impl DiagnosticsService {
+    fn set_status(&self, status: HealthStatus) {
+        *lock_status(&self.status) = status;
+    }
+}
 
 /// A side-effect-free factory for the built-in diagnostics capability.
 pub struct DiagnosticsModule {
     descriptor: ModuleDescriptor,
+    service: Arc<DiagnosticsService>,
 }
 
 impl DiagnosticsModule {
@@ -35,7 +100,7 @@ impl DiagnosticsModule {
         let descriptor = ModuleDescriptor::new(ModuleDescriptorInput {
             id: module_id,
             version: ModuleVersion::new(0, 1, 0),
-            build_commit: "0000000".into(),
+            build_commit: DIAGNOSTICS_BUILD_ID.into(),
             abi_version: CORE_ABI_VERSION,
             provided: vec![capability],
             required: Vec::new(),
@@ -47,7 +112,26 @@ impl DiagnosticsModule {
             observability_namespace: "ariadnion.diagnostics".into(),
             audit_namespace: "ariadnion.diagnostics".into(),
         })?;
-        Ok(Self { descriptor })
+        let service = Arc::new(DiagnosticsService {
+            module_id: descriptor.id().clone(),
+            version: descriptor.version(),
+            status: Mutex::new(HealthStatus::Live),
+        });
+        Ok(Self {
+            descriptor,
+            service,
+        })
+    }
+
+    /// Returns the compile-time typed diagnostics port key.
+    pub fn port_key() -> Result<PortKey<dyn DiagnosticsReadPort>, CoreError> {
+        PortKey::new(DIAGNOSTICS_PORT_NAME)
+    }
+
+    /// Returns the concrete read-only diagnostics service.
+    #[must_use]
+    pub fn read_port(&self) -> Arc<dyn DiagnosticsReadPort> {
+        self.service.clone()
     }
 }
 
@@ -69,8 +153,10 @@ impl ModuleFactory for DiagnosticsModule {
     }
 
     fn start(&self, _context: ModuleContext) -> Result<Box<dyn ModuleHandle>, CoreError> {
+        self.service.set_status(HealthStatus::Ready);
         Ok(Box::new(DiagnosticsHandle {
             module_id: self.descriptor.id().clone(),
+            service: self.service.clone(),
             configuration_version: 0,
             stopped: false,
         }))
@@ -79,6 +165,7 @@ impl ModuleFactory for DiagnosticsModule {
 
 struct DiagnosticsHandle {
     module_id: ModuleId,
+    service: Arc<DiagnosticsService>,
     configuration_version: u64,
     stopped: bool,
 }
@@ -117,6 +204,14 @@ impl ModuleHandle for DiagnosticsHandle {
             return Err(CoreError::from_code(ErrorCode::DeadlineExceeded));
         }
         self.stopped = true;
+        self.service.set_status(HealthStatus::Unavailable);
         Ok(ModuleShutdownReport::new(0, 0, true))
+    }
+}
+
+fn lock_status(status: &Mutex<HealthStatus>) -> MutexGuard<'_, HealthStatus> {
+    match status.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
     }
 }
