@@ -1,4 +1,5 @@
 /target/
+**/target/
 /AGENTS.md
 /plans/
 
