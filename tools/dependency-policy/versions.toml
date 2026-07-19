@@ -1,6 +1,9 @@
 schema_version = 1
 rust = "1.95.0"
 
+[core]
+abi = "rust-1.0.0/wit-1"
+
 [licenses]
 allowed = ["Apache-2.0", "MIT", "Zlib"]
 forbidden = ["GPL-2.0-only", "GPL-2.0-or-later", "GPL-3.0-only", "GPL-3.0-or-later", "AGPL-3.0-only", "AGPL-3.0-or-later"]
