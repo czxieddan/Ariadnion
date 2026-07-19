@@ -176,8 +176,10 @@ impl TransactionId {
 /// Transaction isolation exposed by Ariadnion repositories.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TransactionIsolation {
-    /// Reads use one stable snapshot and writes detect conflicts at commit.
-    Snapshot,
+    /// Each statement observes data committed before that statement begins.
+    ReadCommitted,
+    /// All statements observe one transaction snapshot.
+    RepeatableRead,
     /// Conflicting concurrent executions behave as if serialized.
     Serializable,
 }
