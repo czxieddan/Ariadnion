@@ -7,9 +7,11 @@ use std::any::type_name;
 
 mod codec;
 mod session;
+mod transaction;
 
 pub use codec::{CurrencyCode, MoneyValue, NormalizedJson, StorageUuid, UtcTimestampMicros};
 pub use session::{PageKeyMaterial, RnmdbSessionOwner, SessionOpenOptions};
+pub use transaction::RnmdbTransactionManager;
 
 /// The reviewed upstream source revision compiled by this adapter.
 pub const REVIEWED_RNMDB_COMMIT: &str = "8d2b65ad1ee3ee542e1307c1693bc4de4f7edbee";

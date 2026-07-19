@@ -116,6 +116,36 @@ impl RnmdbSessionOwner {
         Ok(lock_session(&self.session).in_transaction())
     }
 
+    pub(crate) fn begin_transaction(&self, context: &RequestContext) -> Result<(), StorageError> {
+        check_context(context)?;
+        let mut session = lock_session(&self.session);
+        if session.in_transaction() {
+            return Err(StorageError::new(StorageErrorCode::Conflict));
+        }
+        session
+            .execute("BEGIN")
+            .map(|_| ())
+            .map_err(map_rnmdb_error)
+    }
+
+    pub(crate) fn commit_transaction(&self, context: &RequestContext) -> Result<(), StorageError> {
+        self.execute_transaction_command("COMMIT", context)
+    }
+
+    pub(crate) fn rollback_transaction(
+        &self,
+        context: &RequestContext,
+    ) -> Result<(), StorageError> {
+        self.execute_transaction_command("ROLLBACK", context)
+    }
+
+    pub(crate) fn rollback_active_transaction(&self) {
+        let mut session = lock_session(&self.session);
+        if session.in_transaction() {
+            let _ = session.execute("ROLLBACK");
+        }
+    }
+
     pub(crate) fn with_session<T>(
         &self,
         context: &RequestContext,
@@ -123,6 +153,14 @@ impl RnmdbSessionOwner {
     ) -> Result<T, StorageError> {
         check_context(context)?;
         operation(&mut lock_session(&self.session)).map_err(map_rnmdb_error)
+    }
+
+    fn execute_transaction_command(
+        &self,
+        command: &str,
+        context: &RequestContext,
+    ) -> Result<(), StorageError> {
+        self.with_session(context, |session| session.execute(command).map(|_| ()))
     }
 }
 
