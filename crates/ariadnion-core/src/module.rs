@@ -11,9 +11,62 @@ use crate::ids::{AbiVersion, ModuleId, ModuleVersion};
 use crate::resource::ResourceBudget;
 
 const MAX_CAPABILITIES: usize = 128;
+const MAX_SECRET_CAPABILITIES: usize = 64;
 const MAX_SENSITIVE_PATHS: usize = 64;
 const MAX_NAMESPACE_BYTES: usize = 128;
+const MAX_SHUTDOWN_PRIORITY: u16 = 4_095;
 const CONFIGURATION_DIGEST_BYTES: usize = 64;
+
+/// Deterministic shutdown priority for otherwise independent modules.
+///
+/// Higher values shut down before lower values. Modules with the same value
+/// are ordered by module identity. Dependency order always takes precedence,
+/// so a consumer shuts down before the provider it depends on.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct ShutdownPriority(u16);
+
+impl ShutdownPriority {
+    /// Validates and creates a shutdown priority between zero and 4,095.
+    pub fn new(value: u16) -> Result<Self, CoreError> {
+        if value > MAX_SHUTDOWN_PRIORITY {
+            return Err(crate::error::CoreError::from_code(
+                crate::error::ErrorCode::InvalidArgument,
+            )
+            .with_internal_context("module shutdown priority is outside its bound"));
+        }
+        Ok(Self(value))
+    }
+
+    /// Returns the validated priority value.
+    #[must_use]
+    pub const fn value(self) -> u16 {
+        self.0
+    }
+}
+
+/// A versioned capability requirement that is permitted to resolve secrets.
+///
+/// This type distinguishes secret access from ordinary capability use. It
+/// contains only capability metadata and never contains a secret value or
+/// runtime secret reference.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SecretCapabilityRequirement {
+    requirement: CapabilityRequirement,
+}
+
+impl SecretCapabilityRequirement {
+    /// Creates a typed secret capability requirement.
+    #[must_use]
+    pub const fn new(requirement: CapabilityRequirement) -> Self {
+        Self { requirement }
+    }
+
+    /// Returns the underlying versioned capability requirement.
+    #[must_use]
+    pub const fn requirement(&self) -> &CapabilityRequirement {
+        &self.requirement
+    }
+}
 
 /// Identifies an immutable module configuration schema.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -67,8 +120,10 @@ pub struct ModuleDescriptor {
     abi_version: AbiVersion,
     provided: Vec<CapabilityProvider>,
     required: Vec<CapabilityRequirement>,
+    required_secret_capabilities: Vec<SecretCapabilityRequirement>,
     configuration: ConfigurationContract,
     resources: ResourceBudget,
+    shutdown_priority: ShutdownPriority,
     sensitive_paths: Vec<Box<str>>,
     observability_namespace: Box<str>,
     audit_namespace: Box<str>,
@@ -88,10 +143,14 @@ pub struct ModuleDescriptorInput {
     pub provided: Vec<CapabilityProvider>,
     /// Capabilities required by the module.
     pub required: Vec<CapabilityRequirement>,
+    /// Secret-resolving capabilities required by the module.
+    pub required_secret_capabilities: Vec<SecretCapabilityRequirement>,
     /// Configuration schema and hot-reload contract.
     pub configuration: ConfigurationContract,
     /// Resource and timeout budgets.
     pub resources: ResourceBudget,
+    /// Deterministic priority among independently stoppable modules.
+    pub shutdown_priority: ShutdownPriority,
     /// Configuration paths containing sensitive references.
     pub sensitive_paths: Vec<Box<str>>,
     /// Stable trace, metric, and log namespace.
@@ -111,8 +170,10 @@ impl ModuleDescriptor {
             abi_version: input.abi_version,
             provided: input.provided,
             required: input.required,
+            required_secret_capabilities: input.required_secret_capabilities,
             configuration: input.configuration,
             resources: input.resources,
+            shutdown_priority: input.shutdown_priority,
             sensitive_paths: input.sensitive_paths,
             observability_namespace: input.observability_namespace,
             audit_namespace: input.audit_namespace,
@@ -155,6 +216,12 @@ impl ModuleDescriptor {
         &self.required
     }
 
+    /// Returns typed requirements that permit secret resolution.
+    #[must_use]
+    pub fn required_secret_capabilities(&self) -> &[SecretCapabilityRequirement] {
+        &self.required_secret_capabilities
+    }
+
     /// Returns the configuration contract.
     #[must_use]
     pub const fn configuration(&self) -> &ConfigurationContract {
@@ -165,6 +232,12 @@ impl ModuleDescriptor {
     #[must_use]
     pub const fn resources(&self) -> ResourceBudget {
         self.resources
+    }
+
+    /// Returns the deterministic shutdown priority.
+    #[must_use]
+    pub const fn shutdown_priority(&self) -> ShutdownPriority {
+        self.shutdown_priority
     }
 
     /// Returns sensitive configuration paths.
@@ -187,7 +260,11 @@ impl ModuleDescriptor {
 }
 
 fn validate_descriptor_input(input: &ModuleDescriptorInput) -> Result<(), CoreError> {
-    validate_capability_counts(input.provided.len(), input.required.len())?;
+    validate_capability_counts(
+        input.provided.len(),
+        input.required.len(),
+        input.required_secret_capabilities.len(),
+    )?;
     validate_provider_ownership(&input.id, &input.provided)?;
     validate_namespace(&input.build_commit)?;
     validate_sensitive_paths(&input.sensitive_paths)?;
@@ -212,8 +289,13 @@ fn validate_provider_ownership(
     Ok(())
 }
 
-fn validate_capability_counts(provided: usize, required: usize) -> Result<(), CoreError> {
-    if provided > MAX_CAPABILITIES || required > MAX_CAPABILITIES {
+fn validate_capability_counts(
+    provided: usize,
+    required: usize,
+    required_secrets: usize,
+) -> Result<(), CoreError> {
+    let ordinary_limit_exceeded = provided > MAX_CAPABILITIES || required > MAX_CAPABILITIES;
+    if ordinary_limit_exceeded || required_secrets > MAX_SECRET_CAPABILITIES {
         return Err(
             crate::error::CoreError::from_code(crate::error::ErrorCode::ResourceExhausted)
                 .with_internal_context("module capability declaration limit reached"),
@@ -236,7 +318,9 @@ fn validate_sensitive_paths(paths: &[Box<str>]) -> Result<(), CoreError> {
 }
 
 fn validate_namespace(value: &str) -> Result<(), CoreError> {
-    if value.is_empty() || value.len() > MAX_NAMESPACE_BYTES || !value.is_ascii() {
+    let invalid_shape = value.is_empty() || value.len() > MAX_NAMESPACE_BYTES;
+    let invalid_alphabet = !value.is_ascii() || value.bytes().any(|byte| byte.is_ascii_control());
+    if invalid_shape || invalid_alphabet {
         return Err(
             crate::error::CoreError::from_code(crate::error::ErrorCode::InvalidArgument)
                 .with_internal_context("module namespace is invalid"),
