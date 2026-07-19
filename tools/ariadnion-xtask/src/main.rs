@@ -507,15 +507,23 @@ fn resolve_profile(profile: &str, modules: &[ModuleMetadata]) -> Result<BTreeSet
     Ok(selected)
 }
 
-fn profile_requirements(_profile: &str) -> Vec<Capability> {
-    vec![Capability {
+fn profile_requirements(profile: &str) -> Vec<Capability> {
+    match profile {
+        "edge" => vec![diagnostics_requirement()],
+        "standard" | "complete" => Vec::new(),
+        _ => Vec::new(),
+    }
+}
+
+fn diagnostics_requirement() -> Capability {
+    Capability {
         id: "org.ariadnion.diagnostics.read".into(),
         version: Version {
             major: 1,
             minor: 0,
             patch: 0,
         },
-    }]
+    }
 }
 
 fn provider_index(
