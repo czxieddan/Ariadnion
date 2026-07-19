@@ -5,7 +5,7 @@ use std::env;
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
+use std::process::{Command, ExitCode};
 
 const MAX_MANIFEST_BYTES: u64 = 65_536;
 const MAX_MODULES: usize = 256;
@@ -65,6 +65,7 @@ fn compose(profile: &str) -> Result<String, String> {
     let root = repository_root()?;
     let policy = load_dependency_policy(&root)?;
     let modules = scan_modules(&root, &policy)?;
+    validate_declared_rnmdb_paths(&root, &policy)?;
     validate_rnmdb_lock_sources(&root, &policy)?;
     let selected = resolve_profile(profile, &modules)?;
     let output = root.join("target").join("compositions").join(profile);
@@ -227,7 +228,7 @@ fn validate_rnmdb_lock_sources(root: &Path, policy: &DependencyPolicy) -> Result
     for lock in collect_lock_files(root)? {
         let content = read_bounded_text(&lock, MAX_LOCK_BYTES, "Cargo lock file")?;
         for package in content.split("[[package]]").skip(1) {
-            validate_rnmdb_package(package, policy)?;
+            validate_rnmdb_package(root, package, policy)?;
         }
     }
     Ok(())
@@ -265,7 +266,11 @@ fn add_lock_if_present(path: &Path, locks: &mut Vec<PathBuf>) -> Result<(), Stri
     Ok(())
 }
 
-fn validate_rnmdb_package(package: &str, policy: &DependencyPolicy) -> Result<(), String> {
+fn validate_rnmdb_package(
+    root: &Path,
+    package: &str,
+    policy: &DependencyPolicy,
+) -> Result<(), String> {
     let name = parse_string_field(package, "name")?;
     if !name.starts_with(&policy.rnmdb_package_prefix) {
         return Ok(());
@@ -273,8 +278,106 @@ fn validate_rnmdb_package(package: &str, policy: &DependencyPolicy) -> Result<()
     if !policy.rnmdb_packages.contains(&name) {
         return Err("unapproved RNovModularDB package".into());
     }
-    let source = parse_string_field(package, "source")?;
-    validate_rnmdb_git_source(&source, policy)
+    match parse_string_field(package, "source") {
+        Ok(source) => validate_rnmdb_git_source(&source, policy),
+        Err(_) => validate_rnmdb_submodule_package(root, &name, policy),
+    }
+}
+
+fn validate_declared_rnmdb_paths(root: &Path, policy: &DependencyPolicy) -> Result<(), String> {
+    for manifest in first_party_manifests(root)? {
+        let content = read_bounded_text(&manifest, MAX_MANIFEST_BYTES, "crate manifest")?;
+        for line in content.lines() {
+            validate_rnmdb_dependency_line(line, policy)?;
+        }
+    }
+    Ok(())
+}
+
+fn first_party_manifests(root: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut manifests = vec![root.join("Cargo.toml")];
+    collect_child_manifests(&root.join("crates").join("optional"), &mut manifests)?;
+    collect_child_manifests(&root.join("bundles"), &mut manifests)?;
+    collect_child_manifests(&root.join("tools"), &mut manifests)?;
+    manifests.sort();
+    Ok(manifests)
+}
+
+fn collect_child_manifests(parent: &Path, manifests: &mut Vec<PathBuf>) -> Result<(), String> {
+    let entries = fs::read_dir(parent).map_err(|_| "cannot scan Cargo manifests".to_owned())?;
+    for entry in entries {
+        let path = entry
+            .map_err(|_| "cannot read Cargo manifest root".to_owned())?
+            .path()
+            .join("Cargo.toml");
+        if path.is_file() {
+            manifests.push(path);
+        }
+    }
+    Ok(())
+}
+
+fn validate_rnmdb_dependency_line(
+    line: &str,
+    policy: &DependencyPolicy,
+) -> Result<(), String> {
+    let Some((candidate, declaration)) = line.split_once('=') else {
+        return Ok(());
+    };
+    let package = candidate.trim();
+    if !package.starts_with(&policy.rnmdb_package_prefix) {
+        return Ok(());
+    }
+    if !policy.rnmdb_packages.contains(package) {
+        return Err("unapproved RNovModularDB dependency declaration".into());
+    }
+    let expected = format!("vendor/RNovModularDB/crates/{package}");
+    if !declaration.replace('\\', "/").contains(&expected) {
+        return Err("RNovModularDB dependency path is not approved".into());
+    }
+    Ok(())
+}
+
+fn validate_rnmdb_submodule_package(
+    root: &Path,
+    package: &str,
+    policy: &DependencyPolicy,
+) -> Result<(), String> {
+    validate_rnmdb_submodule_commit(root, policy)?;
+    let manifest = root
+        .join("vendor")
+        .join("RNovModularDB")
+        .join("crates")
+        .join(package)
+        .join("Cargo.toml");
+    let content = read_bounded_text(&manifest, MAX_MANIFEST_BYTES, "RNMDB crate manifest")?;
+    if parse_string_field(&content, "name")? != package {
+        return Err("RNovModularDB package manifest is inconsistent".into());
+    }
+    Ok(())
+}
+
+fn validate_rnmdb_submodule_commit(
+    root: &Path,
+    policy: &DependencyPolicy,
+) -> Result<(), String> {
+    let repository = root.join("vendor").join("RNovModularDB");
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repository)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .map_err(|_| "cannot inspect RNovModularDB submodule commit".to_owned())?;
+    if !output.status.success() || output.stdout.len() > 64 {
+        return Err("RNovModularDB submodule commit is unavailable".into());
+    }
+    let resolved = std::str::from_utf8(&output.stdout)
+        .map_err(|_| "RNovModularDB commit output is invalid UTF-8".to_owned())?
+        .trim();
+    if resolved != policy.rnmdb_commit {
+        return Err("RNovModularDB submodule commit is not approved".into());
+    }
+    Ok(())
 }
 
 fn validate_rnmdb_git_source(source: &str, policy: &DependencyPolicy) -> Result<(), String> {
