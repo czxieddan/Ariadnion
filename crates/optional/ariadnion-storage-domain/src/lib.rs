@@ -255,6 +255,9 @@ pub trait TransactionPort: Send {
     /// Returns the transaction identity.
     fn id(&self) -> TransactionId;
 
+    /// Returns the immutable isolation and access contract.
+    fn options(&self) -> TransactionOptions;
+
     /// Commits all changes after checking cancellation and deadline state.
     fn commit(
         self: Box<Self>,
