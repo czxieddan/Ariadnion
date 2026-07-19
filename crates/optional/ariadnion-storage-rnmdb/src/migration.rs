@@ -10,12 +10,12 @@ use sha2::{Digest, Sha256};
 
 const PLATFORM_INITIAL_ID: &str = "platform.0001.initial";
 const PLATFORM_INITIAL_STATEMENTS: [&str; 2] = [
-    "CREATE TABLE IF NOT EXISTS platform_schema_migrations (migration_id TEXT NOT NULL, domain TEXT NOT NULL, from_version UINT64 NOT NULL, to_version UINT64 NOT NULL, checksum TEXT NOT NULL, applied_at TIMESTAMP NOT NULL, binary_version TEXT NOT NULL);",
+    "CREATE TABLE IF NOT EXISTS platform_schema_migrations (migration_id TEXT NOT NULL, domain TEXT NOT NULL, from_version INT64 NOT NULL, to_version INT64 NOT NULL, checksum TEXT NOT NULL, applied_at TIMESTAMP NOT NULL, binary_version TEXT NOT NULL);",
     "CREATE UNIQUE INDEX IF NOT EXISTS platform_schema_migrations_id_uq ON platform_schema_migrations (migration_id);",
 ];
 const PLATFORM_INITIAL_SHA256: [u8; 32] = [
-    0x39, 0x0d, 0xc0, 0x83, 0x35, 0xb2, 0x9d, 0x76, 0x60, 0x1f, 0xbe, 0xbb, 0x29, 0x64, 0xad, 0x53,
-    0xb8, 0x6c, 0x2e, 0xb0, 0xee, 0x38, 0xfc, 0x18, 0xd6, 0x9e, 0x01, 0xf7, 0xc2, 0x97, 0x83, 0x08,
+    0xa1, 0x73, 0xea, 0x15, 0xd5, 0x5b, 0x21, 0xcf, 0xf7, 0xa1, 0x3e, 0xa6, 0xab, 0xa8, 0x1a, 0x7b,
+    0xca, 0x75, 0x39, 0x48, 0x4e, 0x40, 0x04, 0x2c, 0x3d, 0x05, 0xf7, 0x96, 0xe6, 0xc5, 0x2f, 0xee,
 ];
 
 /// Returns the initial platform migration after parsing and digest verification.
