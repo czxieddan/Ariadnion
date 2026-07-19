@@ -3,6 +3,7 @@
 use std::fmt::{self, Debug, Formatter};
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
+use std::time::SystemTime;
 
 use ariadnion_core::{ErrorCode, RequestContext};
 use ariadnion_storage_domain::{StorageError, StorageErrorCode, StorageInstanceId};
@@ -22,7 +23,7 @@ impl PageKeyMaterial {
         Self { bytes }
     }
 
-    fn into_upstream_key(self) -> PageCryptoKey {
+    pub(crate) fn into_upstream_key(self) -> PageCryptoKey {
         PageCryptoKey::from_bytes(self.bytes)
     }
 }
@@ -146,6 +147,16 @@ impl RnmdbSessionOwner {
         }
     }
 
+    pub(crate) fn shutdown_before(&self, deadline: SystemTime) -> Result<bool, StorageError> {
+        check_shutdown_deadline(deadline)?;
+        let mut session = lock_session(&self.session);
+        let rolled_back = rollback_for_shutdown(&mut session)?;
+        check_shutdown_deadline(deadline)?;
+        session.checkpoint().map_err(map_rnmdb_error)?;
+        check_shutdown_deadline(deadline)?;
+        Ok(rolled_back)
+    }
+
     pub(crate) fn with_session<T>(
         &self,
         context: &RequestContext,
@@ -186,7 +197,22 @@ fn check_context(context: &RequestContext) -> Result<(), StorageError> {
     })
 }
 
-fn map_rnmdb_error(error: RnovError) -> StorageError {
+fn rollback_for_shutdown(session: &mut LocalSession) -> Result<bool, StorageError> {
+    if !session.in_transaction() {
+        return Ok(false);
+    }
+    session.execute("ROLLBACK").map_err(map_rnmdb_error)?;
+    Ok(true)
+}
+
+fn check_shutdown_deadline(deadline: SystemTime) -> Result<(), StorageError> {
+    if deadline <= SystemTime::now() {
+        return Err(StorageError::new(StorageErrorCode::DeadlineExceeded));
+    }
+    Ok(())
+}
+
+pub(crate) fn map_rnmdb_error(error: RnovError) -> StorageError {
     let code = match error.kind() {
         ErrorKind::Canceled => StorageErrorCode::Cancelled,
         ErrorKind::Config | ErrorKind::InvalidInput => StorageErrorCode::InvalidArgument,

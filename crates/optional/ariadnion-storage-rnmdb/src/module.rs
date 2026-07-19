@@ -1,0 +1,238 @@
+//! RNMDB relational-storage module descriptor and lifecycle adapter.
+
+use std::sync::{Mutex, MutexGuard};
+use std::time::{Duration, SystemTime};
+
+use ariadnion_core::{
+    CORE_ABI_VERSION, CapabilityId, CapabilityProvider, CapabilityRequirement,
+    CapabilityResolution, ConfigurationContract, CoreError, ErrorCode, ExecutionBudget,
+    ExecutionBudgetInput, HealthReasonCode, HealthStatus, LifecycleBudget, LifecycleBudgetInput,
+    ModuleConfigurationSnapshot, ModuleContext, ModuleDescriptor, ModuleDescriptorInput,
+    ModuleFactory, ModuleHandle, ModuleHealthSnapshot, ModuleId, ModuleShutdownReport,
+    ModuleVersion, ResourceBudget, SecretCapabilityRequirement, ShutdownPriority, WasmBudget,
+};
+use ariadnion_storage_domain::{StorageError, StorageErrorCode};
+
+use crate::{REVIEWED_RNMDB_COMMIT, RnmdbSessionOwner, SessionOpenOptions};
+
+const MODULE_ID: &str = "org.ariadnion.storage.rnmdb";
+const RELATIONAL_CAPABILITY: &str = "org.ariadnion.storage.relational";
+const PAGE_KEY_CAPABILITY: &str = "org.ariadnion.secret.page-key";
+const CONFIGURATION_SCHEMA: &str = "org.ariadnion.storage.rnmdb.config";
+const MODULE_VERSION: ModuleVersion = ModuleVersion::new(0, 1, 0);
+const CONTRACT_VERSION: ModuleVersion = ModuleVersion::new(1, 0, 0);
+
+/// A single-use factory for one encrypted embedded RNMDB session.
+///
+/// Secret-bearing open options remain behind a mutex and are consumed exactly
+/// once by [`ModuleFactory::start`]. The immutable descriptor contains only a
+/// typed secret capability requirement and a sensitive configuration path.
+pub struct StorageRnmdbModule {
+    descriptor: ModuleDescriptor,
+    options: Mutex<Option<SessionOpenOptions>>,
+}
+
+impl StorageRnmdbModule {
+    /// Creates a module factory with single-consumption session options.
+    pub fn new(options: SessionOpenOptions) -> Result<Self, CoreError> {
+        Ok(Self {
+            descriptor: build_descriptor()?,
+            options: Mutex::new(Some(options)),
+        })
+    }
+}
+
+impl ModuleFactory for StorageRnmdbModule {
+    fn descriptor(&self) -> &ModuleDescriptor {
+        &self.descriptor
+    }
+
+    fn validate(
+        &self,
+        configuration: &ModuleConfigurationSnapshot,
+        capabilities: &CapabilityResolution,
+    ) -> Result<(), CoreError> {
+        validate_configuration(&self.descriptor, configuration)?;
+        validate_secret_resolution(&self.descriptor, capabilities)?;
+        if lock_options(&self.options).is_none() {
+            return Err(CoreError::from_code(ErrorCode::Conflict)
+                .with_internal_context("RNMDB session options were already consumed"));
+        }
+        Ok(())
+    }
+
+    fn start(&self, context: ModuleContext) -> Result<Box<dyn ModuleHandle>, CoreError> {
+        context.cancellation().check_active()?;
+        validate_secret_resolution(&self.descriptor, context.capabilities())?;
+        let options = take_options(&self.options)?;
+        let session = RnmdbSessionOwner::open(options).map_err(map_storage_error)?;
+        Ok(Box::new(StorageRnmdbHandle {
+            module_id: self.descriptor.id().clone(),
+            cancellation: context.cancellation(),
+            session: Some(session),
+        }))
+    }
+}
+
+struct StorageRnmdbHandle {
+    module_id: ModuleId,
+    cancellation: ariadnion_core::CancellationToken,
+    session: Option<RnmdbSessionOwner>,
+}
+
+impl ModuleHandle for StorageRnmdbHandle {
+    fn health(&self) -> Result<ModuleHealthSnapshot, CoreError> {
+        let unavailable = self.session.is_none() || self.cancellation.is_cancelled();
+        if unavailable {
+            return Ok(ModuleHealthSnapshot::new(
+                self.module_id.clone(),
+                HealthStatus::Unavailable,
+                HealthReasonCode::ShutdownRequested,
+            ));
+        }
+        Ok(ModuleHealthSnapshot::new(
+            self.module_id.clone(),
+            HealthStatus::Ready,
+            HealthReasonCode::CoreReady,
+        ))
+    }
+
+    fn reconfigure(&mut self, _snapshot: ModuleConfigurationSnapshot) -> Result<(), CoreError> {
+        Err(CoreError::from_code(ErrorCode::Conflict)
+            .with_internal_context("RNMDB session configuration does not support hot reload"))
+    }
+
+    fn shutdown(&mut self, deadline: SystemTime) -> Result<ModuleShutdownReport, CoreError> {
+        let Some(session) = self.session.as_ref() else {
+            return Ok(ModuleShutdownReport::new(0, 0, true));
+        };
+        let rolled_back = session
+            .shutdown_before(deadline)
+            .map_err(map_storage_error)?;
+        self.session = None;
+        Ok(ModuleShutdownReport::new(usize::from(rolled_back), 0, true))
+    }
+}
+
+fn build_descriptor() -> Result<ModuleDescriptor, CoreError> {
+    let id = ModuleId::parse(MODULE_ID)?;
+    let provided = relational_provider(&id)?;
+    let secret = page_key_requirement()?;
+    ModuleDescriptor::new(ModuleDescriptorInput {
+        id,
+        version: MODULE_VERSION,
+        build_commit: REVIEWED_RNMDB_COMMIT.into(),
+        abi_version: CORE_ABI_VERSION,
+        provided: vec![provided],
+        required: Vec::new(),
+        required_secret_capabilities: vec![secret],
+        configuration: configuration_contract()?,
+        resources: module_resource_budget()?,
+        shutdown_priority: ShutdownPriority::new(512)?,
+        sensitive_paths: vec!["storage.rnmdb.page_key_ref".into()],
+        observability_namespace: "ariadnion.storage.rnmdb".into(),
+        audit_namespace: "ariadnion.storage.rnmdb".into(),
+    })
+}
+
+fn relational_provider(module_id: &ModuleId) -> Result<CapabilityProvider, CoreError> {
+    Ok(CapabilityProvider::new(
+        CapabilityId::parse(RELATIONAL_CAPABILITY)?,
+        CONTRACT_VERSION,
+        module_id.clone(),
+    ))
+}
+
+fn page_key_requirement() -> Result<SecretCapabilityRequirement, CoreError> {
+    Ok(SecretCapabilityRequirement::new(
+        CapabilityRequirement::new(
+            CapabilityId::parse(PAGE_KEY_CAPABILITY)?,
+            CONTRACT_VERSION,
+            Some(1),
+        ),
+    ))
+}
+
+fn configuration_contract() -> Result<ConfigurationContract, CoreError> {
+    ConfigurationContract::new(CONFIGURATION_SCHEMA, CONTRACT_VERSION, false)
+}
+
+fn module_resource_budget() -> Result<ResourceBudget, CoreError> {
+    let lifecycle = LifecycleBudget::new(LifecycleBudgetInput {
+        startup_timeout: Duration::from_secs(30),
+        health_timeout: Duration::from_secs(2),
+        shutdown_timeout: Duration::from_secs(30),
+        restart_delay: Duration::from_secs(5),
+        restart_limit: 3,
+    })?;
+    let execution = ExecutionBudget::new(ExecutionBudgetInput {
+        max_tasks: 16,
+        queue_capacity: 1_024,
+        max_memory_bytes: 512 * 1024 * 1024,
+        wasm: WasmBudget::disabled(),
+    })?;
+    ResourceBudget::new(lifecycle, execution)
+}
+
+fn validate_configuration(
+    descriptor: &ModuleDescriptor,
+    configuration: &ModuleConfigurationSnapshot,
+) -> Result<(), CoreError> {
+    if configuration.schema_id() != descriptor.configuration().schema_id() {
+        return Err(CoreError::from_code(ErrorCode::Conflict)
+            .with_internal_context("RNMDB configuration schema does not match the descriptor"));
+    }
+    Ok(())
+}
+
+fn validate_secret_resolution(
+    descriptor: &ModuleDescriptor,
+    capabilities: &CapabilityResolution,
+) -> Result<(), CoreError> {
+    let requirement = descriptor
+        .required_secret_capabilities()
+        .first()
+        .ok_or_else(|| {
+            CoreError::from_code(ErrorCode::Internal)
+                .with_internal_context("RNMDB page-key requirement is missing")
+        })?;
+    if capabilities
+        .provider_for(requirement.requirement().id())
+        .is_none()
+    {
+        return Err(CoreError::from_code(ErrorCode::Unavailable)
+            .with_internal_context("RNMDB page-key capability is unavailable"));
+    }
+    Ok(())
+}
+
+fn take_options(
+    options: &Mutex<Option<SessionOpenOptions>>,
+) -> Result<SessionOpenOptions, CoreError> {
+    lock_options(options).take().ok_or_else(|| {
+        CoreError::from_code(ErrorCode::Conflict)
+            .with_internal_context("RNMDB session options were already consumed")
+    })
+}
+
+fn lock_options(
+    options: &Mutex<Option<SessionOpenOptions>>,
+) -> MutexGuard<'_, Option<SessionOpenOptions>> {
+    match options.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
+fn map_storage_error(error: StorageError) -> CoreError {
+    let code = match error.code() {
+        StorageErrorCode::InvalidArgument => ErrorCode::InvalidArgument,
+        StorageErrorCode::Conflict => ErrorCode::Conflict,
+        StorageErrorCode::DeadlineExceeded => ErrorCode::DeadlineExceeded,
+        StorageErrorCode::Cancelled => ErrorCode::Cancelled,
+        StorageErrorCode::ResourceExhausted => ErrorCode::ResourceExhausted,
+        StorageErrorCode::NotFound | StorageErrorCode::Unavailable => ErrorCode::Unavailable,
+        _ => ErrorCode::Internal,
+    };
+    CoreError::from_code(code).with_internal_context("RNMDB module operation failed")
+}

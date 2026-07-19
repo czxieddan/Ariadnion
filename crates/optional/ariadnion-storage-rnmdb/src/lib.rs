@@ -6,10 +6,12 @@
 use std::any::type_name;
 
 mod codec;
+mod module;
 mod session;
 mod transaction;
 
 pub use codec::{CurrencyCode, MoneyValue, NormalizedJson, StorageUuid, UtcTimestampMicros};
+pub use module::StorageRnmdbModule;
 pub use session::{PageKeyMaterial, RnmdbSessionOwner, SessionOpenOptions};
 pub use transaction::RnmdbTransactionManager;
 
