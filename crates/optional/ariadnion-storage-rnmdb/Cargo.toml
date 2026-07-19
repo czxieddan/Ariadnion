@@ -1,0 +1,37 @@
+[package]
+name = "ariadnion-storage-rnmdb"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95.0"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[workspace]
+
+[dependencies]
+ariadnion-core = { path = "../../ariadnion-core" }
+ariadnion-storage-domain = { path = "../ariadnion-storage-domain" }
+rnmdb-common = { path = "../../../vendor/RNovModularDB/crates/rnmdb-common" }
+rnmdb-types = { path = "../../../vendor/RNovModularDB/crates/rnmdb-types" }
+rnmdb-sql = { path = "../../../vendor/RNovModularDB/crates/rnmdb-sql" }
+rnmdb-planner = { path = "../../../vendor/RNovModularDB/crates/rnmdb-planner" }
+rnmdb-executor = { path = "../../../vendor/RNovModularDB/crates/rnmdb-executor" }
+rnmdb-txn = { path = "../../../vendor/RNovModularDB/crates/rnmdb-txn" }
+rnmdb-index = { path = "../../../vendor/RNovModularDB/crates/rnmdb-index" }
+rnmdb-fts = { path = "../../../vendor/RNovModularDB/crates/rnmdb-fts" }
+rnmdb-catalog = { path = "../../../vendor/RNovModularDB/crates/rnmdb-catalog" }
+rnmdb-storage = { path = "../../../vendor/RNovModularDB/crates/rnmdb-storage" }
+rnmdb-udf = { path = "../../../vendor/RNovModularDB/crates/rnmdb-udf" }
+rnmdb-security = { path = "../../../vendor/RNovModularDB/crates/rnmdb-security" }
+rnmdb-instance = { path = "../../../vendor/RNovModularDB/crates/rnmdb-instance" }
+rnmdb-server = { path = "../../../vendor/RNovModularDB/crates/rnmdb-server" }
+rnmdb-cli = { path = "../../../vendor/RNovModularDB/crates/rnmdb-cli" }
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
