@@ -1,7 +1,7 @@
 //! RNMDB relational-storage module descriptor and lifecycle adapter.
 
-use std::sync::{Mutex, MutexGuard};
-use std::time::{Duration, SystemTime};
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use ariadnion_core::{
     CORE_ABI_VERSION, CapabilityId, CapabilityProvider, CapabilityRequirement,
@@ -9,11 +9,15 @@ use ariadnion_core::{
     ExecutionBudgetInput, HealthReasonCode, HealthStatus, LifecycleBudget, LifecycleBudgetInput,
     ModuleConfigurationSnapshot, ModuleContext, ModuleDescriptor, ModuleDescriptorInput,
     ModuleFactory, ModuleHandle, ModuleHealthSnapshot, ModuleId, ModuleShutdownReport,
-    ModuleVersion, ResourceBudget, SecretCapabilityRequirement, ShutdownPriority, WasmBudget,
+    ModuleVersion, RequestContext, RequestId, ResourceBudget, SecretCapabilityRequirement,
+    ShutdownPriority, TraceId, WasmBudget,
 };
 use ariadnion_storage_domain::{StorageError, StorageErrorCode};
 
-use crate::{REVIEWED_RNMDB_COMMIT, RnmdbSessionOwner, SessionOpenOptions};
+use crate::{
+    REVIEWED_RNMDB_COMMIT, RnmdbMigrationRunner, RnmdbSessionOwner, SessionOpenOptions,
+    UtcTimestampMicros,
+};
 
 const MODULE_ID: &str = "org.ariadnion.storage.rnmdb";
 const RELATIONAL_CAPABILITY: &str = "org.ariadnion.storage.relational";
@@ -62,13 +66,17 @@ impl ModuleFactory for StorageRnmdbModule {
     }
 
     fn start(&self, context: ModuleContext) -> Result<Box<dyn ModuleHandle>, CoreError> {
-        context.cancellation().check_active()?;
+        let cancellation = context.cancellation();
+        cancellation.check_active()?;
         validate_secret_resolution(&self.descriptor, context.capabilities())?;
         let options = take_options(&self.options)?;
-        let session = RnmdbSessionOwner::open(options).map_err(map_storage_error)?;
+        let session = RnmdbSessionOwner::open(options)
+            .map(Arc::new)
+            .map_err(map_storage_error)?;
+        apply_startup_migration(&session, cancellation.clone())?;
         Ok(Box::new(StorageRnmdbHandle {
             module_id: self.descriptor.id().clone(),
-            cancellation: context.cancellation(),
+            cancellation,
             session: Some(session),
         }))
     }
@@ -77,7 +85,7 @@ impl ModuleFactory for StorageRnmdbModule {
 struct StorageRnmdbHandle {
     module_id: ModuleId,
     cancellation: ariadnion_core::CancellationToken,
-    session: Option<RnmdbSessionOwner>,
+    session: Option<Arc<RnmdbSessionOwner>>,
 }
 
 impl ModuleHandle for StorageRnmdbHandle {
@@ -213,6 +221,36 @@ fn take_options(
         CoreError::from_code(ErrorCode::Conflict)
             .with_internal_context("RNMDB session options were already consumed")
     })
+}
+
+fn apply_startup_migration(
+    session: &Arc<RnmdbSessionOwner>,
+    cancellation: ariadnion_core::CancellationToken,
+) -> Result<(), CoreError> {
+    let context = RequestContext::new(
+        RequestId::parse("storage-rnmdb-startup")?,
+        TraceId::parse("storage-rnmdb-migration")?,
+        None,
+        None,
+        cancellation,
+    );
+    let applied_at = utc_micros(SystemTime::now())?;
+    RnmdbMigrationRunner::new(session.clone())
+        .apply_platform_initial(applied_at, &context)
+        .map(|_| ())
+        .map_err(map_storage_error)
+}
+
+fn utc_micros(now: SystemTime) -> Result<UtcTimestampMicros, CoreError> {
+    let duration = now.duration_since(UNIX_EPOCH).map_err(|_| {
+        CoreError::from_code(ErrorCode::Internal)
+            .with_internal_context("system clock is before the Unix epoch")
+    })?;
+    let micros = i64::try_from(duration.as_micros()).map_err(|_| {
+        CoreError::from_code(ErrorCode::Internal)
+            .with_internal_context("system clock exceeds the supported timestamp range")
+    })?;
+    UtcTimestampMicros::new(micros).map_err(map_storage_error)
 }
 
 fn lock_options(
