@@ -20,6 +20,7 @@ pub const DEFAULT_CONFIGURATION_DIGEST: &str =
 
 const DIAGNOSTICS_BUILD_ID: &str = concat!("ariadnion-diagnostics-", env!("CARGO_PKG_VERSION"));
 const DIAGNOSTICS_PORT_NAME: &str = "org.ariadnion.diagnostics.read.port";
+const MODULE_METADATA: &str = include_str!("../module.toml");
 
 /// A typed, read-only diagnostics operation exposed by the module.
 pub trait DiagnosticsReadPort: Send + Sync {
@@ -112,6 +113,7 @@ impl DiagnosticsModule {
             observability_namespace: "ariadnion.diagnostics".into(),
             audit_namespace: "ariadnion.diagnostics".into(),
         })?;
+        validate_embedded_metadata(&descriptor)?;
         let service = Arc::new(DiagnosticsService {
             module_id: descriptor.id().clone(),
             version: descriptor.version(),
@@ -214,4 +216,23 @@ fn lock_status(status: &Mutex<HealthStatus>) -> MutexGuard<'_, HealthStatus> {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     }
+}
+
+fn validate_embedded_metadata(descriptor: &ModuleDescriptor) -> Result<(), CoreError> {
+    validate_metadata_value("id", descriptor.id().as_str())?;
+    validate_metadata_value("version", &descriptor.version().to_string())?;
+    validate_metadata_value("abi", &descriptor.abi_version().to_string())
+}
+
+fn validate_metadata_value(key: &str, expected: &str) -> Result<(), CoreError> {
+    let matches = MODULE_METADATA.lines().any(|line| {
+        line.split_once('=').is_some_and(|(candidate, value)| {
+            candidate.trim() == key && value.trim().trim_matches('"') == expected
+        })
+    });
+    if !matches {
+        return Err(CoreError::from_code(ErrorCode::Conflict)
+            .with_internal_context("embedded diagnostics metadata differs from its descriptor"));
+    }
+    Ok(())
 }
