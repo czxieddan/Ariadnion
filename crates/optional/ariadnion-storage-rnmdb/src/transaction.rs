@@ -8,6 +8,7 @@ use ariadnion_core::RequestContext;
 use ariadnion_storage_domain::{
     CommitReceipt, StorageError, StorageErrorCode, StorageInstanceId, TransactionId,
     TransactionIsolation, TransactionManagerPort, TransactionOptions, TransactionPort,
+    TransactionScope,
 };
 
 use crate::RnmdbSessionOwner;
@@ -83,6 +84,10 @@ impl TransactionPort for RnmdbTransaction {
 
     fn instance(&self) -> &StorageInstanceId {
         self.session.instance()
+    }
+
+    fn scope(&self) -> &TransactionScope {
+        self.session.transaction_scope()
     }
 
     fn options(&self) -> TransactionOptions {

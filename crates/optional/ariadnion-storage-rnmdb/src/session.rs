@@ -7,7 +7,9 @@ use std::sync::{Mutex, MutexGuard};
 use std::time::SystemTime;
 
 use ariadnion_core::{ErrorCode, RequestContext};
-use ariadnion_storage_domain::{StorageError, StorageErrorCode, StorageInstanceId};
+use ariadnion_storage_domain::{
+    StorageError, StorageErrorCode, StorageInstanceId, TransactionScope,
+};
 use rnmdb_cli::LocalSession;
 use rnmdb_common::{ErrorKind, RnovError};
 use rnmdb_security::ColumnKeyMaterial as UpstreamColumnKeyMaterial;
@@ -94,6 +96,7 @@ impl Debug for SessionOpenOptions {
 /// The sole serialized owner of one long-lived embedded session.
 pub struct RnmdbSessionOwner {
     instance: StorageInstanceId,
+    transaction_scope: TransactionScope,
     session: Mutex<LocalSession>,
     configured_columns: Mutex<BTreeSet<ColumnEncryptionTarget>>,
 }
@@ -106,6 +109,7 @@ impl RnmdbSessionOwner {
         let session = LocalSession::single_file_with_key(path, key).map_err(map_rnmdb_error)?;
         Ok(Self {
             instance: options.instance,
+            transaction_scope: TransactionScope::new(),
             session: Mutex::new(session),
             configured_columns: Mutex::new(BTreeSet::new()),
         })
@@ -115,6 +119,10 @@ impl RnmdbSessionOwner {
     #[must_use]
     pub const fn instance(&self) -> &StorageInstanceId {
         &self.instance
+    }
+
+    pub(crate) const fn transaction_scope(&self) -> &TransactionScope {
+        &self.transaction_scope
     }
 
     /// Persists a complete checkpoint after checking cancellation/deadline.

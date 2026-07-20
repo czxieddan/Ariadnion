@@ -6,6 +6,7 @@
 use std::collections::BTreeSet;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::num::{NonZeroU64, NonZeroUsize};
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use ariadnion_core::RequestContext;
@@ -250,6 +251,36 @@ impl CommitReceipt {
     }
 }
 
+/// An opaque capability proving that a transaction belongs to one session.
+#[derive(Clone)]
+pub struct TransactionScope(Arc<()>);
+
+impl TransactionScope {
+    /// Creates a fresh session-local transaction capability.
+    #[must_use]
+    pub fn new() -> Self {
+        Self(Arc::new(()))
+    }
+
+    /// Returns whether both capabilities identify the same live session.
+    #[must_use]
+    pub fn same_scope(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Debug for TransactionScope {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter.write_str("TransactionScope(<opaque>)")
+    }
+}
+
+impl Default for TransactionScope {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// An active transaction owned by one caller.
 pub trait TransactionPort: Send {
     /// Returns the transaction identity.
@@ -257,6 +288,9 @@ pub trait TransactionPort: Send {
 
     /// Returns the storage instance that owns this transaction.
     fn instance(&self) -> &StorageInstanceId;
+
+    /// Returns the opaque session capability that owns this transaction.
+    fn scope(&self) -> &TransactionScope;
 
     /// Returns the immutable isolation and access contract.
     fn options(&self) -> TransactionOptions;
