@@ -13,6 +13,8 @@ mod migration;
 mod module;
 mod query;
 mod security;
+mod secret_reference;
+mod secret_reference_repository;
 mod session;
 mod transaction;
 
@@ -31,6 +33,11 @@ pub use query::{
     FixedRnmdbReadQuery, QueryPlanDiagnostic, QueryPlanFormat, RnmdbQueryDiagnostics,
 };
 pub use security::{RnmdbColumnSecurity, SecretLocatorKeyMaterial};
+pub use secret_reference::{
+    NewSecretReference, SecretKeyVersion, SecretLocator, SecretReference, SecretReferenceId,
+    SecretReferenceKind, SecretReferenceUpdate,
+};
+pub use secret_reference_repository::RnmdbSecretReferenceRepository;
 pub use session::{PageKeyMaterial, RnmdbSessionOwner, SessionOpenOptions};
 pub use transaction::RnmdbTransactionManager;
 
