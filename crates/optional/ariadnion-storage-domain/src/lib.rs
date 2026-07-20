@@ -255,6 +255,9 @@ pub trait TransactionPort: Send {
     /// Returns the transaction identity.
     fn id(&self) -> TransactionId;
 
+    /// Returns the storage instance that owns this transaction.
+    fn instance(&self) -> &StorageInstanceId;
+
     /// Returns the immutable isolation and access contract.
     fn options(&self) -> TransactionOptions;
 

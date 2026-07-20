@@ -81,6 +81,10 @@ impl TransactionPort for RnmdbTransaction {
         self.id
     }
 
+    fn instance(&self) -> &StorageInstanceId {
+        self.session.instance()
+    }
+
     fn options(&self) -> TransactionOptions {
         self.options
     }
