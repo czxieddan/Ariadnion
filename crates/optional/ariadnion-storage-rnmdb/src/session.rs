@@ -1,5 +1,6 @@
 //! Serialized ownership of one encrypted RNMDB local session.
 
+use std::collections::BTreeSet;
 use std::fmt::{self, Debug, Formatter};
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
@@ -9,6 +10,7 @@ use ariadnion_core::{ErrorCode, RequestContext};
 use ariadnion_storage_domain::{StorageError, StorageErrorCode, StorageInstanceId};
 use rnmdb_cli::LocalSession;
 use rnmdb_common::{ErrorKind, RnovError};
+use rnmdb_security::ColumnKeyMaterial as UpstreamColumnKeyMaterial;
 use rnmdb_storage::PageCryptoKey;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -93,6 +95,7 @@ impl Debug for SessionOpenOptions {
 pub struct RnmdbSessionOwner {
     instance: StorageInstanceId,
     session: Mutex<LocalSession>,
+    configured_columns: Mutex<BTreeSet<ColumnEncryptionTarget>>,
 }
 
 impl RnmdbSessionOwner {
@@ -104,6 +107,7 @@ impl RnmdbSessionOwner {
         Ok(Self {
             instance: options.instance,
             session: Mutex::new(session),
+            configured_columns: Mutex::new(BTreeSet::new()),
         })
     }
 
@@ -175,12 +179,54 @@ impl RnmdbSessionOwner {
         operation(&mut lock_session(&self.session)).map_err(map_rnmdb_error)
     }
 
+    /// Configures one managed column while holding the configuration lock.
+    ///
+    /// The lock order is configured-columns then session. No adapter path may
+    /// acquire these locks in the reverse order.
+    pub(crate) fn configure_column_encryption_once(
+        &self,
+        target: ColumnEncryptionTarget,
+        key: UpstreamColumnKeyMaterial,
+        context: &RequestContext,
+    ) -> Result<(), StorageError> {
+        let mut configured = lock_configured_columns(&self.configured_columns);
+        if configured.contains(&target) {
+            return Err(StorageError::new(StorageErrorCode::Conflict));
+        }
+        self.with_session(context, |session| {
+            session.configure_column_encryption(target.schema, target.table, target.column, key)
+        })?;
+        configured.insert(target);
+        Ok(())
+    }
+
     fn execute_transaction_command(
         &self,
         command: &str,
         context: &RequestContext,
     ) -> Result<(), StorageError> {
         self.with_session(context, |session| session.execute(command).map(|_| ()))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub(crate) struct ColumnEncryptionTarget {
+    schema: &'static str,
+    table: &'static str,
+    column: &'static str,
+}
+
+impl ColumnEncryptionTarget {
+    pub(crate) const fn new(
+        schema: &'static str,
+        table: &'static str,
+        column: &'static str,
+    ) -> Self {
+        Self {
+            schema,
+            table,
+            column,
+        }
     }
 }
 
@@ -235,6 +281,15 @@ pub(crate) fn map_rnmdb_error(error: RnovError) -> StorageError {
 
 fn lock_session(session: &Mutex<LocalSession>) -> MutexGuard<'_, LocalSession> {
     match session.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
+fn lock_configured_columns(
+    columns: &Mutex<BTreeSet<ColumnEncryptionTarget>>,
+) -> MutexGuard<'_, BTreeSet<ColumnEncryptionTarget>> {
+    match columns.lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     }
