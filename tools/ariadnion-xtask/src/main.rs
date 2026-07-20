@@ -94,6 +94,7 @@ struct ModuleMetadata {
     license: String,
     provides: Vec<Capability>,
     requires: Vec<Capability>,
+    requires_secrets: Vec<Capability>,
 }
 
 #[derive(Clone, Eq, PartialEq)]
@@ -199,6 +200,7 @@ fn parse_module_metadata(crate_name: String, content: &str) -> Result<ModuleMeta
         license: parse_string_field(content, "license")?,
         provides: parse_capability_array(content, "provides")?,
         requires: parse_capability_array(content, "requires")?,
+        requires_secrets: parse_optional_capability_array(content, "requires_secrets")?,
     })
 }
 
@@ -493,6 +495,17 @@ fn parse_abi_value(value: &str) -> Result<AbiVersion, String> {
 
 fn parse_capability_array(content: &str, key: &str) -> Result<Vec<Capability>, String> {
     let value = assignment(content, key)?;
+    parse_capability_array_value(value, key)
+}
+
+fn parse_optional_capability_array(content: &str, key: &str) -> Result<Vec<Capability>, String> {
+    let Some(value) = find_assignment(content, key) else {
+        return Ok(Vec::new());
+    };
+    parse_capability_array_value(value, key)
+}
+
+fn parse_capability_array_value(value: &str, key: &str) -> Result<Vec<Capability>, String> {
     let inner = value
         .strip_prefix('[')
         .and_then(|value| value.strip_suffix(']'))
@@ -515,12 +528,15 @@ fn parse_capability_array(content: &str, key: &str) -> Result<Vec<Capability>, S
 }
 
 fn assignment<'a>(content: &'a str, key: &str) -> Result<&'a str, String> {
+    find_assignment(content, key).ok_or_else(|| format!("missing {key} field"))
+}
+
+fn find_assignment<'a>(content: &'a str, key: &str) -> Option<&'a str> {
     content
         .lines()
         .filter_map(|line| line.split_once('='))
         .find(|(candidate, _)| candidate.trim() == key)
         .map(|(_, value)| value.trim())
-        .ok_or_else(|| format!("missing {key} field"))
 }
 
 fn parse_quoted(value: &str) -> Option<String> {
@@ -582,6 +598,10 @@ fn validate_module_metadata(
     validate_identifier(&module.id)?;
     validate_implementation_version(module.version)?;
     validate_abi_version(module.abi)?;
+    validate_capability_metadata(&module.provides, "provided")?;
+    validate_capability_metadata(&module.requires, "required")?;
+    validate_capability_metadata(&module.requires_secrets, "secret")?;
+    validate_secret_requirement_separation(&module.requires, &module.requires_secrets)?;
     if module.abi != policy.core_abi {
         return Err("module ABI is incompatible with the core policy".into());
     }
@@ -590,6 +610,37 @@ fn validate_module_metadata(
     }
     if module.license != "AGPL-3.0-or-later" {
         return Err("first-party module license is inconsistent".into());
+    }
+    Ok(())
+}
+
+fn validate_capability_metadata(capabilities: &[Capability], kind: &str) -> Result<(), String> {
+    let mut ids = BTreeSet::new();
+    for capability in capabilities {
+        validate_identifier(&capability.id)?;
+        if capability.version == Version::ZERO {
+            return Err(format!("{kind} capability version must be nonzero"));
+        }
+        if !ids.insert(capability.id.as_str()) {
+            return Err(format!("duplicate {kind} capability identity"));
+        }
+    }
+    Ok(())
+}
+
+fn validate_secret_requirement_separation(
+    requires: &[Capability],
+    requires_secrets: &[Capability],
+) -> Result<(), String> {
+    let ordinary = requires
+        .iter()
+        .map(|capability| capability.id.as_str())
+        .collect::<BTreeSet<_>>();
+    if requires_secrets
+        .iter()
+        .any(|capability| ordinary.contains(capability.id.as_str()))
+    {
+        return Err("secret capability is also an ordinary requirement".into());
     }
     Ok(())
 }
