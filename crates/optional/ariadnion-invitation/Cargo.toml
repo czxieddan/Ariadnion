@@ -13,6 +13,9 @@ ariadnion-core = { path = "../../ariadnion-core" }
 ariadnion-organization = { path = "../ariadnion-organization" }
 ariadnion-user-domain = { path = "../ariadnion-user-domain" }
 
+[dev-dependencies]
+ariadnion-rbac = { path = "../ariadnion-rbac" }
+
 [lints.rust]
 unsafe_code = "forbid"
 missing_docs = "deny"

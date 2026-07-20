@@ -15,6 +15,7 @@ version = "0.1.0"
 dependencies = [
  "ariadnion-core",
  "ariadnion-organization",
+ "ariadnion-rbac",
  "ariadnion-user-domain",
 ]
 
@@ -23,6 +24,15 @@ name = "ariadnion-organization"
 version = "0.1.0"
 dependencies = [
  "ariadnion-core",
+ "ariadnion-user-domain",
+]
+
+[[package]]
+name = "ariadnion-rbac"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+ "ariadnion-organization",
  "ariadnion-user-domain",
 ]
 
