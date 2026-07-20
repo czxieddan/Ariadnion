@@ -66,11 +66,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ariadnion-storage-query"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+ "ariadnion-storage-domain",
+]
+
+[[package]]
 name = "ariadnion-storage-rnmdb"
 version = "0.1.0"
 dependencies = [
  "ariadnion-core",
  "ariadnion-storage-domain",
+ "ariadnion-storage-query",
  "rnmdb-catalog",
  "rnmdb-cli",
  "rnmdb-common",
