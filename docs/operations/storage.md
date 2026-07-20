@@ -129,25 +129,39 @@ application-schema windows must be consecutive; unknown version leaps and
 downgrades are rejected. Key rotation names public key versions, never key
 material.
 
-The physical RNMDB upgrade reads the retained source and writes a new target.
-When a page-key transition is present, RNMDB decrypts with the source key,
-encrypts the target with the distinct target key, resets counters as required,
-and authenticates the completed target. The source remains unchanged.
+The current implementation keeps two executors separate:
 
-The upgrade sequence is:
+- `RnmdbUpgradeAdapter` accepts exactly one RNMDB legacy v1 to current v2
+  format window and may rotate the page key during that physical rewrite.
+- `RnmdbMigrationExecutor` copies a supported-format source and applies only
+  registered, checksum-bound application-schema transitions to the new target.
+
+The pinned RNMDB revision cannot rekey an already-current v2 file. The physical
+adapter therefore rejects key-only plans, application-schema steps, multiple
+format windows, and any format window other than v1 to v2 before it writes a
+target. A coordinator must not combine the two executor receipts into evidence
+for a single plan.
+
+For the supported physical path, RNMDB reads the retained source and writes a
+new target. When a page-key transition is present, RNMDB decrypts with the
+source key, encrypts the target with the distinct target key, resets counters
+as required, and authenticates the completed target. The source remains
+unchanged.
+
+The physical upgrade sequence is:
 
 1. Bind the exact source digest, backup evidence, target state, ordered steps,
    and canonical plan digest.
 2. Check target emptiness, capacity, permissions, and availability of all
    required source and target keys.
-3. Execute the supported physical format and key transitions into the inactive
-   target.
-4. Apply only registered, checksum-bound application-schema transitions in the
-   declared order.
-5. Authenticate the target and verify its exact final format, schema, key
-   version, structure, and source binding.
-6. Consume a one-shot authorization and atomically select the target.
+3. Execute the supported format transition and optional key rotation into the
+   inactive target.
+4. Authenticate the target and verify its exact final format, unchanged
+   application schema, key version, structure, and source binding.
+5. Consume a one-shot authorization and atomically select the target.
 
+Application-schema upgrades follow the same new-target, independent
+verification, and atomic-selection rules through the migration executor.
 Unsupported steps return a stable migration error; adapters must not report a
 transition that the pinned RNMDB revision or registered application migrator
 did not perform.
