@@ -16,6 +16,8 @@ use rnmdb_security::ColumnKeyMaterial as UpstreamColumnKeyMaterial;
 use rnmdb_storage::PageCryptoKey;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
+use crate::RnmdbInstanceProfile;
+
 /// Secret page-key material that is redacted and cleared on drop.
 pub struct PageKeyMaterial {
     bytes: [u8; 32],
@@ -55,7 +57,7 @@ impl Drop for PageKeyMaterial {
 
 /// Validated options for opening one encrypted database file.
 pub struct SessionOpenOptions {
-    instance: StorageInstanceId,
+    profile: RnmdbInstanceProfile,
     data_root: PathBuf,
     page_key: PageKeyMaterial,
 }
@@ -63,14 +65,15 @@ pub struct SessionOpenOptions {
 impl SessionOpenOptions {
     /// Creates options under an absolute, traversal-free data root.
     pub fn new(
-        instance: StorageInstanceId,
+        profile: RnmdbInstanceProfile,
         data_root: impl Into<PathBuf>,
         page_key: PageKeyMaterial,
     ) -> Result<Self, StorageError> {
         let data_root = data_root.into();
         validate_data_root(&data_root)?;
+        profile.validate_session_open()?;
         Ok(Self {
-            instance,
+            profile,
             data_root,
             page_key,
         })
@@ -78,7 +81,7 @@ impl SessionOpenOptions {
 
     fn database_path(&self) -> PathBuf {
         self.data_root
-            .join(format!("{}.rnmdb", self.instance.as_str()))
+            .join(format!("{}.rnmdb", self.profile.instance().as_str()))
     }
 }
 
@@ -86,7 +89,7 @@ impl Debug for SessionOpenOptions {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("SessionOpenOptions")
-            .field("instance", &self.instance)
+            .field("profile", &self.profile)
             .field("data_root", &"<redacted>")
             .field("page_key", &self.page_key)
             .finish()
@@ -95,7 +98,7 @@ impl Debug for SessionOpenOptions {
 
 /// The sole serialized owner of one long-lived embedded session.
 pub struct RnmdbSessionOwner {
-    instance: StorageInstanceId,
+    profile: RnmdbInstanceProfile,
     transaction_scope: TransactionScope,
     session: Mutex<LocalSession>,
     configured_columns: Mutex<BTreeSet<ColumnEncryptionTarget>>,
@@ -108,7 +111,7 @@ impl RnmdbSessionOwner {
         let key = options.page_key.into_upstream_key();
         let session = LocalSession::single_file_with_key(path, key).map_err(map_rnmdb_error)?;
         Ok(Self {
-            instance: options.instance,
+            profile: options.profile,
             transaction_scope: TransactionScope::new(),
             session: Mutex::new(session),
             configured_columns: Mutex::new(BTreeSet::new()),
@@ -118,7 +121,13 @@ impl RnmdbSessionOwner {
     /// Returns the isolated instance identity.
     #[must_use]
     pub const fn instance(&self) -> &StorageInstanceId {
-        &self.instance
+        self.profile.instance()
+    }
+
+    /// Returns the isolated instance profile applied at session open.
+    #[must_use]
+    pub const fn profile(&self) -> &RnmdbInstanceProfile {
+        &self.profile
     }
 
     pub(crate) const fn transaction_scope(&self) -> &TransactionScope {

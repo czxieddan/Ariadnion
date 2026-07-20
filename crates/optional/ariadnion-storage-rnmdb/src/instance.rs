@@ -12,7 +12,8 @@ use rnmdb_common::{
     ids::{DatabaseId, InstanceId},
 };
 use rnmdb_instance::{
-    InstanceConfig, InstanceManager, ResourceLimits as UpstreamResourceLimits, UdfBudget,
+    InstanceConfig, InstanceManager, ResourceLimits as UpstreamResourceLimits, ResourceUsage,
+    UdfBudget,
 };
 
 /// Validated limits recorded in an RNMDB isolated-instance configuration.
@@ -128,6 +129,19 @@ impl RnmdbInstanceResourceLimits {
     }
 }
 
+impl Default for RnmdbInstanceResourceLimits {
+    fn default() -> Self {
+        Self {
+            max_memory_bytes: 64 * 1024 * 1024,
+            max_worker_threads: 1,
+            max_temp_bytes: 0,
+            statement_timeout: Duration::from_secs(30),
+            max_udf_invocations: 0,
+            max_udf_memory_bytes: 0,
+        }
+    }
+}
+
 /// An Ariadnion identity bound to one isolated RNMDB instance configuration.
 ///
 /// Upstream numeric identities are required to be non-zero. The concrete
@@ -164,6 +178,19 @@ impl RnmdbInstanceProfile {
         })
     }
 
+    /// Creates a single-node profile with one shared non-zero numeric suffix.
+    pub fn single_node(
+        instance: StorageInstanceId,
+        upstream_id: NonZeroU64,
+    ) -> Result<Self, StorageError> {
+        Self::new(
+            instance,
+            upstream_id,
+            upstream_id,
+            RnmdbInstanceResourceLimits::default(),
+        )
+    }
+
     /// Returns the bounded Ariadnion storage identity.
     #[must_use]
     pub const fn instance(&self) -> &StorageInstanceId {
@@ -194,6 +221,12 @@ impl RnmdbInstanceProfile {
 
     fn upstream_config(&self) -> &InstanceConfig {
         &self.config
+    }
+
+    pub(crate) fn validate_session_open(&self) -> Result<(), StorageError> {
+        self.config
+            .check_resource_usage(&ResourceUsage::new(0, 0, 1))
+            .map_err(map_usage_error)
     }
 }
 
@@ -384,6 +417,14 @@ fn map_limit_error(error: RnovError) -> StorageError {
 fn map_registration_error(error: RnovError) -> StorageError {
     let code = match error.kind() {
         ErrorKind::InvalidInput => StorageErrorCode::Conflict,
+        _ => StorageErrorCode::Internal,
+    };
+    StorageError::new(code)
+}
+
+fn map_usage_error(error: RnovError) -> StorageError {
+    let code = match error.kind() {
+        ErrorKind::InvalidInput => StorageErrorCode::ResourceExhausted,
         _ => StorageErrorCode::Internal,
     };
     StorageError::new(code)

@@ -14,6 +14,7 @@ use rnmdb_cli::CommandOutput;
 use rnmdb_executor::vector::{ColumnSchema, Row};
 use rnmdb_types::{SqlType, SqlValue};
 
+use crate::RnmdbInstanceProfile;
 use crate::codec::UtcTimestampMicros;
 use crate::location::StorageFileLocation;
 use crate::maintenance::{RnmdbMaintenance, VerificationSummary};
@@ -83,6 +84,7 @@ pub struct RnmdbMigrationExecutor {
     data_root: PathBuf,
     source: StorageFileLocation,
     target: StorageFileLocation,
+    target_profile: RnmdbInstanceProfile,
     source_key: Mutex<Option<PageKeyMaterial>>,
     target_session_key: Mutex<Option<PageKeyMaterial>>,
     target_authentication_key: Mutex<Option<PageKeyMaterial>>,
@@ -101,9 +103,10 @@ impl RnmdbMigrationExecutor {
     pub fn new(
         data_root: impl Into<PathBuf>,
         source: StorageInstanceId,
-        target: StorageInstanceId,
+        target_profile: RnmdbInstanceProfile,
         keys: RnmdbMigrationPageKeys,
     ) -> Result<Self, StorageError> {
+        let target = target_profile.instance().clone();
         ensure_distinct_instances(&source, &target)?;
         let data_root = data_root.into();
         let source = StorageFileLocation::new(data_root.clone(), source)?;
@@ -113,6 +116,7 @@ impl RnmdbMigrationExecutor {
             data_root,
             source,
             target,
+            target_profile,
             source_key: Mutex::new(Some(source_key)),
             target_session_key: Mutex::new(Some(target_session_key)),
             target_authentication_key: Mutex::new(Some(target_authentication_key)),
@@ -152,7 +156,7 @@ impl RnmdbMigrationExecutor {
         let key = take_key(&self.target_session_key)?;
         RnmdbMaintenance::backup(&self.source, &self.target, context)?;
         let options =
-            SessionOpenOptions::new(self.target.instance().clone(), self.data_root.clone(), key)?;
+            SessionOpenOptions::new(self.target_profile.clone(), self.data_root.clone(), key)?;
         let session = Arc::new(RnmdbSessionOwner::open(options)?);
         apply_known_plan(&session, plan, context)?;
         Ok(session)
