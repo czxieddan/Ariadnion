@@ -171,6 +171,7 @@ impl UpgradeVerificationChecks {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UpgradeVerificationEvidence {
     plan: UpgradePlan,
+    target_digest: Sha256Digest,
     checks: UpgradeVerificationChecks,
 }
 
@@ -181,6 +182,7 @@ impl UpgradeVerificationEvidence {
     pub fn new(
         plan: &UpgradePlan,
         target: &InactiveUpgradeTarget,
+        target_digest: Sha256Digest,
         checks: UpgradeVerificationChecks,
     ) -> Result<Self, StorageError> {
         if !target.matches_plan(plan) {
@@ -188,12 +190,19 @@ impl UpgradeVerificationEvidence {
         }
         Ok(Self {
             plan: plan.clone(),
+            target_digest,
             checks,
         })
     }
 
     fn permits(&self, plan: &UpgradePlan) -> bool {
         &self.plan == plan && self.checks.passes()
+    }
+
+    /// Returns the digest of the authenticated inactive target bytes.
+    #[must_use]
+    pub const fn target_digest(&self) -> Sha256Digest {
+        self.target_digest
     }
 }
 
@@ -281,6 +290,7 @@ pub struct SwitchAuthorization {
     id: SwitchAuthorizationId,
     purpose: SwitchPurpose,
     plan: UpgradePlan,
+    selected_digest: Sha256Digest,
 }
 
 impl SwitchAuthorization {
@@ -299,6 +309,7 @@ impl SwitchAuthorization {
             id,
             purpose: SwitchPurpose::ActivateUpgrade,
             plan: plan.clone(),
+            selected_digest: verification.target_digest,
         })
     }
 
@@ -340,6 +351,7 @@ impl SwitchAuthorization {
             id,
             purpose: SwitchPurpose::Rollback,
             plan: upgrade_switch.plan.clone(),
+            selected_digest: retained.observed.digest,
         })
     }
 
@@ -360,6 +372,12 @@ impl SwitchAuthorization {
             SwitchPurpose::Rollback => &self.plan.source().instance,
         }
     }
+
+    /// Returns the authenticated digest the atomic switch must select.
+    #[must_use]
+    pub const fn selected_digest(&self) -> Sha256Digest {
+        self.selected_digest
+    }
 }
 
 /// Receipt returned only after an atomic selection switch consumes authorization.
@@ -368,6 +386,7 @@ pub struct SwitchReceipt {
     authorization_id: SwitchAuthorizationId,
     purpose: SwitchPurpose,
     plan: UpgradePlan,
+    selected_digest: Sha256Digest,
 }
 
 impl SwitchReceipt {
@@ -378,6 +397,7 @@ impl SwitchReceipt {
             authorization_id: authorization.id,
             purpose: authorization.purpose,
             plan: authorization.plan,
+            selected_digest: authorization.selected_digest,
         }
     }
 
@@ -415,6 +435,12 @@ impl SwitchReceipt {
     #[must_use]
     pub const fn plan_digest(&self) -> Sha256Digest {
         self.plan.digest()
+    }
+
+    /// Returns the authenticated digest selected by the atomic switch.
+    #[must_use]
+    pub const fn selected_digest(&self) -> Sha256Digest {
+        self.selected_digest
     }
 }
 

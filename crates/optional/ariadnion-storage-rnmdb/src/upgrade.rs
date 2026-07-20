@@ -9,9 +9,9 @@ use ariadnion_core::{ErrorCode, RequestContext};
 use ariadnion_storage_domain::{StorageError, StorageErrorCode, StorageInstanceId};
 use ariadnion_storage_upgrade::{
     DatabaseFormatWindow, InactiveUpgradeTarget, PreflightAccessEvidence, RetainedSourceEvidence,
-    StorageUpgradePort, StorageVersionState, SwitchAuthorization, SwitchPurpose, SwitchReceipt,
-    UpgradePlan, UpgradePreflightEvidence, UpgradeSource, UpgradeStep, UpgradeVerificationChecks,
-    UpgradeVerificationEvidence, VerifiedBackupEvidence,
+    Sha256Digest, StorageUpgradePort, StorageVersionState, SwitchAuthorization, SwitchPurpose,
+    SwitchReceipt, UpgradePlan, UpgradePreflightEvidence, UpgradeSource, UpgradeStep,
+    UpgradeVerificationChecks, UpgradeVerificationEvidence, VerifiedBackupEvidence,
 };
 use rnmdb_storage::SINGLE_FILE_FORMAT_VERSION;
 
@@ -163,9 +163,11 @@ pub trait RnmdbUpgradeEnvironment: Send + Sync {
 
     /// Atomically compares active identity, consumes authorization, and switches.
     ///
-    /// The one-shot authorization identity, purpose, and plan digest must be
-    /// written durably in the same atomic operation as active-pointer selection.
-    /// A replay or active mismatch returns `Conflict` without changing selection.
+    /// The implementation must authenticate the selected instance bytes against
+    /// `authorization.selected_digest()`. The one-shot authorization identity,
+    /// purpose, plan digest, and selected digest must be written durably in the
+    /// same atomic operation as active-pointer selection. A digest mismatch,
+    /// replay, or active mismatch returns an error without changing selection.
     fn atomic_compare_consume_and_switch(
         &self,
         authorization: &SwitchAuthorization,
@@ -318,7 +320,7 @@ impl RnmdbUpgradeAdapter {
         plan: &UpgradePlan,
         location: &StorageFileLocation,
         context: &RequestContext,
-    ) -> Result<(), StorageError> {
+    ) -> Result<Sha256Digest, StorageError> {
         let key = self.environment.fresh_target_page_key(plan, context)?;
         let physical = RnmdbMaintenance::verify(location, key, context)?;
         validate_target_physical(plan, location, &physical, context)
@@ -340,9 +342,9 @@ impl RnmdbUpgradeAdapter {
         context: &RequestContext,
     ) -> Result<UpgradeVerificationEvidence, StorageError> {
         let locations = self.prepare_target_verification(plan, target, context)?;
-        self.verify_physical_target(plan, &locations.target, context)?;
+        let target_digest = self.verify_physical_target(plan, &locations.target, context)?;
         self.verify_target_domains(plan, context)?;
-        build_target_verification(plan, target)
+        build_target_verification(plan, target, target_digest)
     }
 
     fn run_retained_inspection(
@@ -461,12 +463,13 @@ fn finish_upgrade(
 fn build_target_verification(
     plan: &UpgradePlan,
     target: &InactiveUpgradeTarget,
+    target_digest: Sha256Digest,
 ) -> Result<UpgradeVerificationEvidence, StorageError> {
     let checks = UpgradeVerificationChecks {
         authentication_passed: true,
         structure_valid: true,
     };
-    UpgradeVerificationEvidence::new(plan, target, checks)
+    UpgradeVerificationEvidence::new(plan, target, target_digest, checks)
 }
 
 fn validate_supported_plan(plan: &UpgradePlan) -> Result<PhysicalUpgradePlan, StorageError> {
@@ -571,7 +574,7 @@ fn validate_target_physical(
     location: &StorageFileLocation,
     summary: &crate::VerificationSummary,
     context: &RequestContext,
-) -> Result<(), StorageError> {
+) -> Result<Sha256Digest, StorageError> {
     if !summary.is_valid() {
         return Err(integrity_failure());
     }
@@ -581,7 +584,7 @@ fn validate_target_physical(
     if summary.present_page_records() > 0 && !summary.encryption_authenticated() {
         return Err(integrity_failure());
     }
-    digest_location(location, summary.file_len_bytes(), context).map(|_| ())
+    digest_location(location, summary.file_len_bytes(), context).map(Sha256Digest)
 }
 
 fn validate_target_domains(
