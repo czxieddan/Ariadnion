@@ -1,6 +1,6 @@
 //! Immutable organization aggregate state, evidence, and audit event models.
 
-use ariadnion_core::{PrincipalId, TenantId};
+use ariadnion_core::{PrincipalContext, PrincipalId, TenantId};
 use ariadnion_user_domain::{UserId, UtcTimestamp};
 
 use crate::error::{OrganizationError, OrganizationErrorCode, error};
@@ -127,10 +127,17 @@ impl Membership {
         self.expires_at
     }
 
-    /// Returns the bounded team assignments in deterministic insertion order.
+    /// Returns active team assignments observed at a trusted UTC instant.
+    ///
+    /// Suspended, left, or expired memberships expose no team assignments.
+    /// Assignments are returned in deterministic insertion order.
     #[must_use]
-    pub fn team_ids(&self) -> &[TeamId] {
-        &self.team_ids
+    pub fn active_team_ids_at(&self, observed_at: UtcTimestamp) -> &[TeamId] {
+        if self.is_eligible_at(observed_at) {
+            &self.team_ids
+        } else {
+            &[]
+        }
     }
 
     pub(crate) fn is_eligible_at(&self, observed_at: UtcTimestamp) -> bool {
@@ -218,7 +225,11 @@ impl Organization {
     }
 }
 
-/// Untrusted fields supplied to the ownership-evidence constructor.
+/// Fields supplied to the ownership-evidence constructor.
+///
+/// The initiating and approving contexts must come from a trusted
+/// authentication adapter. Raw principal identifiers supplied by a caller
+/// cannot constitute initiation or approval evidence.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OwnershipTransferEvidenceInput {
     /// Stable evidence identity used to detect replay outside this domain.
@@ -231,16 +242,16 @@ pub struct OwnershipTransferEvidenceInput {
     pub organization_version: OrganizationVersion,
     /// Active owner membership that will be demoted.
     pub initiating_owner_id: MembershipId,
-    /// Authenticated principal that initiated the transfer.
-    pub initiating_actor: PrincipalId,
+    /// Core-authenticated principal context that initiated the transfer.
+    pub initiating_principal: PrincipalContext,
     /// Active recipient membership that will be promoted.
     pub recipient_id: MembershipId,
     /// User identity proven by recipient reauthentication.
     pub recipient_user_id: UserId,
     /// Trusted UTC instant of recipient reauthentication.
     pub recipient_reauthenticated_at: UtcTimestamp,
-    /// Distinct principal that approved the transfer.
-    pub approver: PrincipalId,
+    /// Distinct core-authenticated principal context that approved the transfer.
+    pub approving_principal: PrincipalContext,
     /// Earliest trusted UTC instant at which transfer may occur.
     pub not_before: UtcTimestamp,
     /// Final trusted UTC instant at which the evidence remains valid.
@@ -265,29 +276,38 @@ pub struct OwnershipTransferEvidence {
 }
 
 impl OwnershipTransferEvidence {
-    /// Validates structural bounds and creates immutable transfer evidence.
+    /// Validates authenticated identity bindings and creates immutable evidence.
     ///
+    /// Both principal contexts must be produced by a trusted authentication
+    /// adapter, belong to the evidence tenant, and identify distinct principals.
+    /// Wrapping raw or caller-supplied principal identifiers is not approval.
     /// The not-before boundary must follow recipient reauthentication, and the
     /// expiry must follow not-before by no more than 15 minutes. Aggregate,
     /// actor, membership, freshness, and observation-time bindings are checked
     /// again when the command is applied.
     ///
     /// # Errors
-    /// Returns [`OrganizationErrorCode::TransferEvidenceInvalid`] for an
-    /// inverted, non-future, overlong, or self-directed transfer interval.
+    /// Returns [`OrganizationErrorCode::TransferOrganizationMismatch`] when an
+    /// authenticated context belongs to another tenant,
+    /// [`OrganizationErrorCode::TransferApproverConflict`] when both contexts
+    /// identify the same principal, or
+    /// [`OrganizationErrorCode::TransferEvidenceInvalid`] for an inverted,
+    /// non-future, overlong, or self-directed transfer interval.
     pub fn new(input: OwnershipTransferEvidenceInput) -> Result<Self, OrganizationError> {
         validate_transfer_evidence_input(&input)?;
+        let initiating_actor = input.initiating_principal.principal_id().clone();
+        let approver = input.approving_principal.principal_id().clone();
         Ok(Self {
             transfer_id: input.transfer_id,
             tenant_id: input.tenant_id,
             organization_id: input.organization_id,
             organization_version: input.organization_version,
             initiating_owner_id: input.initiating_owner_id,
-            initiating_actor: input.initiating_actor,
+            initiating_actor,
             recipient_id: input.recipient_id,
             recipient_user_id: input.recipient_user_id,
             recipient_reauthenticated_at: input.recipient_reauthenticated_at,
-            approver: input.approver,
+            approver,
             not_before: input.not_before,
             expires_at: input.expires_at,
         })
@@ -318,6 +338,8 @@ pub enum OrganizationEventKind {
     MembershipSuspended {
         /// Membership affected by the command.
         membership_id: MembershipId,
+        /// Number of team assignments removed atomically.
+        removed_team_assignments: usize,
     },
     /// A suspended membership returned to active state.
     MembershipActivated {
@@ -435,6 +457,7 @@ impl OrganizationTransition {
 fn validate_transfer_evidence_input(
     input: &OwnershipTransferEvidenceInput,
 ) -> Result<(), OrganizationError> {
+    validate_transfer_principals(input)?;
     if input.initiating_owner_id == input.recipient_id {
         return Err(error(OrganizationErrorCode::TransferEvidenceInvalid));
     }
@@ -445,6 +468,20 @@ fn validate_transfer_evidence_input(
     let lifetime = expires_at.checked_sub(not_before);
     if delay.is_none_or(|seconds| seconds <= 0) || !valid_transfer_lifetime(lifetime) {
         return Err(error(OrganizationErrorCode::TransferEvidenceInvalid));
+    }
+    Ok(())
+}
+
+fn validate_transfer_principals(
+    input: &OwnershipTransferEvidenceInput,
+) -> Result<(), OrganizationError> {
+    let initiator_tenant_matches = input.initiating_principal.tenant_id() == &input.tenant_id;
+    let approver_tenant_matches = input.approving_principal.tenant_id() == &input.tenant_id;
+    if !initiator_tenant_matches || !approver_tenant_matches {
+        return Err(error(OrganizationErrorCode::TransferOrganizationMismatch));
+    }
+    if input.initiating_principal.principal_id() == input.approving_principal.principal_id() {
+        return Err(error(OrganizationErrorCode::TransferApproverConflict));
     }
     Ok(())
 }

@@ -61,7 +61,7 @@ pub enum MembershipAction {
         /// Optional expiry permitted only for non-owner memberships.
         expires_at: Option<UtcTimestamp>,
     },
-    /// Suspends an active membership.
+    /// Suspends an active membership and clears its team assignments.
     Suspend {
         /// Stable membership identity.
         membership_id: MembershipId,
@@ -422,13 +422,14 @@ fn suspend_membership(
     require_membership_state(current, index, MembershipState::Active)?;
     protect_last_active_owner(current, index)?;
     let mut next = current.clone();
-    set_membership_state(&mut next, index, MembershipState::Suspended)?;
+    let removed = change_state_and_clear_teams(&mut next, index, MembershipState::Suspended)?;
     finish_evolution(
         current,
         next,
         audit,
         OrganizationEventKind::MembershipSuspended {
             membership_id: membership_id.clone(),
+            removed_team_assignments: removed,
         },
     )
 }
@@ -468,7 +469,7 @@ fn leave_membership(
     reject_left_membership(current, index)?;
     protect_last_active_owner(current, index)?;
     let mut next = current.clone();
-    let removed = leave_and_clear_teams(&mut next, index)?;
+    let removed = change_state_and_clear_teams(&mut next, index, MembershipState::Left)?;
     finish_evolution(
         current,
         next,
@@ -510,14 +511,15 @@ fn active_owner_count(current: &Organization) -> usize {
         .count()
 }
 
-fn leave_and_clear_teams(
+fn change_state_and_clear_teams(
     organization: &mut Organization,
     index: usize,
+    state: MembershipState,
 ) -> Result<usize, OrganizationError> {
     let membership = membership_at_mut(organization, index)?;
     let removed = membership.team_ids.len();
     membership.team_ids.clear();
-    membership.state = MembershipState::Left;
+    membership.state = state;
     Ok(removed)
 }
 
