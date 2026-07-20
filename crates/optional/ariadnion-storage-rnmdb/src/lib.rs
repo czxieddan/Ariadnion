@@ -11,6 +11,7 @@ mod instance;
 mod location;
 mod maintenance;
 mod migration;
+mod migration_executor;
 mod module;
 mod query;
 mod security;
@@ -32,6 +33,7 @@ pub use migration::{
     MigrationApplyStatus, RnmdbMigrationRunner, platform_initial_migration,
     platform_secret_references_migration,
 };
+pub use migration_executor::{RnmdbMigrationExecutor, RnmdbMigrationPageKeys};
 pub use module::{StorageRnmdbModule, StorageRnmdbModuleOptions};
 pub use query::{
     FixedRnmdbReadQuery, QueryPlanDiagnostic, QueryPlanFormat, RnmdbFixedQueryExecutor,
