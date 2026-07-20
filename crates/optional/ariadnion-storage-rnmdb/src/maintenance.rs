@@ -269,6 +269,7 @@ impl RnmdbMaintenance {
             return Err(StorageError::new(StorageErrorCode::Conflict));
         }
         let report = restore_storage(backup.path(), target.path()).map_err(map_rnmdb_error)?;
+        check_context(context)?;
         Ok(NewTargetSummary {
             bytes_written: report.bytes_restored(),
             page_records: report.present_page_records(),

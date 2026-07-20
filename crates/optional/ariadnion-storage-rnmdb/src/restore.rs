@@ -186,14 +186,17 @@ pub trait RnmdbRestoreEnvironment: Send + Sync {
     /// Returns the active instance immediately before a guarded operation.
     fn current_active(&self, context: &RequestContext) -> Result<StorageInstanceId, StorageError>;
 
-    /// Atomically switches from the expected active instance to the target.
+    /// Atomically validates and consumes one complete switch authorization.
     ///
-    /// An error must leave the active selection unchanged. Success returns a
-    /// trusted UTC switch time no earlier than the authorization time.
+    /// The implementation must compare the active identity, verify that the
+    /// sealed target still has [`AtomicSwitchAuthorization::source_digest`],
+    /// durably reject a previously consumed authorization identity, consume
+    /// the identity, and select the target as one atomic operation. An error
+    /// leaves active selection and authorization consumption unchanged.
+    /// Success returns a trusted UTC time no earlier than authorization.
     fn atomic_switch(
         &self,
-        expected: &StorageInstanceId,
-        target: &StorageInstanceId,
+        authorization: &AtomicSwitchAuthorization,
         context: &RequestContext,
     ) -> Result<SystemTime, StorageError>;
 }
@@ -430,11 +433,7 @@ impl RestorePort for RnmdbRestoreAdapter {
         check_context(context)?;
         let _maintenance = lock_maintenance(&self.maintenance)?;
         self.require_current_active(authorization.expected_active(), context)?;
-        let switched_at = self.environment.atomic_switch(
-            authorization.expected_active(),
-            authorization.target(),
-            context,
-        )?;
+        let switched_at = self.environment.atomic_switch(&authorization, context)?;
         RestoreReceipt::new(authorization, switched_at)
     }
 }
