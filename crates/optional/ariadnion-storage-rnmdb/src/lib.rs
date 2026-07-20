@@ -10,6 +10,7 @@ mod location;
 mod maintenance;
 mod migration;
 mod module;
+mod query;
 mod security;
 mod session;
 mod transaction;
@@ -24,6 +25,9 @@ pub use migration::{
     platform_secret_references_migration,
 };
 pub use module::{StorageRnmdbModule, StorageRnmdbModuleOptions};
+pub use query::{
+    FixedRnmdbReadQuery, QueryPlanDiagnostic, QueryPlanFormat, RnmdbQueryDiagnostics,
+};
 pub use security::{RnmdbColumnSecurity, SecretLocatorKeyMaterial};
 pub use session::{PageKeyMaterial, RnmdbSessionOwner, SessionOpenOptions};
 pub use transaction::RnmdbTransactionManager;
