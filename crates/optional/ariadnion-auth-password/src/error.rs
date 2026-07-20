@@ -3,7 +3,7 @@
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 
-const ERROR_CODES: [&str; 13] = [
+const ERROR_CODES: [&str; 17] = [
     "PASSWORD_INVALID_LIMITS",
     "PASSWORD_EMPTY",
     "PASSWORD_TOO_SHORT",
@@ -17,6 +17,10 @@ const ERROR_CODES: [&str; 13] = [
     "PASSWORD_TOO_MANY_DENIED_FINGERPRINTS",
     "PASSWORD_DUPLICATE_DENIED_FINGERPRINT",
     "PASSWORD_INVALID_BREACH_SOURCE_VERSION",
+    "PASSWORD_INVALID_HASH_PARAMETERS",
+    "PASSWORD_INVALID_HASH_RECORD",
+    "PASSWORD_HASH_VERIFICATION_BUDGET_EXCEEDED",
+    "PASSWORD_HASH_OPERATION_FAILED",
 ];
 
 /// A stable machine-readable password failure code.
@@ -50,6 +54,14 @@ pub enum PasswordErrorCode {
     DuplicateDeniedFingerprint = 11,
     /// The breach source version is empty, non-ASCII, or too long.
     InvalidBreachSourceVersion = 12,
+    /// The configured Argon2id parameters violate the supported bounds.
+    InvalidHashParameters = 13,
+    /// The supplied password hash record is malformed or unsupported.
+    InvalidHashRecord = 14,
+    /// The password hash record requests work beyond the verification budget.
+    HashVerificationBudgetExceeded = 15,
+    /// The cryptographic hashing operation failed without exposing internals.
+    HashOperationFailed = 16,
 }
 
 impl PasswordErrorCode {
