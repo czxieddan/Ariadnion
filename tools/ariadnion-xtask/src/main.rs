@@ -131,6 +131,18 @@ struct DependencyPolicy {
     rnmdb_packages: BTreeSet<String>,
 }
 
+struct CrateManifestIdentity {
+    name: String,
+    version: Version,
+    license: String,
+}
+
+struct ResolvedGitSource<'a> {
+    repository: &'a str,
+    query: &'a str,
+    resolved: &'a str,
+}
+
 fn scan_modules(root: &Path, policy: &DependencyPolicy) -> Result<Vec<ModuleMetadata>, String> {
     let optional = root.join("crates").join("optional");
     let entries = fs::read_dir(optional).map_err(|_| "cannot scan optional crates".to_owned())?;
@@ -160,30 +172,34 @@ fn parse_module_manifest(
     path: PathBuf,
     policy: &DependencyPolicy,
 ) -> Result<ModuleMetadata, String> {
-    let metadata = fs::metadata(&path).map_err(|_| "cannot inspect module manifest".to_owned())?;
-    if metadata.len() > MAX_MANIFEST_BYTES {
-        return Err("module manifest is too large".into());
-    }
-    let content = fs::read_to_string(&path)
-        .map_err(|_| "module manifest is not readable UTF-8".to_owned())?;
+    let content = read_bounded_text(&path, MAX_MANIFEST_BYTES, "module manifest")?;
+    let crate_name = module_crate_name(&path)?;
+    let module = parse_module_metadata(crate_name, &content)?;
+    validate_module_metadata(&module, policy)?;
+    validate_crate_manifest(&path, &module)?;
+    Ok(module)
+}
+
+fn module_crate_name(path: &Path) -> Result<String, String> {
     let crate_name = path
         .parent()
         .and_then(Path::file_name)
         .and_then(|value| value.to_str())
         .ok_or_else(|| "module crate name is invalid".to_owned())?
         .to_owned();
-    let module = ModuleMetadata {
+    Ok(crate_name)
+}
+
+fn parse_module_metadata(crate_name: String, content: &str) -> Result<ModuleMetadata, String> {
+    Ok(ModuleMetadata {
         crate_name,
-        id: parse_string_field(&content, "id")?,
-        version: parse_version_field(&content, "version")?,
-        abi: parse_abi_field(&content)?,
-        license: parse_string_field(&content, "license")?,
-        provides: parse_capability_array(&content, "provides")?,
-        requires: parse_capability_array(&content, "requires")?,
-    };
-    validate_module_metadata(&module, policy)?;
-    validate_crate_manifest(&path, &module)?;
-    Ok(module)
+        id: parse_string_field(content, "id")?,
+        version: parse_version_field(content, "version")?,
+        abi: parse_abi_field(content)?,
+        license: parse_string_field(content, "license")?,
+        provides: parse_capability_array(content, "provides")?,
+        requires: parse_capability_array(content, "requires")?,
+    })
 }
 
 fn load_dependency_policy(root: &Path) -> Result<DependencyPolicy, String> {
@@ -191,19 +207,18 @@ fn load_dependency_policy(root: &Path) -> Result<DependencyPolicy, String> {
         .join("tools")
         .join("dependency-policy")
         .join("versions.toml");
-    let metadata =
-        fs::metadata(&path).map_err(|_| "cannot inspect dependency policy".to_owned())?;
-    if metadata.len() > MAX_POLICY_BYTES {
-        return Err("dependency policy is too large".into());
-    }
-    let content = fs::read_to_string(path)
-        .map_err(|_| "dependency policy is not readable UTF-8".to_owned())?;
+    let content = read_bounded_text(&path, MAX_POLICY_BYTES, "dependency policy")?;
+    parse_dependency_policy(&content)
+}
+
+fn parse_dependency_policy(content: &str) -> Result<DependencyPolicy, String> {
+    let abi = parse_string_field(content, "abi")?;
     Ok(DependencyPolicy {
-        core_abi: parse_abi_value(&parse_string_field(&content, "abi")?)?,
-        rnmdb_repository: parse_string_field(&content, "repository")?,
-        rnmdb_commit: parse_string_field(&content, "commit")?,
-        rnmdb_package_prefix: parse_string_field(&content, "package_prefix")?,
-        rnmdb_packages: parse_string_array(&content, "packages")?
+        core_abi: parse_abi_value(&abi)?,
+        rnmdb_repository: parse_string_field(content, "repository")?,
+        rnmdb_commit: parse_string_field(content, "commit")?,
+        rnmdb_package_prefix: parse_string_field(content, "package_prefix")?,
+        rnmdb_packages: parse_string_array(content, "packages")?
             .into_iter()
             .collect(),
     })
@@ -355,6 +370,13 @@ fn validate_rnmdb_git_declaration(
 }
 
 fn validate_rnmdb_git_source(source: &str, policy: &DependencyPolicy) -> Result<(), String> {
+    let source = parse_rnmdb_git_source(source)?;
+    validate_rnmdb_repository(source.repository, policy)?;
+    validate_rnmdb_revision(source.query, policy)?;
+    validate_rnmdb_resolution(source.resolved, policy)
+}
+
+fn parse_rnmdb_git_source(source: &str) -> Result<ResolvedGitSource<'_>, String> {
     let source = source
         .strip_prefix("git+")
         .ok_or_else(|| "RNovModularDB package is not from git".to_owned())?;
@@ -364,14 +386,30 @@ fn validate_rnmdb_git_source(source: &str, policy: &DependencyPolicy) -> Result<
     let (repository, query) = location
         .split_once('?')
         .ok_or_else(|| "RNovModularDB source lacks a revision query".to_owned())?;
+    Ok(ResolvedGitSource {
+        repository,
+        query,
+        resolved,
+    })
+}
+
+fn validate_rnmdb_repository(repository: &str, policy: &DependencyPolicy) -> Result<(), String> {
     let expected = policy.rnmdb_repository.trim_end_matches('/');
     if repository.trim_end_matches('/') != expected {
         return Err("RNovModularDB repository is not approved".into());
     }
+    Ok(())
+}
+
+fn validate_rnmdb_revision(query: &str, policy: &DependencyPolicy) -> Result<(), String> {
     let revision = format!("rev={}", policy.rnmdb_commit);
     if !query.split('&').any(|part| part == revision) {
         return Err("RNovModularDB revision is not approved".into());
     }
+    Ok(())
+}
+
+fn validate_rnmdb_resolution(resolved: &str, policy: &DependencyPolicy) -> Result<(), String> {
     if !resolved.starts_with(&policy.rnmdb_commit) {
         return Err("RNovModularDB resolved commit is not approved".into());
     }
@@ -379,21 +417,38 @@ fn validate_rnmdb_git_source(source: &str, policy: &DependencyPolicy) -> Result<
 }
 
 fn validate_crate_manifest(path: &Path, module: &ModuleMetadata) -> Result<(), String> {
+    let content = read_crate_manifest(path)?;
+    let identity = parse_crate_manifest_identity(&content)?;
+    validate_crate_manifest_identity(&identity, module)
+}
+
+fn read_crate_manifest(path: &Path) -> Result<String, String> {
     let manifest = path
         .parent()
         .ok_or_else(|| "module directory is missing".to_owned())?
         .join("Cargo.toml");
-    let content = read_bounded_text(&manifest, MAX_MANIFEST_BYTES, "crate manifest")?;
-    let package_name = parse_string_field(&content, "name")?;
-    let package_version = parse_version_field(&content, "version")?;
-    let package_license = parse_string_field(&content, "license")?;
-    if package_name != module.crate_name {
+    read_bounded_text(&manifest, MAX_MANIFEST_BYTES, "crate manifest")
+}
+
+fn parse_crate_manifest_identity(content: &str) -> Result<CrateManifestIdentity, String> {
+    Ok(CrateManifestIdentity {
+        name: parse_string_field(content, "name")?,
+        version: parse_version_field(content, "version")?,
+        license: parse_string_field(content, "license")?,
+    })
+}
+
+fn validate_crate_manifest_identity(
+    identity: &CrateManifestIdentity,
+    module: &ModuleMetadata,
+) -> Result<(), String> {
+    if identity.name != module.crate_name {
         return Err("module crate name differs from Cargo package name".into());
     }
-    if package_version != module.version {
+    if identity.version != module.version {
         return Err("module version differs from Cargo package version".into());
     }
-    if package_license != module.license {
+    if identity.license != module.license {
         return Err("module license differs from Cargo package license".into());
     }
     Ok(())

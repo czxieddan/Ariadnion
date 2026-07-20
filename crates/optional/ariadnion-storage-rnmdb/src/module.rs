@@ -149,11 +149,20 @@ impl ModuleHandle for StorageRnmdbHandle {
 }
 
 fn build_descriptor() -> Result<ModuleDescriptor, CoreError> {
+    let descriptor = ModuleDescriptor::new(descriptor_input()?)?;
+    validate_embedded_metadata(&descriptor)?;
+    Ok(descriptor)
+}
+
+fn descriptor_input() -> Result<ModuleDescriptorInput, CoreError> {
     let id = ModuleId::parse(MODULE_ID)?;
     let provided = relational_provider(&id)?;
     let page_key = page_key_requirement()?;
     let locator_key = secret_locator_key_requirement()?;
-    let descriptor = ModuleDescriptor::new(ModuleDescriptorInput {
+    let configuration = configuration_contract()?;
+    let resources = module_resource_budget()?;
+    let shutdown_priority = ShutdownPriority::new(512)?;
+    Ok(ModuleDescriptorInput {
         id,
         version: MODULE_VERSION,
         build_commit: REVIEWED_RNMDB_COMMIT.into(),
@@ -161,18 +170,16 @@ fn build_descriptor() -> Result<ModuleDescriptor, CoreError> {
         provided: vec![provided],
         required: Vec::new(),
         required_secret_capabilities: vec![page_key, locator_key],
-        configuration: configuration_contract()?,
-        resources: module_resource_budget()?,
-        shutdown_priority: ShutdownPriority::new(512)?,
+        configuration,
+        resources,
+        shutdown_priority,
         sensitive_paths: vec![
             "storage.rnmdb.page_key_ref".into(),
             "storage.rnmdb.secret_locator_key_ref".into(),
         ],
         observability_namespace: "ariadnion.storage.rnmdb".into(),
         audit_namespace: "ariadnion.storage.rnmdb".into(),
-    })?;
-    validate_embedded_metadata(&descriptor)?;
-    Ok(descriptor)
+    })
 }
 
 fn relational_provider(module_id: &ModuleId) -> Result<CapabilityProvider, CoreError> {
