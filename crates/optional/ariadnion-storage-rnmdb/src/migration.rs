@@ -30,12 +30,12 @@ const PLATFORM_INITIAL_SHA256: [u8; 32] = [
 ];
 const PLATFORM_SECRET_REFERENCES_ID: &str = "platform.0002.secret-references";
 const PLATFORM_SECRET_REFERENCES_STATEMENTS: [&str; 2] = [
-    "CREATE TABLE IF NOT EXISTS platform_secret_references (reference_id TEXT NOT NULL, purpose TEXT NOT NULL, locator TEXT NOT NULL ENCRYPTED, key_version INT64 NOT NULL);",
-    "CREATE UNIQUE INDEX IF NOT EXISTS platform_secret_references_reference_id_uq ON platform_secret_references (reference_id);",
+    "CREATE TABLE IF NOT EXISTS platform_secret_references (tenant_id TEXT NOT NULL, reference_id TEXT NOT NULL, purpose TEXT NOT NULL, locator TEXT NOT NULL ENCRYPTED, key_version INT64 NOT NULL);",
+    "CREATE UNIQUE INDEX IF NOT EXISTS platform_secret_references_tenant_reference_uq ON platform_secret_references (tenant_id, reference_id);",
 ];
 const PLATFORM_SECRET_REFERENCES_SHA256: [u8; 32] = [
-    0x8d, 0x0a, 0x53, 0x25, 0x65, 0x6c, 0x95, 0xe5, 0x42, 0x86, 0x96, 0x72, 0xfa, 0x5c, 0xb7, 0x27,
-    0x3d, 0x63, 0x3c, 0x54, 0xdd, 0xc1, 0x0f, 0xb9, 0x0b, 0xf9, 0xf2, 0x0b, 0x2a, 0x7d, 0xda, 0x5a,
+    0x33, 0x01, 0x2e, 0xa2, 0x7b, 0xb5, 0xa2, 0xbe, 0xa3, 0x4c, 0x96, 0x0d, 0xd8, 0xb6, 0x1f, 0xf2,
+    0x1c, 0x2a, 0x9c, 0xf4, 0x31, 0x57, 0x06, 0x88, 0xaf, 0x0d, 0xee, 0x64, 0x71, 0xd4, 0xc9, 0xe6,
 ];
 
 /// Result of applying one immutable migration definition.
