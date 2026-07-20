@@ -1,0 +1,23 @@
+[package]
+name = "ariadnion-storage-outbox"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95.0"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[workspace]
+
+[dependencies]
+ariadnion-core = { path = "../../ariadnion-core" }
+ariadnion-storage-domain = { path = "../ariadnion-storage-domain" }
+zeroize = "1.9.0"
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
