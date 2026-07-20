@@ -5,9 +5,7 @@ use std::sync::Arc;
 
 use ariadnion_compose::CompositionBuilder;
 use ariadnion_core::{CancellationToken, CoreError, ModuleConfigurationSnapshot, PortSlot};
-use ariadnion_diagnostics::{
-    DEFAULT_CONFIGURATION_DIGEST, DiagnosticsModule, DiagnosticsReadPort,
-};
+use ariadnion_diagnostics::{DEFAULT_CONFIGURATION_DIGEST, DiagnosticsModule, DiagnosticsReadPort};
 use ariadnion_storage_rnmdb::REVIEWED_RNMDB_COMMIT;
 
 fn main() -> ExitCode {
