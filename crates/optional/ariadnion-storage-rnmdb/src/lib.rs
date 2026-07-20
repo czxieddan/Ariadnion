@@ -14,18 +14,16 @@ mod migration;
 mod migration_executor;
 mod module;
 mod query;
-mod security;
 mod secret_reference;
 mod secret_reference_repository;
+mod security;
 mod session;
 mod transaction;
 mod udf;
 
 pub use codec::{CurrencyCode, MoneyValue, NormalizedJson, StorageUuid, UtcTimestampMicros};
 pub use index::{FixedIndexDefinition, RnmdbIndexManager, RnmdbIndexMethod};
-pub use instance::{
-    RnmdbInstanceProfile, RnmdbInstanceRegistry, RnmdbInstanceResourceLimits,
-};
+pub use instance::{RnmdbInstanceProfile, RnmdbInstanceRegistry, RnmdbInstanceResourceLimits};
 pub use location::StorageFileLocation;
 pub use maintenance::{
     BackupSummary, NewTargetSummary, RestorePreflight, RnmdbMaintenance, VerificationSummary,
@@ -40,12 +38,12 @@ pub use query::{
     FixedRnmdbReadQuery, QueryPlanDiagnostic, QueryPlanFormat, RnmdbFixedQueryExecutor,
     RnmdbQueryDiagnostics,
 };
-pub use security::{RnmdbColumnSecurity, SecretLocatorKeyMaterial};
 pub use secret_reference::{
     NewSecretReference, SecretKeyVersion, SecretLocator, SecretReference, SecretReferenceId,
     SecretReferenceKind, SecretReferenceUpdate,
 };
 pub use secret_reference_repository::RnmdbSecretReferenceRepository;
+pub use security::{RnmdbColumnSecurity, SecretLocatorKeyMaterial};
 pub use session::{PageKeyMaterial, RnmdbSessionOwner, SessionOpenOptions};
 pub use transaction::RnmdbTransactionManager;
 pub use udf::{

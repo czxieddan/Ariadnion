@@ -296,10 +296,7 @@ pub trait TransactionPort: Send {
     fn options(&self) -> TransactionOptions;
 
     /// Commits all changes after checking cancellation and deadline state.
-    fn commit(
-        self: Box<Self>,
-        context: &RequestContext,
-    ) -> Result<CommitReceipt, StorageError>;
+    fn commit(self: Box<Self>, context: &RequestContext) -> Result<CommitReceipt, StorageError>;
 
     /// Rolls back all uncommitted changes. Repeated consumption is impossible.
     fn rollback(self: Box<Self>, context: &RequestContext) -> Result<(), StorageError>;
@@ -656,9 +653,7 @@ impl MigrationPlan {
     /// Returns whether any step requires a verified backup.
     #[must_use]
     pub fn requires_backup(&self) -> bool {
-        self.steps
-            .iter()
-            .any(MigrationDescriptor::requires_backup)
+        self.steps.iter().any(MigrationDescriptor::requires_backup)
     }
 }
 

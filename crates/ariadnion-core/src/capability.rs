@@ -227,10 +227,7 @@ fn validate_batch_capacity(current: usize, incoming: usize) -> Result<(), CoreEr
     Ok(())
 }
 
-fn has_existing_provider(
-    existing: &[CapabilityProvider],
-    incoming: &[CapabilityProvider],
-) -> bool {
+fn has_existing_provider(existing: &[CapabilityProvider], incoming: &[CapabilityProvider]) -> bool {
     incoming.iter().any(|candidate| {
         existing
             .iter()

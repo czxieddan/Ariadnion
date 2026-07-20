@@ -218,12 +218,9 @@ impl RnmdbMaintenance {
     ) -> Result<NewTargetSummary, StorageError> {
         check_context(context)?;
         ensure_distinct(source, target)?;
-        let report = upgrade_storage_with_key(
-            source.path(),
-            target.path(),
-            key.into_upstream_key(),
-        )
-        .map_err(map_rnmdb_error)?;
+        let report =
+            upgrade_storage_with_key(source.path(), target.path(), key.into_upstream_key())
+                .map_err(map_rnmdb_error)?;
         Ok(NewTargetSummary {
             bytes_written: report.bytes_written(),
             page_records: report.pages_upgraded(),

@@ -402,10 +402,7 @@ fn start_validated_module(module: &mut ManagedModule) -> bool {
 }
 
 fn prepare_start(module: &ManagedModule) -> Result<StartPreparation, ErrorCode> {
-    let resolution = module
-        .resolution
-        .clone()
-        .ok_or(ErrorCode::Unavailable)?;
+    let resolution = module.resolution.clone().ok_or(ErrorCode::Unavailable)?;
     let generation = module
         .generation
         .checked_add(1)
@@ -691,9 +688,7 @@ fn apply_health_outcome(
     match outcome {
         BoundedOutcome::Completed(Some(operation)) => apply_completed_health(module, operation),
         BoundedOutcome::Completed(None) => Some(fail_health(module, ErrorCode::Internal)),
-        BoundedOutcome::DeadlineExceeded => {
-            Some(fail_health(module, ErrorCode::DeadlineExceeded))
-        }
+        BoundedOutcome::DeadlineExceeded => Some(fail_health(module, ErrorCode::DeadlineExceeded)),
         BoundedOutcome::Unavailable => {
             module.handle = take_handle(&cell);
             Some(fail_health(module, ErrorCode::Unavailable))
@@ -856,7 +851,10 @@ fn shutdown_order(modules: &[ManagedModule]) -> Vec<usize> {
     let dependencies = shutdown_dependencies(modules);
     let mut dependents = dependent_counts(&dependencies);
     let mut selected = vec![false; modules.len()];
-    let target = modules.iter().filter(|module| module.handle.is_some()).count();
+    let target = modules
+        .iter()
+        .filter(|module| module.handle.is_some())
+        .count();
     let mut order = Vec::with_capacity(target);
     while order.len() < target {
         let Some(index) = next_shutdown_module(modules, &dependents, &selected) else {
@@ -872,7 +870,11 @@ fn shutdown_order(modules: &[ManagedModule]) -> Vec<usize> {
 fn shutdown_dependencies(modules: &[ManagedModule]) -> Vec<Vec<usize>> {
     let mut dependencies = vec![Vec::new(); modules.len()];
     for (consumer, module) in modules.iter().enumerate() {
-        let Some(resolution) = module.resolution.as_ref().filter(|_| module.handle.is_some()) else {
+        let Some(resolution) = module
+            .resolution
+            .as_ref()
+            .filter(|_| module.handle.is_some())
+        else {
             continue;
         };
         add_shutdown_dependencies(modules, resolution, &mut dependencies[consumer]);
@@ -945,7 +947,12 @@ fn compare_shutdown_order(
         .descriptor
         .shutdown_priority()
         .cmp(&modules[left].descriptor.shutdown_priority())
-        .then_with(|| modules[left].descriptor.id().cmp(modules[right].descriptor.id()))
+        .then_with(|| {
+            modules[left]
+                .descriptor
+                .id()
+                .cmp(modules[right].descriptor.id())
+        })
 }
 
 fn release_shutdown_dependencies(

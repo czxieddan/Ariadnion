@@ -263,10 +263,7 @@ impl ResourceBudget {
     ///
     /// An enabled WASM memory limit cannot exceed the module's aggregate
     /// memory limit.
-    pub fn new(
-        lifecycle: LifecycleBudget,
-        execution: ExecutionBudget,
-    ) -> Result<Self, CoreError> {
+    pub fn new(lifecycle: LifecycleBudget, execution: ExecutionBudget) -> Result<Self, CoreError> {
         let budget = Self {
             lifecycle,
             execution,
