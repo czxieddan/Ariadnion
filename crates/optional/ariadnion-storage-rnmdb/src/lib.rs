@@ -18,7 +18,10 @@ pub use location::StorageFileLocation;
 pub use maintenance::{
     BackupSummary, NewTargetSummary, RestorePreflight, RnmdbMaintenance, VerificationSummary,
 };
-pub use migration::{MigrationApplyStatus, RnmdbMigrationRunner, platform_initial_migration};
+pub use migration::{
+    MigrationApplyStatus, RnmdbMigrationRunner, platform_initial_migration,
+    platform_secret_references_migration,
+};
 pub use module::StorageRnmdbModule;
 pub use session::{PageKeyMaterial, RnmdbSessionOwner, SessionOpenOptions};
 pub use transaction::RnmdbTransactionManager;

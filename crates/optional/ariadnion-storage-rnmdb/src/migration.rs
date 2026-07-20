@@ -28,6 +28,15 @@ const PLATFORM_INITIAL_SHA256: [u8; 32] = [
     0xa1, 0x73, 0xea, 0x15, 0xd5, 0x5b, 0x21, 0xcf, 0xf7, 0xa1, 0x3e, 0xa6, 0xab, 0xa8, 0x1a, 0x7b,
     0xca, 0x75, 0x39, 0x48, 0x4e, 0x40, 0x04, 0x2c, 0x3d, 0x05, 0xf7, 0x96, 0xe6, 0xc5, 0x2f, 0xee,
 ];
+const PLATFORM_SECRET_REFERENCES_ID: &str = "platform.0002.secret-references";
+const PLATFORM_SECRET_REFERENCES_STATEMENTS: [&str; 2] = [
+    "CREATE TABLE IF NOT EXISTS platform_secret_references (reference_id TEXT NOT NULL, purpose TEXT NOT NULL, locator TEXT NOT NULL ENCRYPTED, key_version INT64 NOT NULL);",
+    "CREATE UNIQUE INDEX IF NOT EXISTS platform_secret_references_reference_id_uq ON platform_secret_references (reference_id);",
+];
+const PLATFORM_SECRET_REFERENCES_SHA256: [u8; 32] = [
+    0x8d, 0x0a, 0x53, 0x25, 0x65, 0x6c, 0x95, 0xe5, 0x42, 0x86, 0x96, 0x72, 0xfa, 0x5c, 0xb7, 0x27,
+    0x3d, 0x63, 0x3c, 0x54, 0xdd, 0xc1, 0x0f, 0xb9, 0x0b, 0xf9, 0xf2, 0x0b, 0x2a, 0x7d, 0xda, 0x5a,
+];
 
 /// Result of applying one immutable migration definition.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -70,12 +79,36 @@ impl RnmdbMigrationRunner {
     ) -> Result<MigrationApplyStatus, StorageError> {
         let descriptor = platform_initial_migration()?;
         let lookup = migration_lookup(&descriptor)?;
-        let insert = platform_initial_insert(&descriptor, applied_at)?;
+        let insert = migration_insert(&descriptor, applied_at)?;
         self.session.with_session(context, |session| {
             run_migration_transaction(
                 session,
                 &descriptor,
                 &PLATFORM_INITIAL_STATEMENTS,
+                &lookup,
+                &insert,
+            )
+        })
+    }
+
+    /// Applies the encrypted secret-reference schema exactly once.
+    ///
+    /// The initial platform migration must already be present. This creates
+    /// schema metadata only; callers inject the column key before encrypted
+    /// locators are written or read.
+    pub fn apply_platform_secret_references(
+        &self,
+        applied_at: UtcTimestampMicros,
+        context: &RequestContext,
+    ) -> Result<MigrationApplyStatus, StorageError> {
+        let descriptor = platform_secret_references_migration()?;
+        let lookup = migration_lookup(&descriptor)?;
+        let insert = migration_insert(&descriptor, applied_at)?;
+        self.session.with_session(context, |session| {
+            run_migration_transaction(
+                session,
+                &descriptor,
+                &PLATFORM_SECRET_REFERENCES_STATEMENTS,
                 &lookup,
                 &insert,
             )
@@ -93,12 +126,26 @@ pub fn platform_initial_migration() -> Result<MigrationDescriptor, StorageError>
         MigrationId::parse(PLATFORM_INITIAL_ID)?,
         SchemaVersion::new(1)?,
         SchemaVersion::new(2)?,
-        verified_platform_initial_checksum()?,
+        verified_migration_checksum(&PLATFORM_INITIAL_STATEMENTS, PLATFORM_INITIAL_SHA256)?,
         false,
     )
 }
 
-fn platform_initial_insert(
+/// Returns the encrypted secret-reference migration after digest verification.
+pub fn platform_secret_references_migration() -> Result<MigrationDescriptor, StorageError> {
+    MigrationDescriptor::new(
+        MigrationId::parse(PLATFORM_SECRET_REFERENCES_ID)?,
+        SchemaVersion::new(2)?,
+        SchemaVersion::new(3)?,
+        verified_migration_checksum(
+            &PLATFORM_SECRET_REFERENCES_STATEMENTS,
+            PLATFORM_SECRET_REFERENCES_SHA256,
+        )?,
+        false,
+    )
+}
+
+fn migration_insert(
     descriptor: &MigrationDescriptor,
     applied_at: UtcTimestampMicros,
 ) -> Result<String, StorageError> {
@@ -267,23 +314,26 @@ fn migration_corruption(message: &'static str) -> RnovError {
     RnovError::new(ErrorKind::Corruption, message)
 }
 
-fn verified_platform_initial_checksum() -> Result<MigrationChecksum, StorageError> {
-    validate_platform_initial_statements()?;
-    let actual = calculate_checksum(&PLATFORM_INITIAL_STATEMENTS)?;
-    if actual != PLATFORM_INITIAL_SHA256 {
+fn verified_migration_checksum(
+    statements: &[&str],
+    expected: [u8; 32],
+) -> Result<MigrationChecksum, StorageError> {
+    validate_schema_statements(statements)?;
+    let actual = calculate_checksum(statements)?;
+    if actual != expected {
         return Err(StorageError::new(StorageErrorCode::IntegrityFailure));
     }
     Ok(MigrationChecksum::new(actual))
 }
 
-fn validate_platform_initial_statements() -> Result<(), StorageError> {
-    for (index, sql) in PLATFORM_INITIAL_STATEMENTS.iter().enumerate() {
-        validate_platform_statement(index, sql)?;
+fn validate_schema_statements(statements: &[&str]) -> Result<(), StorageError> {
+    for (index, sql) in statements.iter().enumerate() {
+        validate_schema_statement(index, sql)?;
     }
     Ok(())
 }
 
-fn validate_platform_statement(index: usize, sql: &str) -> Result<(), StorageError> {
+fn validate_schema_statement(index: usize, sql: &str) -> Result<(), StorageError> {
     let statement =
         parse_statement(sql).map_err(|_| StorageError::new(StorageErrorCode::IntegrityFailure))?;
     let allowed = match (index, statement) {

@@ -235,10 +235,14 @@ fn apply_startup_migration(
         cancellation,
     );
     let applied_at = utc_micros(SystemTime::now())?;
-    RnmdbMigrationRunner::new(session.clone())
+    let runner = RnmdbMigrationRunner::new(session.clone());
+    runner
         .apply_platform_initial(applied_at, &context)
-        .map(|_| ())
-        .map_err(map_storage_error)
+        .map_err(map_storage_error)?;
+    runner
+        .apply_platform_secret_references(applied_at, &context)
+        .map_err(map_storage_error)?;
+    Ok(())
 }
 
 fn utc_micros(now: SystemTime) -> Result<UtcTimestampMicros, CoreError> {
