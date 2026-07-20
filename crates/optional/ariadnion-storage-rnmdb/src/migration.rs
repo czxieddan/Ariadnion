@@ -336,11 +336,10 @@ fn validate_schema_statements(statements: &[&str]) -> Result<(), StorageError> {
 fn validate_schema_statement(index: usize, sql: &str) -> Result<(), StorageError> {
     let statement =
         parse_statement(sql).map_err(|_| StorageError::new(StorageErrorCode::IntegrityFailure))?;
-    let allowed = match (index, statement) {
-        (0, Statement::CreateTable { .. }) => true,
-        (1, Statement::CreateIndex { unique: true, .. }) => true,
-        _ => false,
-    };
+    let allowed = matches!(
+        (index, statement),
+        (0, Statement::CreateTable { .. }) | (1, Statement::CreateIndex { unique: true, .. })
+    );
     if !allowed {
         return Err(StorageError::new(StorageErrorCode::IntegrityFailure));
     }
