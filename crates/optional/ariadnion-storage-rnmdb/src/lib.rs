@@ -19,6 +19,7 @@ mod secret_reference;
 mod secret_reference_repository;
 mod session;
 mod transaction;
+mod udf;
 
 pub use codec::{CurrencyCode, MoneyValue, NormalizedJson, StorageUuid, UtcTimestampMicros};
 pub use index::{FixedIndexDefinition, RnmdbIndexManager, RnmdbIndexMethod};
@@ -47,6 +48,13 @@ pub use secret_reference::{
 pub use secret_reference_repository::RnmdbSecretReferenceRepository;
 pub use session::{PageKeyMaterial, RnmdbSessionOwner, SessionOpenOptions};
 pub use transaction::RnmdbTransactionManager;
+pub use udf::{
+    FIXED_UDF_RESULT_BYTES, FixedScalarSignature, FixedScalarType, FixedScalarUdfDefinition,
+    FixedUdfResourceLimits, LockedDownUdfCapabilities, MAX_FIXED_UDF_ARGUMENTS,
+    MAX_FIXED_UDF_IMPORTS, MAX_FIXED_UDF_INSTRUCTIONS, MAX_FIXED_UDF_MEMORY_BYTES,
+    MAX_FIXED_UDF_MODULE_BYTES, MAX_FIXED_UDF_NAME_BYTES, MAX_FIXED_UDF_TIMEOUT_MILLIS,
+    RnmdbScalarUdfRegistrar,
+};
 
 /// The reviewed upstream source revision compiled by this adapter.
 pub const REVIEWED_RNMDB_COMMIT: &str = "8d2b65ad1ee3ee542e1307c1693bc4de4f7edbee";
