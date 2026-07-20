@@ -11,6 +11,7 @@ publish = false
 [dependencies]
 ariadnion-core = { path = "../../ariadnion-core" }
 ariadnion-storage-domain = { path = "../ariadnion-storage-domain" }
+ariadnion-storage-maintenance = { path = "../ariadnion-storage-maintenance" }
 ariadnion-storage-outbox = { path = "../ariadnion-storage-outbox" }
 ariadnion-storage-query = { path = "../ariadnion-storage-query" }
 hmac = "0.12.1"

@@ -15,7 +15,10 @@ use crate::session::{PageKeyMaterial, map_rnmdb_error};
 pub struct VerificationSummary {
     format_version: u16,
     file_len_bytes: u64,
+    page_record_slots: u64,
     present_page_records: u64,
+    authenticated_page_records: u64,
+    format_supported: bool,
     encryption_authenticated: bool,
     valid: bool,
 }
@@ -33,10 +36,28 @@ impl VerificationSummary {
         self.file_len_bytes
     }
 
+    /// Returns the total page-record slot count.
+    #[must_use]
+    pub const fn page_record_slots(self) -> u64 {
+        self.page_record_slots
+    }
+
     /// Returns the count of present page records.
     #[must_use]
     pub const fn present_page_records(self) -> u64 {
         self.present_page_records
+    }
+
+    /// Returns the number of encrypted page records authenticated by the key.
+    #[must_use]
+    pub const fn authenticated_page_records(self) -> u64 {
+        self.authenticated_page_records
+    }
+
+    /// Returns whether the file format is supported by this RNMDB revision.
+    #[must_use]
+    pub const fn format_supported(self) -> bool {
+        self.format_supported
     }
 
     /// Returns whether encrypted page authentication passed.
@@ -151,7 +172,10 @@ impl RnmdbMaintenance {
         Ok(VerificationSummary {
             format_version: report.format_version(),
             file_len_bytes: report.file_len_bytes(),
+            page_record_slots: report.page_record_slots(),
             present_page_records: report.present_page_records(),
+            authenticated_page_records: report.authenticated_page_records(),
+            format_supported: report.format_supported(),
             encryption_authenticated: report.encryption_authenticated(),
             valid: report.is_valid(),
         })
