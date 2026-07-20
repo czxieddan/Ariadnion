@@ -1,6 +1,6 @@
 //! Deterministic fail-closed authorization evaluation.
 
-use ariadnion_organization::{MembershipState, OrganizationState};
+use ariadnion_organization::OrganizationState;
 use ariadnion_user_domain::UserLifecycleState;
 
 use crate::model::{
@@ -69,7 +69,7 @@ fn membership_context_failure(
     organization_id: &ariadnion_organization::OrganizationId,
 ) -> Option<AuthorizationDecisionReason> {
     match request.subject().membership() {
-        Some(membership) => membership_state_failure(membership, organization_id),
+        Some(membership) => membership_state_failure(membership, organization_id, request.now()),
         None => Some(AuthorizationDecisionReason::MembershipInactive),
     }
 }
@@ -77,18 +77,19 @@ fn membership_context_failure(
 fn membership_state_failure(
     membership: &MembershipAuthorizationContext,
     organization_id: &ariadnion_organization::OrganizationId,
+    now: ariadnion_user_domain::UtcTimestamp,
 ) -> Option<AuthorizationDecisionReason> {
     match (
         membership.organization_id() == organization_id,
         membership.organization_state(),
-        membership.membership_state(),
+        membership.is_active_at(now),
     ) {
         (false, _, _) => Some(AuthorizationDecisionReason::MembershipInactive),
         (true, OrganizationState::Frozen, _) => {
             Some(AuthorizationDecisionReason::OrganizationFrozen)
         }
-        (true, OrganizationState::Active, MembershipState::Active) => None,
-        (true, OrganizationState::Active, _) => {
+        (true, OrganizationState::Active, true) => None,
+        (true, OrganizationState::Active, false) => {
             Some(AuthorizationDecisionReason::MembershipInactive)
         }
     }

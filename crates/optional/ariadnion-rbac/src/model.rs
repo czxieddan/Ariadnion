@@ -280,6 +280,7 @@ pub struct MembershipAuthorizationContext {
     organization_id: OrganizationId,
     organization_state: OrganizationState,
     membership_state: MembershipState,
+    expires_at: Option<UtcTimestamp>,
     team_ids: Vec<TeamId>,
 }
 
@@ -294,6 +295,7 @@ impl MembershipAuthorizationContext {
         organization_id: OrganizationId,
         organization_state: OrganizationState,
         membership_state: MembershipState,
+        expires_at: Option<UtcTimestamp>,
         team_ids: Vec<TeamId>,
     ) -> Result<Self, AuthorizationError> {
         validate_team_ids(&team_ids)?;
@@ -302,6 +304,7 @@ impl MembershipAuthorizationContext {
             organization_id,
             organization_state,
             membership_state,
+            expires_at,
             team_ids,
         })
     }
@@ -330,10 +333,21 @@ impl MembershipAuthorizationContext {
         self.membership_state
     }
 
+    /// Returns the exclusive UTC membership expiry boundary, when present.
+    #[must_use]
+    pub const fn expires_at(&self) -> Option<UtcTimestamp> {
+        self.expires_at
+    }
+
     /// Returns bounded team identities in deterministic input order.
     #[must_use]
     pub fn team_ids(&self) -> &[TeamId] {
         &self.team_ids
+    }
+
+    pub(crate) fn is_active_at(&self, now: UtcTimestamp) -> bool {
+        self.membership_state == MembershipState::Active
+            && self.expires_at.is_none_or(|expires_at| now < expires_at)
     }
 }
 
@@ -566,7 +580,7 @@ impl AuthorizationPolicy {
     }
 }
 
-/// Stable fail-closed reasons emitted by authorization evaluation.
+/// Stable reasons emitted by authorization evaluation.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum AuthorizationDecisionReason {
     /// At least one matching explicit deny rule took precedence.
