@@ -25,6 +25,7 @@ mod security;
 mod session;
 mod transaction;
 mod udf;
+mod upgrade;
 
 pub use backup::{RnmdbBackupAdapter, RnmdbBackupEnvironment};
 pub use codec::{CurrencyCode, MoneyValue, NormalizedJson, StorageUuid, UtcTimestampMicros};
@@ -33,7 +34,8 @@ pub use inspection::{RnmdbInspectionAdapter, RnmdbInspectionResolver};
 pub use instance::{RnmdbInstanceProfile, RnmdbInstanceRegistry, RnmdbInstanceResourceLimits};
 pub use location::StorageFileLocation;
 pub use maintenance::{
-    BackupSummary, NewTargetSummary, RestorePreflight, RnmdbMaintenance, VerificationSummary,
+    BackupSummary, NewTargetSummary, RestorePreflight, RnmdbMaintenance, UpgradeSummary,
+    VerificationSummary,
 };
 pub use migration::{
     MigrationApplyStatus, RnmdbMigrationRunner, platform_initial_migration,
@@ -64,6 +66,10 @@ pub use udf::{
     MAX_FIXED_UDF_IMPORTS, MAX_FIXED_UDF_INSTRUCTIONS, MAX_FIXED_UDF_MEMORY_BYTES,
     MAX_FIXED_UDF_MODULE_BYTES, MAX_FIXED_UDF_NAME_BYTES, MAX_FIXED_UDF_TIMEOUT_MILLIS,
     RnmdbScalarUdfRegistrar,
+};
+pub use upgrade::{
+    RnmdbRetainedSourceInspection, RnmdbUpgradeAdapter, RnmdbUpgradeDomainVerification,
+    RnmdbUpgradeEnvironment,
 };
 
 /// The reviewed upstream source revision compiled by this adapter.

@@ -3,9 +3,9 @@
 use ariadnion_core::{ErrorCode, RequestContext};
 use ariadnion_storage_domain::{StorageError, StorageErrorCode};
 use rnmdb_cli::{
-    backup_storage, restore_storage, restore_storage_dry_run, upgrade_storage_with_key,
-    verify_storage_with_key,
+    backup_storage, restore_storage, restore_storage_dry_run, verify_storage_with_key,
 };
+use rnmdb_storage::{SingleFileUpgradeOptions, upgrade_single_file_with_options};
 
 use crate::location::StorageFileLocation;
 use crate::session::{PageKeyMaterial, map_rnmdb_error};
@@ -142,6 +142,48 @@ pub struct NewTargetSummary {
     page_records: u64,
 }
 
+/// Safe evidence returned by a physical new-target format upgrade.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UpgradeSummary {
+    source_format_version: u16,
+    target_format_version: u16,
+    bytes_written: u64,
+    pages_upgraded: u64,
+    key_rotated: bool,
+}
+
+impl UpgradeSummary {
+    /// Returns the format version read from the immutable source.
+    #[must_use]
+    pub const fn source_format_version(self) -> u16 {
+        self.source_format_version
+    }
+
+    /// Returns the format version written to the new target.
+    #[must_use]
+    pub const fn target_format_version(self) -> u16 {
+        self.target_format_version
+    }
+
+    /// Returns the authenticated target byte count.
+    #[must_use]
+    pub const fn bytes_written(self) -> u64 {
+        self.bytes_written
+    }
+
+    /// Returns the count of page records transformed into the target.
+    #[must_use]
+    pub const fn pages_upgraded(self) -> u64 {
+        self.pages_upgraded
+    }
+
+    /// Returns whether RNMDB used distinct source and target page keys.
+    #[must_use]
+    pub const fn key_rotated(self) -> bool {
+        self.key_rotated
+    }
+}
+
 impl NewTargetSummary {
     /// Returns the written byte count.
     #[must_use]
@@ -237,17 +279,24 @@ impl RnmdbMaintenance {
     pub fn upgrade(
         source: &StorageFileLocation,
         target: &StorageFileLocation,
-        key: PageKeyMaterial,
+        source_key: PageKeyMaterial,
+        target_key: PageKeyMaterial,
         context: &RequestContext,
-    ) -> Result<NewTargetSummary, StorageError> {
+    ) -> Result<UpgradeSummary, StorageError> {
         check_context(context)?;
         ensure_distinct(source, target)?;
-        let report =
-            upgrade_storage_with_key(source.path(), target.path(), key.into_upstream_key())
-                .map_err(map_rnmdb_error)?;
-        Ok(NewTargetSummary {
+        let options = SingleFileUpgradeOptions::new()
+            .with_source_page_key(source_key.into_upstream_key())
+            .with_target_page_key(target_key.into_upstream_key());
+        let report = upgrade_single_file_with_options(source.path(), target.path(), options)
+            .map_err(map_rnmdb_error)?;
+        check_context(context)?;
+        Ok(UpgradeSummary {
+            source_format_version: report.source_format_version(),
+            target_format_version: report.target_format_version(),
             bytes_written: report.bytes_written(),
-            page_records: report.pages_upgraded(),
+            pages_upgraded: report.pages_upgraded(),
+            key_rotated: report.key_rotated(),
         })
     }
 }

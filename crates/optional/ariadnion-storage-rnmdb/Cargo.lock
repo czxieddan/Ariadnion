@@ -117,6 +117,7 @@ dependencies = [
  "ariadnion-storage-outbox",
  "ariadnion-storage-query",
  "ariadnion-storage-restore",
+ "ariadnion-storage-upgrade",
  "hmac 0.12.1",
  "rnmdb-catalog",
  "rnmdb-cli",
@@ -135,6 +136,14 @@ dependencies = [
  "rnmdb-udf",
  "sha2 0.10.9",
  "zeroize",
+]
+
+[[package]]
+name = "ariadnion-storage-upgrade"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+ "ariadnion-storage-domain",
 ]
 
 [[package]]
