@@ -277,26 +277,51 @@ fn render_query(
     template: &QueryTemplate,
     binding: &QueryBinding,
 ) -> Result<Zeroizing<String>, StorageError> {
-    let source = template.template();
-    let mut rendered = Zeroizing::new(String::with_capacity(source.len()));
-    let mut used = BTreeSet::new();
-    let mut cursor = 0;
-    while let Some(relative_start) = source[cursor..].find("{{") {
-        let start = cursor + relative_start;
-        reject_unmatched_close(&source[cursor..start])?;
-        push_bounded(&mut rendered, &source[cursor..start])?;
-        let (name, next) = placeholder_at(source, start)?;
+    let mut renderer = QueryRenderer::new(template.template());
+    while renderer.render_next(binding)? {}
+    renderer.finish(binding)
+}
+
+struct QueryRenderer<'a> {
+    source: &'a str,
+    rendered: Zeroizing<String>,
+    used: BTreeSet<Box<str>>,
+    cursor: usize,
+}
+
+impl<'a> QueryRenderer<'a> {
+    fn new(source: &'a str) -> Self {
+        Self {
+            source,
+            rendered: Zeroizing::new(String::with_capacity(source.len())),
+            used: BTreeSet::new(),
+            cursor: 0,
+        }
+    }
+
+    fn render_next(&mut self, binding: &QueryBinding) -> Result<bool, StorageError> {
+        let Some(relative_start) = self.source[self.cursor..].find("{{") else {
+            return Ok(false);
+        };
+        let start = self.cursor + relative_start;
+        reject_unmatched_close(&self.source[self.cursor..start])?;
+        push_bounded(&mut self.rendered, &self.source[self.cursor..start])?;
+        let (name, next) = placeholder_at(self.source, start)?;
         let argument = find_argument(binding.arguments(), name)?;
-        append_query_literal(&mut rendered, argument.value())?;
-        used.insert(argument.name().as_str());
-        cursor = next;
+        append_query_literal(&mut self.rendered, argument.value())?;
+        self.used.insert(argument.name().as_str().into());
+        self.cursor = next;
+        Ok(true)
     }
-    reject_unmatched_close(&source[cursor..])?;
-    push_bounded(&mut rendered, &source[cursor..])?;
-    if used.len() != binding.arguments().len() {
-        return Err(StorageError::new(StorageErrorCode::InvalidArgument));
+
+    fn finish(mut self, binding: &QueryBinding) -> Result<Zeroizing<String>, StorageError> {
+        reject_unmatched_close(&self.source[self.cursor..])?;
+        push_bounded(&mut self.rendered, &self.source[self.cursor..])?;
+        if self.used.len() != binding.arguments().len() {
+            return Err(invalid_argument());
+        }
+        Ok(self.rendered)
     }
-    Ok(rendered)
 }
 
 fn reject_unmatched_close(value: &str) -> Result<(), StorageError> {
