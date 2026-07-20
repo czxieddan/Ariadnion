@@ -717,18 +717,37 @@ fn validate_transfer_members(
     recipient_index: usize,
 ) -> Result<(), OrganizationError> {
     let initiator = membership_at(current, initiating_index)?;
+    validate_initiating_transfer_member(initiator, evidence)?;
     let recipient = membership_at(current, recipient_index)?;
-    let valid_initiator = initiator.kind == MembershipKind::Owner
+    validate_recipient_transfer_member(recipient, audit, evidence)
+}
+
+fn validate_initiating_transfer_member(
+    initiator: &Membership,
+    evidence: &OwnershipTransferEvidence,
+) -> Result<(), OrganizationError> {
+    let valid = initiator.kind == MembershipKind::Owner
         && initiator.state == MembershipState::Active
         && initiator.user_id == *evidence.initiating_user.user_id();
+    if !valid {
+        return Err(error(OrganizationErrorCode::TransferEvidenceInvalid));
+    }
+    Ok(())
+}
+
+fn validate_recipient_transfer_member(
+    recipient: &Membership,
+    audit: &AuditContext,
+    evidence: &OwnershipTransferEvidence,
+) -> Result<(), OrganizationError> {
     let recipient_user_id = evidence
         .recipient_reauthentication
         .authenticated_user()
         .user_id();
-    let valid_recipient = recipient.kind == MembershipKind::Member
+    let valid = recipient.kind == MembershipKind::Member
         && recipient.user_id == *recipient_user_id
         && recipient.is_eligible_at(audit.occurred_at);
-    if !valid_initiator || !valid_recipient {
+    if !valid {
         return Err(error(OrganizationErrorCode::TransferEvidenceInvalid));
     }
     Ok(())
