@@ -5,7 +5,8 @@ rust = "1.95.0"
 abi = "rust-1.0.0/wit-1"
 
 [licenses]
-allowed = ["Apache-2.0", "MIT", "Zlib"]
+allowed = ["Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "MIT", "Unicode-3.0", "Unlicense", "Zlib"]
+allowed_exceptions = ["LLVM-exception"]
 forbidden = ["GPL-2.0-only", "GPL-2.0-or-later", "GPL-3.0-only", "GPL-3.0-or-later", "AGPL-3.0-only", "AGPL-3.0-or-later"]
 
 [[licenses.exceptions]]
