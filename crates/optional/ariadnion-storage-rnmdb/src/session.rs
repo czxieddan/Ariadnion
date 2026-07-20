@@ -196,6 +196,15 @@ impl RnmdbSessionOwner {
         operation(&mut lock_session(&self.session)).map_err(map_rnmdb_error)
     }
 
+    pub(crate) fn with_storage_session<T>(
+        &self,
+        context: &RequestContext,
+        operation: impl FnOnce(&mut LocalSession) -> Result<T, StorageError>,
+    ) -> Result<T, StorageError> {
+        check_context(context)?;
+        operation(&mut lock_session(&self.session))
+    }
+
     /// Configures one managed column while holding the configuration lock.
     ///
     /// The lock order is configured-columns then session. No adapter path may

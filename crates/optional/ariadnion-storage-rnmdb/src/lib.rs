@@ -13,6 +13,7 @@ mod maintenance;
 mod migration;
 mod migration_executor;
 mod module;
+mod outbox;
 mod query;
 mod secret_reference;
 mod secret_reference_repository;
@@ -34,6 +35,7 @@ pub use migration::{
 };
 pub use migration_executor::{RnmdbMigrationExecutor, RnmdbMigrationPageKeys};
 pub use module::{StorageRnmdbModule, StorageRnmdbModuleOptions};
+pub use outbox::{OutboxLeaseKeyMaterial, RnmdbOutboxRepository};
 pub use query::{
     FixedRnmdbReadQuery, QueryPlanDiagnostic, QueryPlanFormat, RnmdbFixedQueryExecutor,
     RnmdbQueryDiagnostics,

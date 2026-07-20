@@ -66,6 +66,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ariadnion-storage-outbox"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+ "ariadnion-storage-domain",
+ "zeroize",
+]
+
+[[package]]
 name = "ariadnion-storage-query"
 version = "0.1.0"
 dependencies = [
@@ -79,7 +88,9 @@ version = "0.1.0"
 dependencies = [
  "ariadnion-core",
  "ariadnion-storage-domain",
+ "ariadnion-storage-outbox",
  "ariadnion-storage-query",
+ "hmac 0.12.1",
  "rnmdb-catalog",
  "rnmdb-cli",
  "rnmdb-common",
@@ -703,6 +714,15 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hmac"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
+dependencies = [
+ "digest 0.10.7",
+]
+
+[[package]]
+name = "hmac"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6303bc9732ae41b04cb554b844a762b4115a61bfaa81e3e83050991eeb56863f"
@@ -1111,7 +1131,7 @@ source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=8d2b65ad1ee3ee5
 dependencies = [
  "argon2",
  "chacha20poly1305",
- "hmac",
+ "hmac 0.13.0",
  "rand_core 0.6.4",
  "rnmdb-common",
  "sha2 0.11.0",

@@ -11,7 +11,9 @@ publish = false
 [dependencies]
 ariadnion-core = { path = "../../ariadnion-core" }
 ariadnion-storage-domain = { path = "../ariadnion-storage-domain" }
+ariadnion-storage-outbox = { path = "../ariadnion-storage-outbox" }
 ariadnion-storage-query = { path = "../ariadnion-storage-query" }
+hmac = "0.12.1"
 rnmdb-common = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "8d2b65ad1ee3ee542e1307c1693bc4de4f7edbee", package = "rnmdb-common" }
 rnmdb-types = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "8d2b65ad1ee3ee542e1307c1693bc4de4f7edbee", package = "rnmdb-types" }
 rnmdb-sql = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "8d2b65ad1ee3ee542e1307c1693bc4de4f7edbee", package = "rnmdb-sql" }

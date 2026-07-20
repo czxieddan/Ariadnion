@@ -42,11 +42,11 @@ const PLATFORM_OUTBOX_STATEMENTS: [&str; 4] = [
     "CREATE TABLE IF NOT EXISTS platform_outbox (tenant_id TEXT NOT NULL, event_id TEXT NOT NULL, topic TEXT NOT NULL, idempotency_key TEXT NOT NULL, payload_hex TEXT NOT NULL, created_at TIMESTAMP NOT NULL, available_at TIMESTAMP NOT NULL, attempt INT64 NOT NULL, state TEXT NOT NULL, lease_token TEXT, lease_worker TEXT, lease_expires_at TIMESTAMP, delivered_at TIMESTAMP, failed_at TIMESTAMP);",
     "CREATE UNIQUE INDEX IF NOT EXISTS platform_outbox_tenant_event_uq ON platform_outbox (tenant_id, event_id);",
     "CREATE UNIQUE INDEX IF NOT EXISTS platform_outbox_tenant_idempotency_uq ON platform_outbox (tenant_id, idempotency_key);",
-    "CREATE INDEX IF NOT EXISTS platform_outbox_claim_idx ON platform_outbox (tenant_id, state, available_at, lease_expires_at, created_at);",
+    "CREATE INDEX IF NOT EXISTS platform_outbox_claim_idx ON platform_outbox (tenant_id, state);",
 ];
 const PLATFORM_OUTBOX_SHA256: [u8; 32] = [
-    0xbe, 0x87, 0xff, 0x30, 0xeb, 0x3e, 0xdf, 0x83, 0x4b, 0xa2, 0x72, 0xce, 0x7f, 0x4a, 0x21, 0x86,
-    0xbd, 0x70, 0xae, 0xc6, 0x94, 0x72, 0x1e, 0x4a, 0xb1, 0xb1, 0xe6, 0xd1, 0xda, 0x0f, 0xed, 0x19,
+    0xaa, 0x2d, 0xf5, 0x8a, 0xe0, 0x36, 0x0e, 0xb2, 0xd9, 0xe4, 0x3b, 0x06, 0x96, 0x13, 0x13, 0xf4,
+    0x0c, 0x81, 0x23, 0x1c, 0x8d, 0x3e, 0x87, 0xd9, 0xbf, 0xff, 0xae, 0x01, 0xf6, 0x6d, 0xd6, 0x48,
 ];
 
 /// Result of applying one immutable migration definition.
