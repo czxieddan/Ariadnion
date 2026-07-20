@@ -225,11 +225,85 @@ impl Organization {
     }
 }
 
+/// A trusted authentication adapter's principal-to-user identity binding.
+///
+/// This type is a trust boundary, not an authenticator. An adapter may create
+/// it only after authenticating the principal and resolving the represented
+/// user. Raw request fields must not be wrapped as an authenticated binding.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuthenticatedUserBinding {
+    principal: PrincipalContext,
+    user_id: UserId,
+}
+
+impl AuthenticatedUserBinding {
+    /// Creates a binding from identity facts established by authentication.
+    ///
+    /// The caller is responsible for ensuring an authentication adapter, rather
+    /// than untrusted request data, established the principal-to-user mapping.
+    #[must_use]
+    pub const fn new(principal: PrincipalContext, user_id: UserId) -> Self {
+        Self { principal, user_id }
+    }
+
+    /// Returns the authenticated tenant and principal context.
+    #[must_use]
+    pub const fn principal(&self) -> &PrincipalContext {
+        &self.principal
+    }
+
+    /// Returns the user identity authenticated for the principal.
+    #[must_use]
+    pub const fn user_id(&self) -> &UserId {
+        &self.user_id
+    }
+}
+
+/// A recipient identity binding established by fresh reauthentication.
+///
+/// A trusted authentication adapter supplies both the authenticated binding
+/// and the trusted UTC completion time. Caller-provided identities or clocks
+/// do not constitute this proof.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecipientReauthenticationProof {
+    authenticated_user: AuthenticatedUserBinding,
+    authenticated_at: UtcTimestamp,
+}
+
+impl RecipientReauthenticationProof {
+    /// Creates a proof from a successful reauthentication result.
+    ///
+    /// The caller is responsible for supplying an adapter-authenticated user
+    /// binding and the adapter's trusted completion time.
+    #[must_use]
+    pub const fn new(
+        authenticated_user: AuthenticatedUserBinding,
+        authenticated_at: UtcTimestamp,
+    ) -> Self {
+        Self {
+            authenticated_user,
+            authenticated_at,
+        }
+    }
+
+    /// Returns the recipient identity established by reauthentication.
+    #[must_use]
+    pub const fn authenticated_user(&self) -> &AuthenticatedUserBinding {
+        &self.authenticated_user
+    }
+
+    /// Returns the trusted UTC completion time of reauthentication.
+    #[must_use]
+    pub const fn authenticated_at(&self) -> UtcTimestamp {
+        self.authenticated_at
+    }
+}
+
 /// Fields supplied to the ownership-evidence constructor.
 ///
-/// The initiating and approving contexts must come from a trusted
-/// authentication adapter. Raw principal identifiers supplied by a caller
-/// cannot constitute initiation or approval evidence.
+/// Authentication adapters must supply the initiating user binding, recipient
+/// reauthentication proof, and approving context. Raw principal, user, or time
+/// values supplied by a caller cannot constitute transfer evidence.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OwnershipTransferEvidenceInput {
     /// Stable evidence identity used to detect replay outside this domain.
@@ -242,14 +316,12 @@ pub struct OwnershipTransferEvidenceInput {
     pub organization_version: OrganizationVersion,
     /// Active owner membership that will be demoted.
     pub initiating_owner_id: MembershipId,
-    /// Core-authenticated principal context that initiated the transfer.
-    pub initiating_principal: PrincipalContext,
+    /// Authenticated principal-to-user binding that initiated the transfer.
+    pub initiating_user: AuthenticatedUserBinding,
     /// Active recipient membership that will be promoted.
     pub recipient_id: MembershipId,
-    /// User identity proven by recipient reauthentication.
-    pub recipient_user_id: UserId,
-    /// Trusted UTC instant of recipient reauthentication.
-    pub recipient_reauthenticated_at: UtcTimestamp,
+    /// Authenticated recipient identity and trusted reauthentication time.
+    pub recipient_reauthentication: RecipientReauthenticationProof,
     /// Distinct core-authenticated principal context that approved the transfer.
     pub approving_principal: PrincipalContext,
     /// Earliest trusted UTC instant at which transfer may occur.
@@ -266,10 +338,9 @@ pub struct OwnershipTransferEvidence {
     pub(crate) organization_id: OrganizationId,
     pub(crate) organization_version: OrganizationVersion,
     pub(crate) initiating_owner_id: MembershipId,
-    pub(crate) initiating_actor: PrincipalId,
+    pub(crate) initiating_user: AuthenticatedUserBinding,
     pub(crate) recipient_id: MembershipId,
-    pub(crate) recipient_user_id: UserId,
-    pub(crate) recipient_reauthenticated_at: UtcTimestamp,
+    pub(crate) recipient_reauthentication: RecipientReauthenticationProof,
     pub(crate) approver: PrincipalId,
     pub(crate) not_before: UtcTimestamp,
     pub(crate) expires_at: UtcTimestamp,
@@ -295,7 +366,6 @@ impl OwnershipTransferEvidence {
     /// non-future, overlong, or self-directed transfer interval.
     pub fn new(input: OwnershipTransferEvidenceInput) -> Result<Self, OrganizationError> {
         validate_transfer_evidence_input(&input)?;
-        let initiating_actor = input.initiating_principal.principal_id().clone();
         let approver = input.approving_principal.principal_id().clone();
         Ok(Self {
             transfer_id: input.transfer_id,
@@ -303,10 +373,9 @@ impl OwnershipTransferEvidence {
             organization_id: input.organization_id,
             organization_version: input.organization_version,
             initiating_owner_id: input.initiating_owner_id,
-            initiating_actor,
+            initiating_user: input.initiating_user,
             recipient_id: input.recipient_id,
-            recipient_user_id: input.recipient_user_id,
-            recipient_reauthenticated_at: input.recipient_reauthenticated_at,
+            recipient_reauthentication: input.recipient_reauthentication,
             approver,
             not_before: input.not_before,
             expires_at: input.expires_at,
@@ -461,7 +530,10 @@ fn validate_transfer_evidence_input(
     if input.initiating_owner_id == input.recipient_id {
         return Err(error(OrganizationErrorCode::TransferEvidenceInvalid));
     }
-    let reauthentication = input.recipient_reauthenticated_at.unix_seconds();
+    let reauthentication = input
+        .recipient_reauthentication
+        .authenticated_at()
+        .unix_seconds();
     let not_before = input.not_before.unix_seconds();
     let expires_at = input.expires_at.unix_seconds();
     let delay = not_before.checked_sub(reauthentication);
@@ -475,12 +547,20 @@ fn validate_transfer_evidence_input(
 fn validate_transfer_principals(
     input: &OwnershipTransferEvidenceInput,
 ) -> Result<(), OrganizationError> {
-    let initiator_tenant_matches = input.initiating_principal.tenant_id() == &input.tenant_id;
+    let initiator_tenant_matches =
+        input.initiating_user.principal().tenant_id() == &input.tenant_id;
+    let recipient_tenant_matches = input
+        .recipient_reauthentication
+        .authenticated_user()
+        .principal()
+        .tenant_id()
+        == &input.tenant_id;
     let approver_tenant_matches = input.approving_principal.tenant_id() == &input.tenant_id;
-    if !initiator_tenant_matches || !approver_tenant_matches {
+    if !initiator_tenant_matches || !recipient_tenant_matches || !approver_tenant_matches {
         return Err(error(OrganizationErrorCode::TransferOrganizationMismatch));
     }
-    if input.initiating_principal.principal_id() == input.approving_principal.principal_id() {
+    if input.initiating_user.principal().principal_id() == input.approving_principal.principal_id()
+    {
         return Err(error(OrganizationErrorCode::TransferApproverConflict));
     }
     Ok(())

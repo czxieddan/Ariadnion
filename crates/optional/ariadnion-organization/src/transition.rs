@@ -654,17 +654,20 @@ fn validate_transfer_timing(
 ) -> Result<(), OrganizationError> {
     validate_transfer_actors(audit, evidence)?;
     validate_transfer_window(audit.occurred_at, evidence)?;
-    validate_reauthentication_freshness(audit.occurred_at, evidence.recipient_reauthenticated_at)
+    validate_reauthentication_freshness(
+        audit.occurred_at,
+        evidence.recipient_reauthentication.authenticated_at(),
+    )
 }
 
 fn validate_transfer_actors(
     audit: &AuditContext,
     evidence: &OwnershipTransferEvidence,
 ) -> Result<(), OrganizationError> {
-    if evidence.initiating_actor != audit.actor {
+    if evidence.initiating_user.principal().principal_id() != &audit.actor {
         return Err(error(OrganizationErrorCode::TransferEvidenceInvalid));
     }
-    if evidence.approver == evidence.initiating_actor {
+    if &evidence.approver == evidence.initiating_user.principal().principal_id() {
         return Err(error(OrganizationErrorCode::TransferApproverConflict));
     }
     Ok(())
@@ -715,10 +718,15 @@ fn validate_transfer_members(
 ) -> Result<(), OrganizationError> {
     let initiator = membership_at(current, initiating_index)?;
     let recipient = membership_at(current, recipient_index)?;
-    let valid_initiator =
-        initiator.kind == MembershipKind::Owner && initiator.state == MembershipState::Active;
+    let valid_initiator = initiator.kind == MembershipKind::Owner
+        && initiator.state == MembershipState::Active
+        && initiator.user_id == *evidence.initiating_user.user_id();
+    let recipient_user_id = evidence
+        .recipient_reauthentication
+        .authenticated_user()
+        .user_id();
     let valid_recipient = recipient.kind == MembershipKind::Member
-        && recipient.user_id == evidence.recipient_user_id
+        && recipient.user_id == *recipient_user_id
         && recipient.is_eligible_at(audit.occurred_at);
     if !valid_initiator || !valid_recipient {
         return Err(error(OrganizationErrorCode::TransferEvidenceInvalid));
