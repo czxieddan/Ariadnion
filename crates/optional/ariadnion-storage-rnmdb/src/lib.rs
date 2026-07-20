@@ -30,7 +30,8 @@ pub use migration::{
 };
 pub use module::{StorageRnmdbModule, StorageRnmdbModuleOptions};
 pub use query::{
-    FixedRnmdbReadQuery, QueryPlanDiagnostic, QueryPlanFormat, RnmdbQueryDiagnostics,
+    FixedRnmdbReadQuery, QueryPlanDiagnostic, QueryPlanFormat, RnmdbFixedQueryExecutor,
+    RnmdbQueryDiagnostics,
 };
 pub use security::{RnmdbColumnSecurity, SecretLocatorKeyMaterial};
 pub use secret_reference::{
