@@ -18,6 +18,7 @@ mod migration_executor;
 mod module;
 mod outbox;
 mod query;
+mod restore;
 mod secret_reference;
 mod secret_reference_repository;
 mod security;
@@ -44,6 +45,10 @@ pub use outbox::{OutboxLeaseKeyMaterial, RnmdbOutboxRepository};
 pub use query::{
     FixedRnmdbReadQuery, QueryPlanDiagnostic, QueryPlanFormat, RnmdbFixedQueryExecutor,
     RnmdbQueryDiagnostics,
+};
+pub use restore::{
+    RnmdbRestoreAdapter, RnmdbRestoreDomainVerification, RnmdbRestoreEnvironment,
+    RnmdbShadowComparison,
 };
 pub use secret_reference::{
     NewSecretReference, SecretKeyVersion, SecretLocator, SecretReference, SecretReferenceId,
