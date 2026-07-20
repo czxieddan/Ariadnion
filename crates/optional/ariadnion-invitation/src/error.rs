@@ -2,7 +2,7 @@
 
 use std::fmt::{self, Display, Formatter};
 
-const ERROR_CODES: [&str; 12] = [
+const ERROR_CODES: [&str; 13] = [
     "INVITATION_INVALID_ARGUMENT",
     "INVITATION_VERSION_CONFLICT",
     "INVITATION_VERSION_EXHAUSTED",
@@ -15,6 +15,7 @@ const ERROR_CODES: [&str; 12] = [
     "INVITATION_ALREADY_CONSUMED",
     "INVITATION_REVOKED",
     "INVITATION_INVALID_TRANSITION",
+    "INVITATION_RECIPIENT_PRINCIPAL_MISMATCH",
 ];
 
 /// Stable machine-readable invitation-domain failures.
@@ -46,6 +47,8 @@ pub enum InvitationErrorCode {
     Revoked,
     /// The requested transition is not valid from the current state.
     InvalidTransition,
+    /// The command actor is not the authenticated invitation recipient.
+    RecipientPrincipalMismatch,
 }
 
 impl InvitationErrorCode {

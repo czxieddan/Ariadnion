@@ -63,6 +63,72 @@ pub enum InvitationState {
     Expired,
 }
 
+/// Stable identities that bind one invitation issuance.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InvitationIssueBinding {
+    id: InvitationId,
+    tenant_id: TenantId,
+    organization_id: OrganizationId,
+    issuer: PrincipalId,
+}
+
+impl InvitationIssueBinding {
+    /// Creates a tenant- and organization-bound invitation identity.
+    #[must_use]
+    pub const fn new(
+        id: InvitationId,
+        tenant_id: TenantId,
+        organization_id: OrganizationId,
+        issuer: PrincipalId,
+    ) -> Self {
+        Self {
+            id,
+            tenant_id,
+            organization_id,
+            issuer,
+        }
+    }
+}
+
+/// Redacted proof digests retained for one invitation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InvitationProofDigests {
+    subject_digest: InvitationSubjectDigest,
+    token_digest: InvitationTokenDigest,
+}
+
+impl InvitationProofDigests {
+    /// Creates the recipient and high-entropy token digest pair.
+    #[must_use]
+    pub const fn new(
+        subject_digest: InvitationSubjectDigest,
+        token_digest: InvitationTokenDigest,
+    ) -> Self {
+        Self {
+            subject_digest,
+            token_digest,
+        }
+    }
+}
+
+/// Trusted issuance and exclusive expiry instants for one invitation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InvitationValidityWindow {
+    issued_at: UtcTimestamp,
+    expires_at: UtcTimestamp,
+}
+
+impl InvitationValidityWindow {
+    /// Creates a validity window; [`crate::issue`] validates its bounds.
+    #[must_use]
+    pub const fn new(issued_at: UtcTimestamp, expires_at: UtcTimestamp) -> Self {
+        Self {
+            issued_at,
+            expires_at,
+        }
+    }
+}
+
 /// Immutable input required to issue one organization invitation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InvitationIssueRequest {
@@ -79,25 +145,20 @@ pub struct InvitationIssueRequest {
 impl InvitationIssueRequest {
     /// Creates immutable issuance input; [`crate::issue`] validates time bounds.
     #[must_use]
-    pub const fn new(
-        id: InvitationId,
-        tenant_id: TenantId,
-        organization_id: OrganizationId,
-        issuer: PrincipalId,
-        subject_digest: InvitationSubjectDigest,
-        token_digest: InvitationTokenDigest,
-        issued_at: UtcTimestamp,
-        expires_at: UtcTimestamp,
+    pub fn new(
+        binding: InvitationIssueBinding,
+        proofs: InvitationProofDigests,
+        validity: InvitationValidityWindow,
     ) -> Self {
         Self {
-            id,
-            tenant_id,
-            organization_id,
-            issuer,
-            subject_digest,
-            token_digest,
-            issued_at,
-            expires_at,
+            id: binding.id,
+            tenant_id: binding.tenant_id,
+            organization_id: binding.organization_id,
+            issuer: binding.issuer,
+            subject_digest: proofs.subject_digest,
+            token_digest: proofs.token_digest,
+            issued_at: validity.issued_at,
+            expires_at: validity.expires_at,
         }
     }
 }

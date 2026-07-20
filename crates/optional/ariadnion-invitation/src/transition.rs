@@ -1,6 +1,6 @@
 //! Deterministic invitation issuance and lifecycle transitions.
 
-use ariadnion_core::{PrincipalId, TenantId};
+use ariadnion_core::{PrincipalContext, PrincipalId, TenantId};
 use ariadnion_organization::OrganizationId;
 use ariadnion_user_domain::{UserId, UtcTimestamp};
 
@@ -11,13 +11,39 @@ use crate::{
     MAX_INVITATION_LIFETIME_SECONDS,
 };
 
+/// Trusted recipient identity and normalized subject proof for consumption.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuthenticatedInvitationRecipient {
+    principal: PrincipalContext,
+    user_id: UserId,
+    subject_digest: InvitationSubjectDigest,
+}
+
+impl AuthenticatedInvitationRecipient {
+    /// Creates a recipient identity established by a trusted authentication adapter.
+    ///
+    /// The adapter must prove that the principal maps to `user_id` and that the
+    /// normalized subject digest belongs to that authenticated user. Raw caller
+    /// identifiers do not constitute this evidence.
+    #[must_use]
+    pub const fn new(
+        principal: PrincipalContext,
+        user_id: UserId,
+        subject_digest: InvitationSubjectDigest,
+    ) -> Self {
+        Self {
+            principal,
+            user_id,
+            subject_digest,
+        }
+    }
+}
+
 /// Tenant- and organization-bound evidence presented during consumption.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InvitationConsumption {
-    tenant_id: TenantId,
     organization_id: OrganizationId,
-    user_id: UserId,
-    subject_digest: InvitationSubjectDigest,
+    recipient: AuthenticatedInvitationRecipient,
     token_digest: InvitationTokenDigest,
 }
 
@@ -25,17 +51,13 @@ impl InvitationConsumption {
     /// Creates immutable one-time consumption evidence.
     #[must_use]
     pub const fn new(
-        tenant_id: TenantId,
         organization_id: OrganizationId,
-        user_id: UserId,
-        subject_digest: InvitationSubjectDigest,
+        recipient: AuthenticatedInvitationRecipient,
         token_digest: InvitationTokenDigest,
     ) -> Self {
         Self {
-            tenant_id,
             organization_id,
-            user_id,
-            subject_digest,
+            recipient,
             token_digest,
         }
     }
@@ -209,7 +231,7 @@ pub fn transition(
     invitation: &Invitation,
     command: InvitationCommand,
 ) -> Result<InvitationTransition, InvitationError> {
-    validate_consumption_scope(invitation, &command.action)?;
+    validate_consumption_scope(invitation, &command)?;
     validate_expected_version(invitation, command.expected_version)?;
     validate_command_time(invitation, command.occurred_at)?;
     validate_current_state(invitation.state())?;
@@ -239,16 +261,34 @@ fn validate_lifetime(
 
 fn validate_consumption_scope(
     invitation: &Invitation,
-    action: &InvitationAction,
+    command: &InvitationCommand,
 ) -> Result<(), InvitationError> {
-    let InvitationAction::Consume(consumption) = action else {
+    let InvitationAction::Consume(consumption) = &command.action else {
         return Ok(());
     };
-    if consumption.tenant_id != *invitation.tenant_id() {
+    validate_consumption_boundaries(invitation, consumption)?;
+    validate_recipient_actor(command, consumption)
+}
+
+fn validate_consumption_boundaries(
+    invitation: &Invitation,
+    consumption: &InvitationConsumption,
+) -> Result<(), InvitationError> {
+    if consumption.recipient.principal.tenant_id() != invitation.tenant_id() {
         return Err(error(InvitationErrorCode::TenantMismatch));
     }
     if consumption.organization_id != *invitation.organization_id() {
         return Err(error(InvitationErrorCode::OrganizationMismatch));
+    }
+    Ok(())
+}
+
+fn validate_recipient_actor(
+    command: &InvitationCommand,
+    consumption: &InvitationConsumption,
+) -> Result<(), InvitationError> {
+    if consumption.recipient.principal.principal_id() != &command.actor {
+        return Err(error(InvitationErrorCode::RecipientPrincipalMismatch));
     }
     Ok(())
 }
@@ -301,7 +341,7 @@ fn apply_consumption(
     occurred_at: UtcTimestamp,
 ) -> Result<(InvitationState, InvitationEventKind, Option<UserId>), InvitationError> {
     require_not_expired(invitation, occurred_at)?;
-    if consumption.subject_digest != invitation.subject_digest() {
+    if consumption.recipient.subject_digest != invitation.subject_digest() {
         return Err(error(InvitationErrorCode::SubjectMismatch));
     }
     if !constant_time_digest_eq(
@@ -313,7 +353,7 @@ fn apply_consumption(
     Ok((
         InvitationState::Consumed,
         InvitationEventKind::Consumed,
-        Some(consumption.user_id.clone()),
+        Some(consumption.recipient.user_id.clone()),
     ))
 }
 

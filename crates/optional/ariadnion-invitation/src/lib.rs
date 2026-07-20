@@ -11,10 +11,11 @@ mod transition;
 pub use error::{InvitationError, InvitationErrorCode};
 pub use ids::{InvitationId, InvitationVersion};
 pub use model::{
-    Invitation, InvitationIssueRequest, InvitationState, InvitationSubjectDigest,
-    InvitationTokenDigest, MAX_INVITATION_LIFETIME_SECONDS,
+    Invitation, InvitationIssueBinding, InvitationIssueRequest, InvitationProofDigests,
+    InvitationState, InvitationSubjectDigest, InvitationTokenDigest, InvitationValidityWindow,
+    MAX_INVITATION_LIFETIME_SECONDS,
 };
 pub use transition::{
-    InvitationAction, InvitationCommand, InvitationConsumption, InvitationEvent,
-    InvitationEventKind, InvitationTransition, issue, transition,
+    AuthenticatedInvitationRecipient, InvitationAction, InvitationCommand, InvitationConsumption,
+    InvitationEvent, InvitationEventKind, InvitationTransition, issue, transition,
 };
