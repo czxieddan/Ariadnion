@@ -30,7 +30,7 @@ pub use maintenance::{
 };
 pub use migration::{
     MigrationApplyStatus, RnmdbMigrationRunner, platform_initial_migration,
-    platform_secret_references_migration,
+    platform_outbox_migration, platform_secret_references_migration,
 };
 pub use migration_executor::{RnmdbMigrationExecutor, RnmdbMigrationPageKeys};
 pub use module::{StorageRnmdbModule, StorageRnmdbModuleOptions};

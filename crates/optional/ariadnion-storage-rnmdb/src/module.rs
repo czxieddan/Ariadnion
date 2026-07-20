@@ -286,6 +286,9 @@ fn apply_startup_migrations(
     runner
         .apply_platform_secret_references(applied_at, context)
         .map_err(map_storage_error)?;
+    runner
+        .apply_platform_outbox(applied_at, context)
+        .map_err(map_storage_error)?;
     Ok(())
 }
 

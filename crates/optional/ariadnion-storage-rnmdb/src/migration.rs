@@ -37,6 +37,17 @@ const PLATFORM_SECRET_REFERENCES_SHA256: [u8; 32] = [
     0x33, 0x01, 0x2e, 0xa2, 0x7b, 0xb5, 0xa2, 0xbe, 0xa3, 0x4c, 0x96, 0x0d, 0xd8, 0xb6, 0x1f, 0xf2,
     0x1c, 0x2a, 0x9c, 0xf4, 0x31, 0x57, 0x06, 0x88, 0xaf, 0x0d, 0xee, 0x64, 0x71, 0xd4, 0xc9, 0xe6,
 ];
+const PLATFORM_OUTBOX_ID: &str = "platform.0003.outbox";
+const PLATFORM_OUTBOX_STATEMENTS: [&str; 4] = [
+    "CREATE TABLE IF NOT EXISTS platform_outbox (tenant_id TEXT NOT NULL, event_id TEXT NOT NULL, topic TEXT NOT NULL, idempotency_key TEXT NOT NULL, payload_hex TEXT NOT NULL, created_at TIMESTAMP NOT NULL, available_at TIMESTAMP NOT NULL, attempt INT64 NOT NULL, state TEXT NOT NULL, lease_token TEXT, lease_worker TEXT, lease_expires_at TIMESTAMP, delivered_at TIMESTAMP, failed_at TIMESTAMP);",
+    "CREATE UNIQUE INDEX IF NOT EXISTS platform_outbox_tenant_event_uq ON platform_outbox (tenant_id, event_id);",
+    "CREATE UNIQUE INDEX IF NOT EXISTS platform_outbox_tenant_idempotency_uq ON platform_outbox (tenant_id, idempotency_key);",
+    "CREATE INDEX IF NOT EXISTS platform_outbox_claim_idx ON platform_outbox (tenant_id, state, available_at, lease_expires_at, created_at);",
+];
+const PLATFORM_OUTBOX_SHA256: [u8; 32] = [
+    0xbe, 0x87, 0xff, 0x30, 0xeb, 0x3e, 0xdf, 0x83, 0x4b, 0xa2, 0x72, 0xce, 0x7f, 0x4a, 0x21, 0x86,
+    0xbd, 0x70, 0xae, 0xc6, 0x94, 0x72, 0x1e, 0x4a, 0xb1, 0xb1, 0xe6, 0xd1, 0xda, 0x0f, 0xed, 0x19,
+];
 
 /// Result of applying one immutable migration definition.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -114,6 +125,30 @@ impl RnmdbMigrationRunner {
             )
         })
     }
+
+    /// Applies the transactional outbox schema exactly once.
+    ///
+    /// The schema stores tenant-scoped events, idempotency boundaries, and
+    /// recoverable lease state. It does not start a dispatcher or perform an
+    /// external side effect while the migration transaction is active.
+    pub fn apply_platform_outbox(
+        &self,
+        applied_at: UtcTimestampMicros,
+        context: &RequestContext,
+    ) -> Result<MigrationApplyStatus, StorageError> {
+        let descriptor = platform_outbox_migration()?;
+        let lookup = migration_lookup(&descriptor)?;
+        let insert = migration_insert(&descriptor, applied_at)?;
+        self.session.with_session(context, |session| {
+            run_migration_transaction(
+                session,
+                &descriptor,
+                &PLATFORM_OUTBOX_STATEMENTS,
+                &lookup,
+                &insert,
+            )
+        })
+    }
 }
 
 /// Returns the initial platform migration after parsing and digest verification.
@@ -141,6 +176,17 @@ pub fn platform_secret_references_migration() -> Result<MigrationDescriptor, Sto
             &PLATFORM_SECRET_REFERENCES_STATEMENTS,
             PLATFORM_SECRET_REFERENCES_SHA256,
         )?,
+        false,
+    )
+}
+
+/// Returns the transactional outbox migration after digest verification.
+pub fn platform_outbox_migration() -> Result<MigrationDescriptor, StorageError> {
+    MigrationDescriptor::new(
+        MigrationId::parse(PLATFORM_OUTBOX_ID)?,
+        SchemaVersion::new(3)?,
+        SchemaVersion::new(4)?,
+        verified_migration_checksum(&PLATFORM_OUTBOX_STATEMENTS, PLATFORM_OUTBOX_SHA256)?,
         false,
     )
 }
@@ -336,10 +382,11 @@ fn validate_schema_statements(statements: &[&str]) -> Result<(), StorageError> {
 fn validate_schema_statement(index: usize, sql: &str) -> Result<(), StorageError> {
     let statement =
         parse_statement(sql).map_err(|_| StorageError::new(StorageErrorCode::IntegrityFailure))?;
-    let allowed = matches!(
-        (index, statement),
-        (0, Statement::CreateTable { .. }) | (1, Statement::CreateIndex { unique: true, .. })
-    );
+    let allowed = match statement {
+        Statement::CreateTable { .. } => index == 0,
+        Statement::CreateIndex { .. } => index > 0,
+        _ => false,
+    };
     if !allowed {
         return Err(StorageError::new(StorageErrorCode::IntegrityFailure));
     }
