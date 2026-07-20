@@ -5,6 +5,7 @@
 
 use std::any::type_name;
 
+mod backup;
 mod codec;
 mod index;
 mod inspection;
@@ -23,6 +24,7 @@ mod session;
 mod transaction;
 mod udf;
 
+pub use backup::{RnmdbBackupAdapter, RnmdbBackupEnvironment};
 pub use codec::{CurrencyCode, MoneyValue, NormalizedJson, StorageUuid, UtcTimestampMicros};
 pub use index::{FixedIndexDefinition, RnmdbIndexManager, RnmdbIndexMethod};
 pub use inspection::{RnmdbInspectionAdapter, RnmdbInspectionResolver};

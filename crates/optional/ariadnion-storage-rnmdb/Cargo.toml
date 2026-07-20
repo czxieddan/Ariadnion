@@ -10,6 +10,7 @@ publish = false
 
 [dependencies]
 ariadnion-core = { path = "../../ariadnion-core" }
+ariadnion-storage-backup = { path = "../ariadnion-storage-backup" }
 ariadnion-storage-domain = { path = "../ariadnion-storage-domain" }
 ariadnion-storage-maintenance = { path = "../ariadnion-storage-maintenance" }
 ariadnion-storage-outbox = { path = "../ariadnion-storage-outbox" }
