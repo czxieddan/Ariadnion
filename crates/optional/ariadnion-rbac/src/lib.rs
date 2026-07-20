@@ -3,11 +3,16 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+mod binding;
 mod error;
 mod evaluate;
 mod ids;
 mod model;
 
+pub use binding::{
+    AuthorizationSubject, MembershipAuthorizationContext, MembershipAuthorizationIdentity,
+    RoleAssignment,
+};
 pub use error::{AuthorizationError, AuthorizationErrorCode};
 pub use evaluate::evaluate;
 pub use ids::{
@@ -15,7 +20,6 @@ pub use ids::{
 };
 pub use model::{
     AuthorizationDecision, AuthorizationDecisionReason, AuthorizationPolicy, AuthorizationRequest,
-    AuthorizationScope, AuthorizationSubject, AuthorizationTarget, MatchedRoleSummary,
-    MembershipAuthorizationContext, PermissionEffect, PermissionRule, ResourceState,
-    RoleAssignment, RoleDefinition,
+    AuthorizationScope, AuthorizationTarget, MatchedRoleSummary, PermissionEffect, PermissionRule,
+    ResourceState, RoleDefinition,
 };

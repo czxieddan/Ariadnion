@@ -2,19 +2,17 @@
 
 use std::collections::BTreeSet;
 
-use ariadnion_core::{PrincipalContext, PrincipalId, TenantId};
-use ariadnion_organization::{MembershipState, OrganizationId, OrganizationState, TeamId};
-use ariadnion_user_domain::{UserLifecycleState, UtcTimestamp};
+use ariadnion_core::TenantId;
+use ariadnion_organization::OrganizationId;
+use ariadnion_user_domain::UtcTimestamp;
 
+use crate::binding::{AuthorizationSubject, RoleAssignment};
 use crate::error::{AuthorizationError, AuthorizationErrorCode, error};
-use crate::ids::{
-    AssignmentId, DecisionId, PermissionId, PolicyVersion, ResourceId, ResourceKind, RoleId,
-};
+use crate::ids::{DecisionId, PermissionId, PolicyVersion, ResourceId, ResourceKind, RoleId};
 
 const MAX_ROLES: usize = 256;
 const MAX_RULES_PER_ROLE: usize = 256;
 const MAX_ASSIGNMENTS: usize = 4_096;
-const MAX_TEAM_IDS: usize = 256;
 
 /// The effect of one permission rule.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -206,190 +204,6 @@ impl AuthorizationScope {
             } => requested.organization_id() == Some(organization_id),
             Self::Resource { .. } => resource_scope_contains(self, requested),
         }
-    }
-}
-
-/// A bounded assignment of one role to one authenticated principal.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RoleAssignment {
-    id: AssignmentId,
-    principal_id: PrincipalId,
-    role_id: RoleId,
-    scope: AuthorizationScope,
-    expires_at: Option<UtcTimestamp>,
-}
-
-impl RoleAssignment {
-    /// Creates an immutable scoped role assignment.
-    #[must_use]
-    pub const fn new(
-        id: AssignmentId,
-        principal_id: PrincipalId,
-        role_id: RoleId,
-        scope: AuthorizationScope,
-        expires_at: Option<UtcTimestamp>,
-    ) -> Self {
-        Self {
-            id,
-            principal_id,
-            role_id,
-            scope,
-            expires_at,
-        }
-    }
-
-    /// Returns the stable assignment identity.
-    #[must_use]
-    pub const fn id(&self) -> &AssignmentId {
-        &self.id
-    }
-
-    /// Returns the assigned authenticated principal identity.
-    #[must_use]
-    pub const fn principal_id(&self) -> &PrincipalId {
-        &self.principal_id
-    }
-
-    /// Returns the assigned role identity.
-    #[must_use]
-    pub const fn role_id(&self) -> &RoleId {
-        &self.role_id
-    }
-
-    /// Returns the maximum scope of this assignment.
-    #[must_use]
-    pub const fn scope(&self) -> &AuthorizationScope {
-        &self.scope
-    }
-
-    /// Returns the exclusive UTC expiry boundary, when present.
-    #[must_use]
-    pub const fn expires_at(&self) -> Option<UtcTimestamp> {
-        self.expires_at
-    }
-
-    pub(crate) fn is_active_at(&self, now: UtcTimestamp) -> bool {
-        self.expires_at.is_none_or(|expires_at| now < expires_at)
-    }
-}
-
-/// Trusted organization and membership facts supplied to authorization.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct MembershipAuthorizationContext {
-    tenant_id: TenantId,
-    organization_id: OrganizationId,
-    organization_state: OrganizationState,
-    membership_state: MembershipState,
-    expires_at: Option<UtcTimestamp>,
-    team_ids: Vec<TeamId>,
-}
-
-impl MembershipAuthorizationContext {
-    /// Creates a membership context with at most 256 unique team identities.
-    ///
-    /// # Errors
-    /// Returns a stable error when the team list exceeds its bound or repeats
-    /// an identity.
-    pub fn new(
-        tenant_id: TenantId,
-        organization_id: OrganizationId,
-        organization_state: OrganizationState,
-        membership_state: MembershipState,
-        expires_at: Option<UtcTimestamp>,
-        team_ids: Vec<TeamId>,
-    ) -> Result<Self, AuthorizationError> {
-        validate_team_ids(&team_ids)?;
-        Ok(Self {
-            tenant_id,
-            organization_id,
-            organization_state,
-            membership_state,
-            expires_at,
-            team_ids,
-        })
-    }
-
-    /// Returns the tenant that owns the organization membership.
-    #[must_use]
-    pub const fn tenant_id(&self) -> &TenantId {
-        &self.tenant_id
-    }
-
-    /// Returns the organization represented by the membership.
-    #[must_use]
-    pub const fn organization_id(&self) -> &OrganizationId {
-        &self.organization_id
-    }
-
-    /// Returns the trusted organization lifecycle state.
-    #[must_use]
-    pub const fn organization_state(&self) -> OrganizationState {
-        self.organization_state
-    }
-
-    /// Returns the trusted membership lifecycle state.
-    #[must_use]
-    pub const fn membership_state(&self) -> MembershipState {
-        self.membership_state
-    }
-
-    /// Returns the exclusive UTC membership expiry boundary, when present.
-    #[must_use]
-    pub const fn expires_at(&self) -> Option<UtcTimestamp> {
-        self.expires_at
-    }
-
-    /// Returns bounded team identities in deterministic input order.
-    #[must_use]
-    pub fn team_ids(&self) -> &[TeamId] {
-        &self.team_ids
-    }
-
-    pub(crate) fn is_active_at(&self, now: UtcTimestamp) -> bool {
-        self.membership_state == MembershipState::Active
-            && self.expires_at.is_none_or(|expires_at| now < expires_at)
-    }
-}
-
-/// Trusted identity and lifecycle facts evaluated for one request.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AuthorizationSubject {
-    principal: PrincipalContext,
-    user_state: UserLifecycleState,
-    membership: Option<MembershipAuthorizationContext>,
-}
-
-impl AuthorizationSubject {
-    /// Creates a subject from a core-authenticated principal and trusted state.
-    #[must_use]
-    pub const fn new(
-        principal: PrincipalContext,
-        user_state: UserLifecycleState,
-        membership: Option<MembershipAuthorizationContext>,
-    ) -> Self {
-        Self {
-            principal,
-            user_state,
-            membership,
-        }
-    }
-
-    /// Returns the trusted core principal context.
-    #[must_use]
-    pub const fn principal(&self) -> &PrincipalContext {
-        &self.principal
-    }
-
-    /// Returns the trusted user lifecycle state.
-    #[must_use]
-    pub const fn user_state(&self) -> UserLifecycleState {
-        self.user_state
-    }
-
-    /// Returns trusted organization membership facts, when available.
-    #[must_use]
-    pub const fn membership(&self) -> Option<&MembershipAuthorizationContext> {
-        self.membership.as_ref()
     }
 }
 
@@ -692,17 +506,6 @@ fn validate_rules(rules: &[PermissionRule]) -> Result<(), AuthorizationError> {
     }
     let mut ids = BTreeSet::new();
     if rules.iter().any(|rule| !ids.insert(rule.permission_id())) {
-        return Err(error(AuthorizationErrorCode::DuplicateIdentity));
-    }
-    Ok(())
-}
-
-fn validate_team_ids(team_ids: &[TeamId]) -> Result<(), AuthorizationError> {
-    if team_ids.len() > MAX_TEAM_IDS {
-        return Err(error(AuthorizationErrorCode::ResourceLimitExceeded));
-    }
-    let mut ids = BTreeSet::new();
-    if team_ids.iter().any(|id| !ids.insert(id)) {
         return Err(error(AuthorizationErrorCode::DuplicateIdentity));
     }
     Ok(())

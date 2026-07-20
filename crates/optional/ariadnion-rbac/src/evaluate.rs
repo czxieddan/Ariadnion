@@ -3,10 +3,10 @@
 use ariadnion_organization::OrganizationState;
 use ariadnion_user_domain::UserLifecycleState;
 
+use crate::binding::{MembershipAuthorizationContext, RoleAssignment};
 use crate::model::{
     AuthorizationDecision, AuthorizationDecisionReason, AuthorizationPolicy, AuthorizationRequest,
-    MatchedRoleSummary, MembershipAuthorizationContext, PermissionEffect, ResourceState,
-    RoleAssignment,
+    MatchedRoleSummary, PermissionEffect, ResourceState,
 };
 
 /// Evaluates one trusted request against an immutable policy snapshot.
@@ -58,10 +58,20 @@ fn tenant_mismatch(policy: &AuthorizationPolicy, request: &AuthorizationRequest)
 }
 
 fn membership_failure(request: &AuthorizationRequest) -> Option<AuthorizationDecisionReason> {
+    if membership_user_mismatch(request) {
+        return Some(AuthorizationDecisionReason::MembershipInactive);
+    }
     match request.scope().organization_id() {
         Some(organization_id) => membership_context_failure(request, organization_id),
         None => None,
     }
+}
+
+fn membership_user_mismatch(request: &AuthorizationRequest) -> bool {
+    request
+        .subject()
+        .membership()
+        .is_some_and(|membership| membership.user_id() != request.subject().user_id())
 }
 
 fn membership_context_failure(
@@ -118,6 +128,16 @@ fn assignment_matches(assignment: &RoleAssignment, request: &AuthorizationReques
     assignment.principal_id() == request.subject().principal().principal_id()
         && assignment.is_active_at(request.now())
         && assignment.scope().contains(request.scope())
+        && active_membership_matches(assignment, request)
+}
+
+fn active_membership_matches(assignment: &RoleAssignment, request: &AuthorizationRequest) -> bool {
+    request.subject().membership().is_some_and(|membership| {
+        assignment.membership_id() == membership.membership_id()
+            && request.subject().user_id() == membership.user_id()
+            && membership.organization_state() == OrganizationState::Active
+            && membership.is_active_at(request.now())
+    })
 }
 
 fn matching_role(
