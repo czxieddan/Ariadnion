@@ -23,7 +23,7 @@ pub use migration::{
     MigrationApplyStatus, RnmdbMigrationRunner, platform_initial_migration,
     platform_secret_references_migration,
 };
-pub use module::StorageRnmdbModule;
+pub use module::{StorageRnmdbModule, StorageRnmdbModuleOptions};
 pub use security::{RnmdbColumnSecurity, SecretLocatorKeyMaterial};
 pub use session::{PageKeyMaterial, RnmdbSessionOwner, SessionOpenOptions};
 pub use transaction::RnmdbTransactionManager;

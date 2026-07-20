@@ -15,13 +15,14 @@ use ariadnion_core::{
 use ariadnion_storage_domain::{StorageError, StorageErrorCode};
 
 use crate::{
-    REVIEWED_RNMDB_COMMIT, RnmdbMigrationRunner, RnmdbSessionOwner, SessionOpenOptions,
-    UtcTimestampMicros,
+    REVIEWED_RNMDB_COMMIT, RnmdbColumnSecurity, RnmdbMigrationRunner, RnmdbSessionOwner,
+    SecretLocatorKeyMaterial, SessionOpenOptions, UtcTimestampMicros,
 };
 
 const MODULE_ID: &str = "org.ariadnion.storage.rnmdb";
 const RELATIONAL_CAPABILITY: &str = "org.ariadnion.storage.relational";
 const PAGE_KEY_CAPABILITY: &str = "org.ariadnion.secret.page-key";
+const SECRET_LOCATOR_KEY_CAPABILITY: &str = "org.ariadnion.secret.locator-column-key";
 const CONFIGURATION_SCHEMA: &str = "org.ariadnion.storage.rnmdb.config";
 const MODULE_VERSION: ModuleVersion = ModuleVersion::new(0, 1, 0);
 const CONTRACT_VERSION: ModuleVersion = ModuleVersion::new(1, 0, 0);
@@ -33,12 +34,32 @@ const CONTRACT_VERSION: ModuleVersion = ModuleVersion::new(1, 0, 0);
 /// typed secret capability requirement and a sensitive configuration path.
 pub struct StorageRnmdbModule {
     descriptor: ModuleDescriptor,
-    options: Mutex<Option<SessionOpenOptions>>,
+    options: Mutex<Option<StorageRnmdbModuleOptions>>,
+}
+
+/// Single-consumption secrets and paths needed to start RNMDB storage.
+pub struct StorageRnmdbModuleOptions {
+    session: SessionOpenOptions,
+    secret_locator_key: SecretLocatorKeyMaterial,
+}
+
+impl StorageRnmdbModuleOptions {
+    /// Combines encrypted-session options with the managed locator-column key.
+    #[must_use]
+    pub const fn new(
+        session: SessionOpenOptions,
+        secret_locator_key: SecretLocatorKeyMaterial,
+    ) -> Self {
+        Self {
+            session,
+            secret_locator_key,
+        }
+    }
 }
 
 impl StorageRnmdbModule {
     /// Creates a module factory with single-consumption session options.
-    pub fn new(options: SessionOpenOptions) -> Result<Self, CoreError> {
+    pub fn new(options: StorageRnmdbModuleOptions) -> Result<Self, CoreError> {
         Ok(Self {
             descriptor: build_descriptor()?,
             options: Mutex::new(Some(options)),
@@ -70,10 +91,14 @@ impl ModuleFactory for StorageRnmdbModule {
         cancellation.check_active()?;
         validate_secret_resolution(&self.descriptor, context.capabilities())?;
         let options = take_options(&self.options)?;
-        let session = RnmdbSessionOwner::open(options)
+        let session = RnmdbSessionOwner::open(options.session)
             .map(Arc::new)
             .map_err(map_storage_error)?;
-        apply_startup_migration(&session, cancellation.clone())?;
+        let request = startup_request_context(cancellation.clone())?;
+        apply_startup_migrations(&session, &request)?;
+        RnmdbColumnSecurity::new(session.clone())
+            .configure_secret_locator(options.secret_locator_key, &request)
+            .map_err(map_storage_error)?;
         Ok(Box::new(StorageRnmdbHandle {
             module_id: self.descriptor.id().clone(),
             cancellation,
@@ -125,7 +150,8 @@ impl ModuleHandle for StorageRnmdbHandle {
 fn build_descriptor() -> Result<ModuleDescriptor, CoreError> {
     let id = ModuleId::parse(MODULE_ID)?;
     let provided = relational_provider(&id)?;
-    let secret = page_key_requirement()?;
+    let page_key = page_key_requirement()?;
+    let locator_key = secret_locator_key_requirement()?;
     ModuleDescriptor::new(ModuleDescriptorInput {
         id,
         version: MODULE_VERSION,
@@ -133,11 +159,14 @@ fn build_descriptor() -> Result<ModuleDescriptor, CoreError> {
         abi_version: CORE_ABI_VERSION,
         provided: vec![provided],
         required: Vec::new(),
-        required_secret_capabilities: vec![secret],
+        required_secret_capabilities: vec![page_key, locator_key],
         configuration: configuration_contract()?,
         resources: module_resource_budget()?,
         shutdown_priority: ShutdownPriority::new(512)?,
-        sensitive_paths: vec!["storage.rnmdb.page_key_ref".into()],
+        sensitive_paths: vec![
+            "storage.rnmdb.page_key_ref".into(),
+            "storage.rnmdb.secret_locator_key_ref".into(),
+        ],
         observability_namespace: "ariadnion.storage.rnmdb".into(),
         audit_namespace: "ariadnion.storage.rnmdb".into(),
     })
@@ -155,6 +184,16 @@ fn page_key_requirement() -> Result<SecretCapabilityRequirement, CoreError> {
     Ok(SecretCapabilityRequirement::new(
         CapabilityRequirement::new(
             CapabilityId::parse(PAGE_KEY_CAPABILITY)?,
+            CONTRACT_VERSION,
+            Some(1),
+        ),
+    ))
+}
+
+fn secret_locator_key_requirement() -> Result<SecretCapabilityRequirement, CoreError> {
+    Ok(SecretCapabilityRequirement::new(
+        CapabilityRequirement::new(
+            CapabilityId::parse(SECRET_LOCATOR_KEY_CAPABILITY)?,
             CONTRACT_VERSION,
             Some(1),
         ),
@@ -197,50 +236,55 @@ fn validate_secret_resolution(
     descriptor: &ModuleDescriptor,
     capabilities: &CapabilityResolution,
 ) -> Result<(), CoreError> {
-    let requirement = descriptor
-        .required_secret_capabilities()
-        .first()
-        .ok_or_else(|| {
-            CoreError::from_code(ErrorCode::Internal)
-                .with_internal_context("RNMDB page-key requirement is missing")
-        })?;
-    if capabilities
-        .provider_for(requirement.requirement().id())
-        .is_none()
-    {
-        return Err(CoreError::from_code(ErrorCode::Unavailable)
-            .with_internal_context("RNMDB page-key capability is unavailable"));
+    let requirements = descriptor.required_secret_capabilities();
+    if requirements.len() != 2 {
+        return Err(CoreError::from_code(ErrorCode::Internal)
+            .with_internal_context("RNMDB secret requirements are incomplete"));
+    }
+    for requirement in requirements {
+        if capabilities
+            .provider_for(requirement.requirement().id())
+            .is_none()
+        {
+            return Err(CoreError::from_code(ErrorCode::Unavailable)
+                .with_internal_context("a required RNMDB secret capability is unavailable"));
+        }
     }
     Ok(())
 }
 
 fn take_options(
-    options: &Mutex<Option<SessionOpenOptions>>,
-) -> Result<SessionOpenOptions, CoreError> {
+    options: &Mutex<Option<StorageRnmdbModuleOptions>>,
+) -> Result<StorageRnmdbModuleOptions, CoreError> {
     lock_options(options).take().ok_or_else(|| {
         CoreError::from_code(ErrorCode::Conflict)
             .with_internal_context("RNMDB session options were already consumed")
     })
 }
 
-fn apply_startup_migration(
-    session: &Arc<RnmdbSessionOwner>,
+fn startup_request_context(
     cancellation: ariadnion_core::CancellationToken,
-) -> Result<(), CoreError> {
-    let context = RequestContext::new(
+) -> Result<RequestContext, CoreError> {
+    Ok(RequestContext::new(
         RequestId::parse("storage-rnmdb-startup")?,
-        TraceId::parse("storage-rnmdb-migration")?,
+        TraceId::parse("storage-rnmdb-startup")?,
         None,
         None,
         cancellation,
-    );
+    ))
+}
+
+fn apply_startup_migrations(
+    session: &Arc<RnmdbSessionOwner>,
+    context: &RequestContext,
+) -> Result<(), CoreError> {
     let applied_at = utc_micros(SystemTime::now())?;
     let runner = RnmdbMigrationRunner::new(session.clone());
     runner
-        .apply_platform_initial(applied_at, &context)
+        .apply_platform_initial(applied_at, context)
         .map_err(map_storage_error)?;
     runner
-        .apply_platform_secret_references(applied_at, &context)
+        .apply_platform_secret_references(applied_at, context)
         .map_err(map_storage_error)?;
     Ok(())
 }
@@ -258,8 +302,8 @@ fn utc_micros(now: SystemTime) -> Result<UtcTimestampMicros, CoreError> {
 }
 
 fn lock_options(
-    options: &Mutex<Option<SessionOpenOptions>>,
-) -> MutexGuard<'_, Option<SessionOpenOptions>> {
+    options: &Mutex<Option<StorageRnmdbModuleOptions>>,
+) -> MutexGuard<'_, Option<StorageRnmdbModuleOptions>> {
     match options.lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
