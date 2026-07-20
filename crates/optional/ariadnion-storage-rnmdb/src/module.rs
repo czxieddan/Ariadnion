@@ -26,6 +26,7 @@ const SECRET_LOCATOR_KEY_CAPABILITY: &str = "org.ariadnion.secret.locator-column
 const CONFIGURATION_SCHEMA: &str = "org.ariadnion.storage.rnmdb.config";
 const MODULE_VERSION: ModuleVersion = ModuleVersion::new(0, 1, 0);
 const CONTRACT_VERSION: ModuleVersion = ModuleVersion::new(1, 0, 0);
+const MODULE_METADATA: &str = include_str!("../module.toml");
 
 /// A single-use factory for one encrypted embedded RNMDB session.
 ///
@@ -152,7 +153,7 @@ fn build_descriptor() -> Result<ModuleDescriptor, CoreError> {
     let provided = relational_provider(&id)?;
     let page_key = page_key_requirement()?;
     let locator_key = secret_locator_key_requirement()?;
-    ModuleDescriptor::new(ModuleDescriptorInput {
+    let descriptor = ModuleDescriptor::new(ModuleDescriptorInput {
         id,
         version: MODULE_VERSION,
         build_commit: REVIEWED_RNMDB_COMMIT.into(),
@@ -169,7 +170,9 @@ fn build_descriptor() -> Result<ModuleDescriptor, CoreError> {
         ],
         observability_namespace: "ariadnion.storage.rnmdb".into(),
         audit_namespace: "ariadnion.storage.rnmdb".into(),
-    })
+    })?;
+    validate_embedded_metadata(&descriptor)?;
+    Ok(descriptor)
 }
 
 fn relational_provider(module_id: &ModuleId) -> Result<CapabilityProvider, CoreError> {
@@ -249,6 +252,25 @@ fn validate_secret_resolution(
             return Err(CoreError::from_code(ErrorCode::Unavailable)
                 .with_internal_context("a required RNMDB secret capability is unavailable"));
         }
+    }
+    Ok(())
+}
+
+fn validate_embedded_metadata(descriptor: &ModuleDescriptor) -> Result<(), CoreError> {
+    validate_metadata_value("id", descriptor.id().as_str())?;
+    validate_metadata_value("version", &descriptor.version().to_string())?;
+    validate_metadata_value("abi", &descriptor.abi_version().to_string())
+}
+
+fn validate_metadata_value(key: &str, expected: &str) -> Result<(), CoreError> {
+    let matches = MODULE_METADATA.lines().any(|line| {
+        line.split_once('=').is_some_and(|(candidate, value)| {
+            candidate.trim() == key && value.trim().trim_matches('"') == expected
+        })
+    });
+    if !matches {
+        return Err(CoreError::from_code(ErrorCode::Conflict)
+            .with_internal_context("embedded RNMDB metadata differs from its descriptor"));
     }
     Ok(())
 }

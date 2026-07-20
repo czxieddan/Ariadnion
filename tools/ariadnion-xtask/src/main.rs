@@ -587,7 +587,7 @@ fn resolve_profile(profile: &str, modules: &[ModuleMetadata]) -> Result<BTreeSet
 fn profile_requirements(profile: &str) -> Vec<Capability> {
     match profile {
         "edge" => vec![diagnostics_requirement()],
-        "standard" | "complete" => Vec::new(),
+        "standard" | "complete" => vec![diagnostics_requirement(), storage_requirement()],
         _ => Vec::new(),
     }
 }
@@ -595,6 +595,17 @@ fn profile_requirements(profile: &str) -> Vec<Capability> {
 fn diagnostics_requirement() -> Capability {
     Capability {
         id: "org.ariadnion.diagnostics.read".into(),
+        version: Version {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+    }
+}
+
+fn storage_requirement() -> Capability {
+    Capability {
+        id: "org.ariadnion.storage.relational".into(),
         version: Version {
             major: 1,
             minor: 0,
