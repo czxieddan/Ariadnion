@@ -10,6 +10,7 @@
 #![deny(missing_docs)]
 
 mod model;
+mod port;
 
 pub use model::{
     BackupCreateRequest, BackupFileVersion, BackupId, BackupIntegrityProof, BackupKeyVersionId,
@@ -19,3 +20,4 @@ pub use model::{
     ManifestSigningKeyVersionId, PurgeDelay, PurgeReceipt, RetentionCount, RetentionDisposition,
     RetentionPolicy, SignedManifestExport,
 };
+pub use port::{BackupDeletionPort, BackupManifestPort, BackupPort, BackupRetentionPort};
