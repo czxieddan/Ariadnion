@@ -1,8 +1,8 @@
 //! Verified RNMDB backup creation behind trusted path and key resolution.
 
 use std::fmt::{self, Debug, Formatter};
-use std::fs::{self, File};
-use std::io::{ErrorKind as IoErrorKind, Read};
+use std::fs;
+use std::io::ErrorKind as IoErrorKind;
 use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
 use std::time::SystemTime;
 
@@ -13,14 +13,11 @@ use ariadnion_storage_backup::{
     BackupVerificationEvidence,
 };
 use ariadnion_storage_domain::{SchemaVersion, StorageError, StorageErrorCode, StorageInstanceId};
-use sha2::{Digest, Sha256};
-use zeroize::Zeroizing;
 
+use crate::file_integrity::digest_location;
 use crate::location::StorageFileLocation;
 use crate::maintenance::{BackupSummary, RnmdbMaintenance, VerificationSummary};
 use crate::session::PageKeyMaterial;
-
-const DIGEST_BUFFER_BYTES: usize = 64 * 1024;
 
 /// Resolves trusted RNMDB backup resources without exposing paths or keys.
 ///
@@ -158,7 +155,11 @@ impl RnmdbBackupAdapter {
         let target_verification = self.authenticate(request, target, context)?;
         validate_copy(&source_verification, &copy, &target_verification)?;
 
-        let digest = digest_verified_target(target, target_verification.file_len_bytes(), context)?;
+        let digest = BackupSha256Digest::new(digest_location(
+            target,
+            target_verification.file_len_bytes(),
+            context,
+        )?);
         let verified_at = SystemTime::now();
         build_evidence(
             request,
@@ -288,55 +289,6 @@ fn validate_copy(
     Ok(())
 }
 
-fn digest_verified_target(
-    target: &StorageFileLocation,
-    expected_bytes: u64,
-    context: &RequestContext,
-) -> Result<BackupSha256Digest, StorageError> {
-    check_context(context)?;
-    let file = File::open(target.path()).map_err(|_| unavailable())?;
-    let maximum_bytes = expected_bytes
-        .checked_add(1)
-        .ok_or_else(resource_exhausted)?;
-    let mut reader = file.take(maximum_bytes);
-    let (digest, total) = hash_reader(&mut reader, context)?;
-    require_exact_length(total, expected_bytes)?;
-    Ok(digest)
-}
-
-fn hash_reader(
-    reader: &mut impl Read,
-    context: &RequestContext,
-) -> Result<(BackupSha256Digest, u64), StorageError> {
-    let mut buffer = Zeroizing::new([0_u8; DIGEST_BUFFER_BYTES]);
-    let mut hasher = Sha256::new();
-    let mut total = 0_u64;
-
-    loop {
-        check_context(context)?;
-        let count = reader.read(&mut buffer[..]).map_err(|_| unavailable())?;
-        if count == 0 {
-            break;
-        }
-        hasher.update(&buffer[..count]);
-        total = add_read_bytes(total, count)?;
-    }
-    check_context(context)?;
-    Ok((BackupSha256Digest::new(hasher.finalize().into()), total))
-}
-
-fn require_exact_length(actual: u64, expected: u64) -> Result<(), StorageError> {
-    if actual != expected {
-        return Err(integrity_failure());
-    }
-    Ok(())
-}
-
-fn add_read_bytes(total: u64, count: usize) -> Result<u64, StorageError> {
-    let count = u64::try_from(count).map_err(|_| resource_exhausted())?;
-    total.checked_add(count).ok_or_else(resource_exhausted)
-}
-
 fn finish_or_remove_incomplete<T>(
     result: Result<T, StorageError>,
     target: &StorageFileLocation,
@@ -411,10 +363,6 @@ fn check_context(context: &RequestContext) -> Result<(), StorageError> {
 
 const fn integrity_failure() -> StorageError {
     StorageError::new(StorageErrorCode::IntegrityFailure)
-}
-
-const fn resource_exhausted() -> StorageError {
-    StorageError::new(StorageErrorCode::ResourceExhausted)
 }
 
 const fn unavailable() -> StorageError {

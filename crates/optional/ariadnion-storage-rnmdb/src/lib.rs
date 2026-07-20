@@ -7,6 +7,7 @@ use std::any::type_name;
 
 mod backup;
 mod codec;
+mod file_integrity;
 mod index;
 mod inspection;
 mod instance;
