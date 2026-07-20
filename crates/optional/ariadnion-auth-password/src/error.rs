@@ -3,13 +3,20 @@
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 
-const ERROR_CODES: [&str; 6] = [
+const ERROR_CODES: [&str; 13] = [
     "PASSWORD_INVALID_LIMITS",
     "PASSWORD_EMPTY",
     "PASSWORD_TOO_SHORT",
     "PASSWORD_TOO_MANY_BYTES",
     "PASSWORD_TOO_MANY_SCALARS",
     "PASSWORD_CONTAINS_NUL",
+    "PASSWORD_EXPLICITLY_DENIED",
+    "PASSWORD_COMPROMISED",
+    "PASSWORD_BREACH_CHECK_UNAVAILABLE",
+    "PASSWORD_BREACH_ASSESSMENT_MISMATCH",
+    "PASSWORD_TOO_MANY_DENIED_FINGERPRINTS",
+    "PASSWORD_DUPLICATE_DENIED_FINGERPRINT",
+    "PASSWORD_INVALID_BREACH_SOURCE_VERSION",
 ];
 
 /// A stable machine-readable password failure code.
@@ -29,6 +36,20 @@ pub enum PasswordErrorCode {
     TooManyScalars = 4,
     /// The supplied password contains a NUL scalar.
     ContainsNul = 5,
+    /// The supplied password matches an explicitly denied fingerprint.
+    ExplicitlyDenied = 6,
+    /// The supplied password is known to be compromised.
+    Compromised = 7,
+    /// The required breach check did not produce a security decision.
+    BreachCheckUnavailable = 8,
+    /// The breach assessment belongs to a different password fingerprint.
+    BreachAssessmentMismatch = 9,
+    /// The policy contains more denied fingerprints than the supported bound.
+    TooManyDeniedFingerprints = 10,
+    /// The policy contains the same denied fingerprint more than once.
+    DuplicateDeniedFingerprint = 11,
+    /// The breach source version is empty, non-ASCII, or too long.
+    InvalidBreachSourceVersion = 12,
 }
 
 impl PasswordErrorCode {

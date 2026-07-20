@@ -52,6 +52,10 @@ impl PasswordSecret {
         validate_scalars(value, limits)?;
         Ok(Self(Zeroizing::new(value.as_bytes().to_vec())))
     }
+
+    pub(crate) fn bytes(&self) -> &[u8] {
+        self.0.as_slice()
+    }
 }
 
 fn validate_byte_length(value: &str, limits: PasswordLimits) -> Result<(), PasswordError> {

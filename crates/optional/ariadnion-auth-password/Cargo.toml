@@ -11,6 +11,7 @@ publish = false
 [dependencies]
 ariadnion-core = { path = "../../ariadnion-core" }
 ariadnion-user-domain = { path = "../ariadnion-user-domain" }
+sha2 = "=0.10.9"
 zeroize = { version = "=1.8.1", features = ["alloc"] }
 
 [lints.rust]
