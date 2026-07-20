@@ -1,0 +1,163 @@
+//! Deterministic fail-closed authorization evaluation.
+
+use ariadnion_organization::{MembershipState, OrganizationState};
+use ariadnion_user_domain::UserLifecycleState;
+
+use crate::model::{
+    AuthorizationDecision, AuthorizationDecisionReason, AuthorizationPolicy, AuthorizationRequest,
+    MatchedRoleSummary, MembershipAuthorizationContext, PermissionEffect, ResourceState,
+    RoleAssignment,
+};
+
+/// Evaluates one trusted request against an immutable policy snapshot.
+///
+/// Version and tenant checks run before lifecycle gates. Matching denies take
+/// precedence over matching allows, and absence of an allow always fails closed.
+/// The result contains only stable identities, a reason, a policy version, and
+/// bounded matched-role summaries.
+#[must_use]
+pub fn evaluate(
+    policy: &AuthorizationPolicy,
+    request: &AuthorizationRequest,
+) -> AuthorizationDecision {
+    let reason = precondition_failure(policy, request);
+    if let Some(reason) = reason {
+        return decision(policy, request, reason, Vec::new());
+    }
+    let matched_roles = matching_roles(policy, request);
+    let reason = permission_reason(&matched_roles);
+    decision(policy, request, reason, matched_roles)
+}
+
+fn precondition_failure(
+    policy: &AuthorizationPolicy,
+    request: &AuthorizationRequest,
+) -> Option<AuthorizationDecisionReason> {
+    if request.policy_version() != policy.version() {
+        return Some(AuthorizationDecisionReason::PolicyVersionMismatch);
+    }
+    if tenant_mismatch(policy, request) {
+        return Some(AuthorizationDecisionReason::TenantMismatch);
+    }
+    if request.subject().user_state() != UserLifecycleState::Active {
+        return Some(AuthorizationDecisionReason::UserInactive);
+    }
+    membership_failure(request).or_else(|| resource_failure(request))
+}
+
+fn tenant_mismatch(policy: &AuthorizationPolicy, request: &AuthorizationRequest) -> bool {
+    let principal_tenant = request.subject().principal().tenant_id();
+    policy
+        .tenant_id()
+        .is_some_and(|tenant| tenant != principal_tenant)
+        || request.scope().tenant_id() != principal_tenant
+        || request
+            .subject()
+            .membership()
+            .is_some_and(|membership| membership.tenant_id() != principal_tenant)
+}
+
+fn membership_failure(request: &AuthorizationRequest) -> Option<AuthorizationDecisionReason> {
+    match request.scope().organization_id() {
+        Some(organization_id) => membership_context_failure(request, organization_id),
+        None => None,
+    }
+}
+
+fn membership_context_failure(
+    request: &AuthorizationRequest,
+    organization_id: &ariadnion_organization::OrganizationId,
+) -> Option<AuthorizationDecisionReason> {
+    match request.subject().membership() {
+        Some(membership) => membership_state_failure(membership, organization_id),
+        None => Some(AuthorizationDecisionReason::MembershipInactive),
+    }
+}
+
+fn membership_state_failure(
+    membership: &MembershipAuthorizationContext,
+    organization_id: &ariadnion_organization::OrganizationId,
+) -> Option<AuthorizationDecisionReason> {
+    match (
+        membership.organization_id() == organization_id,
+        membership.organization_state(),
+        membership.membership_state(),
+    ) {
+        (false, _, _) => Some(AuthorizationDecisionReason::MembershipInactive),
+        (true, OrganizationState::Frozen, _) => {
+            Some(AuthorizationDecisionReason::OrganizationFrozen)
+        }
+        (true, OrganizationState::Active, MembershipState::Active) => None,
+        (true, OrganizationState::Active, _) => {
+            Some(AuthorizationDecisionReason::MembershipInactive)
+        }
+    }
+}
+
+fn resource_failure(request: &AuthorizationRequest) -> Option<AuthorizationDecisionReason> {
+    if request.resource_state() == ResourceState::Active {
+        return None;
+    }
+    Some(AuthorizationDecisionReason::ResourceInactive)
+}
+
+fn matching_roles(
+    policy: &AuthorizationPolicy,
+    request: &AuthorizationRequest,
+) -> Vec<MatchedRoleSummary> {
+    policy
+        .assignments()
+        .iter()
+        .filter(|assignment| assignment_matches(assignment, request))
+        .filter_map(|assignment| matching_role(policy, request, assignment))
+        .collect()
+}
+
+fn assignment_matches(assignment: &RoleAssignment, request: &AuthorizationRequest) -> bool {
+    assignment.principal_id() == request.subject().principal().principal_id()
+        && assignment.is_active_at(request.now())
+        && assignment.scope().contains(request.scope())
+}
+
+fn matching_role(
+    policy: &AuthorizationPolicy,
+    request: &AuthorizationRequest,
+    assignment: &RoleAssignment,
+) -> Option<MatchedRoleSummary> {
+    let role = policy.role(assignment.role_id())?;
+    let rule = role
+        .rules()
+        .iter()
+        .find(|rule| rule.permission_id() == request.permission_id())?;
+    Some(MatchedRoleSummary::new(role.id().clone(), rule.effect()))
+}
+
+fn permission_reason(matched_roles: &[MatchedRoleSummary]) -> AuthorizationDecisionReason {
+    if matched_roles
+        .iter()
+        .any(|role| role.effect() == PermissionEffect::Deny)
+    {
+        return AuthorizationDecisionReason::ExplicitDeny;
+    }
+    if matched_roles
+        .iter()
+        .any(|role| role.effect() == PermissionEffect::Allow)
+    {
+        return AuthorizationDecisionReason::ExplicitAllow;
+    }
+    AuthorizationDecisionReason::NoAllow
+}
+
+fn decision(
+    policy: &AuthorizationPolicy,
+    request: &AuthorizationRequest,
+    reason: AuthorizationDecisionReason,
+    matched_roles: Vec<MatchedRoleSummary>,
+) -> AuthorizationDecision {
+    AuthorizationDecision::new(
+        request.decision_id().clone(),
+        policy.version(),
+        reason,
+        matched_roles,
+    )
+}

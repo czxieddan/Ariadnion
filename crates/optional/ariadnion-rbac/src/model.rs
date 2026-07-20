@@ -1,0 +1,784 @@
+//! Immutable scoped authorization policy and request models.
+
+use std::collections::BTreeSet;
+
+use ariadnion_core::{PrincipalContext, PrincipalId, TenantId};
+use ariadnion_organization::{MembershipState, OrganizationId, OrganizationState, TeamId};
+use ariadnion_user_domain::{UserLifecycleState, UtcTimestamp};
+
+use crate::error::{AuthorizationError, AuthorizationErrorCode, error};
+use crate::ids::{
+    AssignmentId, DecisionId, PermissionId, PolicyVersion, ResourceId, ResourceKind, RoleId,
+};
+
+const MAX_ROLES: usize = 256;
+const MAX_RULES_PER_ROLE: usize = 256;
+const MAX_ASSIGNMENTS: usize = 4_096;
+const MAX_TEAM_IDS: usize = 256;
+
+/// The effect of one permission rule.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum PermissionEffect {
+    /// Matching requests may proceed unless another matching rule denies them.
+    Allow,
+    /// Matching requests must be denied regardless of matching allows.
+    Deny,
+}
+
+/// One exact permission and its authorization effect.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PermissionRule {
+    permission_id: PermissionId,
+    effect: PermissionEffect,
+}
+
+impl PermissionRule {
+    /// Creates an exact permission rule.
+    #[must_use]
+    pub const fn new(permission_id: PermissionId, effect: PermissionEffect) -> Self {
+        Self {
+            permission_id,
+            effect,
+        }
+    }
+
+    /// Returns the permission identity matched by this rule.
+    #[must_use]
+    pub const fn permission_id(&self) -> &PermissionId {
+        &self.permission_id
+    }
+
+    /// Returns the effect applied by this rule.
+    #[must_use]
+    pub const fn effect(&self) -> PermissionEffect {
+        self.effect
+    }
+}
+
+/// A tenant-bound role with a bounded set of exact permission rules.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RoleDefinition {
+    id: RoleId,
+    tenant_id: TenantId,
+    rules: Vec<PermissionRule>,
+}
+
+impl RoleDefinition {
+    /// Creates a tenant-bound role with unique permissions.
+    ///
+    /// # Errors
+    /// Returns a stable construction error when the rule set is empty,
+    /// exceeds 256 entries, or repeats a permission identity.
+    pub fn new(
+        id: RoleId,
+        tenant_id: TenantId,
+        rules: Vec<PermissionRule>,
+    ) -> Result<Self, AuthorizationError> {
+        validate_rules(&rules)?;
+        Ok(Self {
+            id,
+            tenant_id,
+            rules,
+        })
+    }
+
+    /// Returns the stable role identity.
+    #[must_use]
+    pub const fn id(&self) -> &RoleId {
+        &self.id
+    }
+
+    /// Returns the tenant owning this role.
+    #[must_use]
+    pub const fn tenant_id(&self) -> &TenantId {
+        &self.tenant_id
+    }
+
+    /// Returns the bounded permission rules in declaration order.
+    #[must_use]
+    pub fn rules(&self) -> &[PermissionRule] {
+        &self.rules
+    }
+}
+
+/// A hierarchical tenant, organization, or resource authorization scope.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AuthorizationScope {
+    /// Every resource within one tenant.
+    Tenant {
+        /// Tenant boundary for the scope.
+        tenant_id: TenantId,
+    },
+    /// Every resource within one organization.
+    Organization {
+        /// Tenant boundary for the scope.
+        tenant_id: TenantId,
+        /// Organization boundary for the scope.
+        organization_id: OrganizationId,
+    },
+    /// One protected resource and, when used as an assignment, its direct child.
+    Resource {
+        /// Tenant boundary for the scope.
+        tenant_id: TenantId,
+        /// Organization boundary for the resource.
+        organization_id: OrganizationId,
+        /// Optional direct parent resource identity.
+        parent_resource_id: Option<ResourceId>,
+        /// Stable kind used to prevent identity collisions between domains.
+        resource_kind: ResourceKind,
+        /// Stable protected-resource identity.
+        resource_id: ResourceId,
+    },
+}
+
+impl AuthorizationScope {
+    /// Creates a tenant-wide scope.
+    #[must_use]
+    pub const fn tenant(tenant_id: TenantId) -> Self {
+        Self::Tenant { tenant_id }
+    }
+
+    /// Creates an organization-wide scope.
+    #[must_use]
+    pub const fn organization(tenant_id: TenantId, organization_id: OrganizationId) -> Self {
+        Self::Organization {
+            tenant_id,
+            organization_id,
+        }
+    }
+
+    /// Creates an organization-owned resource scope.
+    ///
+    /// # Errors
+    /// Returns [`AuthorizationErrorCode::InvalidArgument`] when a resource is
+    /// its own parent.
+    pub fn resource(
+        tenant_id: TenantId,
+        organization_id: OrganizationId,
+        parent_resource_id: Option<ResourceId>,
+        resource_kind: ResourceKind,
+        resource_id: ResourceId,
+    ) -> Result<Self, AuthorizationError> {
+        if parent_resource_id.as_ref() == Some(&resource_id) {
+            return Err(error(AuthorizationErrorCode::InvalidArgument));
+        }
+        Ok(Self::Resource {
+            tenant_id,
+            organization_id,
+            parent_resource_id,
+            resource_kind,
+            resource_id,
+        })
+    }
+
+    /// Returns the explicit tenant boundary.
+    #[must_use]
+    pub const fn tenant_id(&self) -> &TenantId {
+        match self {
+            Self::Tenant { tenant_id }
+            | Self::Organization { tenant_id, .. }
+            | Self::Resource { tenant_id, .. } => tenant_id,
+        }
+    }
+
+    /// Returns the organization boundary when the scope is not tenant-wide.
+    #[must_use]
+    pub const fn organization_id(&self) -> Option<&OrganizationId> {
+        match self {
+            Self::Tenant { .. } => None,
+            Self::Organization {
+                organization_id, ..
+            }
+            | Self::Resource {
+                organization_id, ..
+            } => Some(organization_id),
+        }
+    }
+
+    pub(crate) fn contains(&self, requested: &Self) -> bool {
+        if self.tenant_id() != requested.tenant_id() {
+            return false;
+        }
+        match self {
+            Self::Tenant { .. } => true,
+            Self::Organization {
+                organization_id, ..
+            } => requested.organization_id() == Some(organization_id),
+            Self::Resource { .. } => resource_scope_contains(self, requested),
+        }
+    }
+}
+
+/// A bounded assignment of one role to one authenticated principal.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RoleAssignment {
+    id: AssignmentId,
+    principal_id: PrincipalId,
+    role_id: RoleId,
+    scope: AuthorizationScope,
+    expires_at: Option<UtcTimestamp>,
+}
+
+impl RoleAssignment {
+    /// Creates an immutable scoped role assignment.
+    #[must_use]
+    pub const fn new(
+        id: AssignmentId,
+        principal_id: PrincipalId,
+        role_id: RoleId,
+        scope: AuthorizationScope,
+        expires_at: Option<UtcTimestamp>,
+    ) -> Self {
+        Self {
+            id,
+            principal_id,
+            role_id,
+            scope,
+            expires_at,
+        }
+    }
+
+    /// Returns the stable assignment identity.
+    #[must_use]
+    pub const fn id(&self) -> &AssignmentId {
+        &self.id
+    }
+
+    /// Returns the assigned authenticated principal identity.
+    #[must_use]
+    pub const fn principal_id(&self) -> &PrincipalId {
+        &self.principal_id
+    }
+
+    /// Returns the assigned role identity.
+    #[must_use]
+    pub const fn role_id(&self) -> &RoleId {
+        &self.role_id
+    }
+
+    /// Returns the maximum scope of this assignment.
+    #[must_use]
+    pub const fn scope(&self) -> &AuthorizationScope {
+        &self.scope
+    }
+
+    /// Returns the exclusive UTC expiry boundary, when present.
+    #[must_use]
+    pub const fn expires_at(&self) -> Option<UtcTimestamp> {
+        self.expires_at
+    }
+
+    pub(crate) fn is_active_at(&self, now: UtcTimestamp) -> bool {
+        self.expires_at.is_none_or(|expires_at| now < expires_at)
+    }
+}
+
+/// Trusted organization and membership facts supplied to authorization.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MembershipAuthorizationContext {
+    tenant_id: TenantId,
+    organization_id: OrganizationId,
+    organization_state: OrganizationState,
+    membership_state: MembershipState,
+    team_ids: Vec<TeamId>,
+}
+
+impl MembershipAuthorizationContext {
+    /// Creates a membership context with at most 256 unique team identities.
+    ///
+    /// # Errors
+    /// Returns a stable error when the team list exceeds its bound or repeats
+    /// an identity.
+    pub fn new(
+        tenant_id: TenantId,
+        organization_id: OrganizationId,
+        organization_state: OrganizationState,
+        membership_state: MembershipState,
+        team_ids: Vec<TeamId>,
+    ) -> Result<Self, AuthorizationError> {
+        validate_team_ids(&team_ids)?;
+        Ok(Self {
+            tenant_id,
+            organization_id,
+            organization_state,
+            membership_state,
+            team_ids,
+        })
+    }
+
+    /// Returns the tenant that owns the organization membership.
+    #[must_use]
+    pub const fn tenant_id(&self) -> &TenantId {
+        &self.tenant_id
+    }
+
+    /// Returns the organization represented by the membership.
+    #[must_use]
+    pub const fn organization_id(&self) -> &OrganizationId {
+        &self.organization_id
+    }
+
+    /// Returns the trusted organization lifecycle state.
+    #[must_use]
+    pub const fn organization_state(&self) -> OrganizationState {
+        self.organization_state
+    }
+
+    /// Returns the trusted membership lifecycle state.
+    #[must_use]
+    pub const fn membership_state(&self) -> MembershipState {
+        self.membership_state
+    }
+
+    /// Returns bounded team identities in deterministic input order.
+    #[must_use]
+    pub fn team_ids(&self) -> &[TeamId] {
+        &self.team_ids
+    }
+}
+
+/// Trusted identity and lifecycle facts evaluated for one request.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuthorizationSubject {
+    principal: PrincipalContext,
+    user_state: UserLifecycleState,
+    membership: Option<MembershipAuthorizationContext>,
+}
+
+impl AuthorizationSubject {
+    /// Creates a subject from a core-authenticated principal and trusted state.
+    #[must_use]
+    pub const fn new(
+        principal: PrincipalContext,
+        user_state: UserLifecycleState,
+        membership: Option<MembershipAuthorizationContext>,
+    ) -> Self {
+        Self {
+            principal,
+            user_state,
+            membership,
+        }
+    }
+
+    /// Returns the trusted core principal context.
+    #[must_use]
+    pub const fn principal(&self) -> &PrincipalContext {
+        &self.principal
+    }
+
+    /// Returns the trusted user lifecycle state.
+    #[must_use]
+    pub const fn user_state(&self) -> UserLifecycleState {
+        self.user_state
+    }
+
+    /// Returns trusted organization membership facts, when available.
+    #[must_use]
+    pub const fn membership(&self) -> Option<&MembershipAuthorizationContext> {
+        self.membership.as_ref()
+    }
+}
+
+/// The trusted availability state of a protected resource.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum ResourceState {
+    /// The resource may participate in authorization decisions.
+    Active,
+    /// The resource is retained but unavailable for access.
+    Unavailable,
+    /// The resource is in a terminal deleted state.
+    Deleted,
+}
+
+/// Explicit protected-resource facts required by every authorization request.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuthorizationTarget {
+    permission_id: PermissionId,
+    scope: AuthorizationScope,
+    resource_state: ResourceState,
+}
+
+impl AuthorizationTarget {
+    /// Creates a target from an exact permission, hierarchical scope, and
+    /// trusted resource availability state.
+    #[must_use]
+    pub const fn new(
+        permission_id: PermissionId,
+        scope: AuthorizationScope,
+        resource_state: ResourceState,
+    ) -> Self {
+        Self {
+            permission_id,
+            scope,
+            resource_state,
+        }
+    }
+
+    /// Returns the exact requested permission identity.
+    #[must_use]
+    pub const fn permission_id(&self) -> &PermissionId {
+        &self.permission_id
+    }
+
+    /// Returns the requested hierarchical resource scope.
+    #[must_use]
+    pub const fn scope(&self) -> &AuthorizationScope {
+        &self.scope
+    }
+
+    /// Returns the trusted resource availability state.
+    #[must_use]
+    pub const fn resource_state(&self) -> ResourceState {
+        self.resource_state
+    }
+}
+
+/// Immutable inputs for one deterministic authorization decision.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuthorizationRequest {
+    decision_id: DecisionId,
+    policy_version: PolicyVersion,
+    subject: AuthorizationSubject,
+    target: AuthorizationTarget,
+    now: UtcTimestamp,
+}
+
+impl AuthorizationRequest {
+    /// Creates a request with an explicit trusted resource target.
+    #[must_use]
+    pub const fn new(
+        decision_id: DecisionId,
+        policy_version: PolicyVersion,
+        subject: AuthorizationSubject,
+        target: AuthorizationTarget,
+        now: UtcTimestamp,
+    ) -> Self {
+        Self {
+            decision_id,
+            policy_version,
+            subject,
+            target,
+            now,
+        }
+    }
+
+    /// Returns the caller-supplied decision identity.
+    #[must_use]
+    pub const fn decision_id(&self) -> &DecisionId {
+        &self.decision_id
+    }
+
+    /// Returns the policy version expected by the caller.
+    #[must_use]
+    pub const fn policy_version(&self) -> PolicyVersion {
+        self.policy_version
+    }
+
+    /// Returns the trusted subject facts.
+    #[must_use]
+    pub const fn subject(&self) -> &AuthorizationSubject {
+        &self.subject
+    }
+
+    /// Returns the exact requested permission identity.
+    #[must_use]
+    pub const fn permission_id(&self) -> &PermissionId {
+        self.target.permission_id()
+    }
+
+    /// Returns the requested resource scope.
+    #[must_use]
+    pub const fn scope(&self) -> &AuthorizationScope {
+        self.target.scope()
+    }
+
+    /// Returns the trusted resource availability state.
+    #[must_use]
+    pub const fn resource_state(&self) -> ResourceState {
+        self.target.resource_state()
+    }
+
+    /// Returns the trusted UTC evaluation instant.
+    #[must_use]
+    pub const fn now(&self) -> UtcTimestamp {
+        self.now
+    }
+}
+
+/// A validated bounded authorization policy snapshot.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuthorizationPolicy {
+    version: PolicyVersion,
+    tenant_id: Option<TenantId>,
+    roles: Vec<RoleDefinition>,
+    assignments: Vec<RoleAssignment>,
+}
+
+impl AuthorizationPolicy {
+    /// Validates and creates an immutable policy snapshot.
+    ///
+    /// # Errors
+    /// Returns a stable error for collection overflow, duplicate identities,
+    /// unknown roles, or any tenant boundary mismatch.
+    pub fn new(
+        version: PolicyVersion,
+        roles: Vec<RoleDefinition>,
+        assignments: Vec<RoleAssignment>,
+    ) -> Result<Self, AuthorizationError> {
+        validate_policy_limits(&roles, &assignments)?;
+        validate_unique_policy_ids(&roles, &assignments)?;
+        let tenant_id = policy_tenant(&roles, &assignments)?;
+        validate_assignments(&roles, &assignments)?;
+        Ok(Self {
+            version,
+            tenant_id,
+            roles,
+            assignments,
+        })
+    }
+
+    /// Returns the immutable policy version.
+    #[must_use]
+    pub const fn version(&self) -> PolicyVersion {
+        self.version
+    }
+
+    /// Returns the single policy tenant when the snapshot contains data.
+    #[must_use]
+    pub const fn tenant_id(&self) -> Option<&TenantId> {
+        self.tenant_id.as_ref()
+    }
+
+    /// Returns roles in deterministic declaration order.
+    #[must_use]
+    pub fn roles(&self) -> &[RoleDefinition] {
+        &self.roles
+    }
+
+    /// Returns assignments in deterministic declaration order.
+    #[must_use]
+    pub fn assignments(&self) -> &[RoleAssignment] {
+        &self.assignments
+    }
+
+    pub(crate) fn role(&self, id: &RoleId) -> Option<&RoleDefinition> {
+        self.roles.iter().find(|role| role.id() == id)
+    }
+}
+
+/// Stable fail-closed reasons emitted by authorization evaluation.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum AuthorizationDecisionReason {
+    /// At least one matching explicit deny rule took precedence.
+    ExplicitDeny,
+    /// At least one matching allow and no matching deny authorized access.
+    ExplicitAllow,
+    /// No active matching assignment produced an allow rule.
+    NoAllow,
+    /// The request expected a different immutable policy version.
+    PolicyVersionMismatch,
+    /// Trusted policy, principal, or resource facts crossed tenant boundaries.
+    TenantMismatch,
+    /// The user lifecycle state does not allow activity.
+    UserInactive,
+    /// The target organization is administratively frozen.
+    OrganizationFrozen,
+    /// Required membership facts are absent, mismatched, or inactive.
+    MembershipInactive,
+    /// The protected resource is unavailable or deleted.
+    ResourceInactive,
+}
+
+/// A safe summary of one role that affected a decision.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MatchedRoleSummary {
+    role_id: RoleId,
+    effect: PermissionEffect,
+}
+
+impl MatchedRoleSummary {
+    pub(crate) const fn new(role_id: RoleId, effect: PermissionEffect) -> Self {
+        Self { role_id, effect }
+    }
+
+    /// Returns the opaque matched role identity.
+    #[must_use]
+    pub const fn role_id(&self) -> &RoleId {
+        &self.role_id
+    }
+
+    /// Returns the matching rule effect.
+    #[must_use]
+    pub const fn effect(&self) -> PermissionEffect {
+        self.effect
+    }
+}
+
+/// A deterministic authorization result without request content or credentials.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuthorizationDecision {
+    decision_id: DecisionId,
+    policy_version: PolicyVersion,
+    reason: AuthorizationDecisionReason,
+    matched_roles: Vec<MatchedRoleSummary>,
+}
+
+impl AuthorizationDecision {
+    pub(crate) const fn new(
+        decision_id: DecisionId,
+        policy_version: PolicyVersion,
+        reason: AuthorizationDecisionReason,
+        matched_roles: Vec<MatchedRoleSummary>,
+    ) -> Self {
+        Self {
+            decision_id,
+            policy_version,
+            reason,
+            matched_roles,
+        }
+    }
+
+    /// Returns whether the stable reason represents an explicit allow.
+    #[must_use]
+    pub const fn allowed(&self) -> bool {
+        matches!(self.reason, AuthorizationDecisionReason::ExplicitAllow)
+    }
+
+    /// Returns the caller-supplied decision identity.
+    #[must_use]
+    pub const fn decision_id(&self) -> &DecisionId {
+        &self.decision_id
+    }
+
+    /// Returns the policy version that produced this result.
+    #[must_use]
+    pub const fn policy_version(&self) -> PolicyVersion {
+        self.policy_version
+    }
+
+    /// Returns the stable fail-closed decision reason.
+    #[must_use]
+    pub const fn reason(&self) -> AuthorizationDecisionReason {
+        self.reason
+    }
+
+    /// Returns safe matched-role summaries in policy assignment order.
+    #[must_use]
+    pub fn matched_roles(&self) -> &[MatchedRoleSummary] {
+        &self.matched_roles
+    }
+}
+
+fn validate_rules(rules: &[PermissionRule]) -> Result<(), AuthorizationError> {
+    if rules.is_empty() {
+        return Err(error(AuthorizationErrorCode::InvalidArgument));
+    }
+    if rules.len() > MAX_RULES_PER_ROLE {
+        return Err(error(AuthorizationErrorCode::ResourceLimitExceeded));
+    }
+    let mut ids = BTreeSet::new();
+    if rules.iter().any(|rule| !ids.insert(rule.permission_id())) {
+        return Err(error(AuthorizationErrorCode::DuplicateIdentity));
+    }
+    Ok(())
+}
+
+fn validate_team_ids(team_ids: &[TeamId]) -> Result<(), AuthorizationError> {
+    if team_ids.len() > MAX_TEAM_IDS {
+        return Err(error(AuthorizationErrorCode::ResourceLimitExceeded));
+    }
+    let mut ids = BTreeSet::new();
+    if team_ids.iter().any(|id| !ids.insert(id)) {
+        return Err(error(AuthorizationErrorCode::DuplicateIdentity));
+    }
+    Ok(())
+}
+
+fn resource_scope_contains(assigned: &AuthorizationScope, requested: &AuthorizationScope) -> bool {
+    let AuthorizationScope::Resource {
+        organization_id,
+        resource_kind,
+        resource_id,
+        ..
+    } = assigned
+    else {
+        return false;
+    };
+    let AuthorizationScope::Resource {
+        organization_id: requested_organization,
+        parent_resource_id,
+        resource_kind: requested_kind,
+        resource_id: requested_id,
+        ..
+    } = requested
+    else {
+        return false;
+    };
+    organization_id == requested_organization
+        && resource_kind == requested_kind
+        && (resource_id == requested_id || parent_resource_id.as_ref() == Some(resource_id))
+}
+
+fn validate_policy_limits(
+    roles: &[RoleDefinition],
+    assignments: &[RoleAssignment],
+) -> Result<(), AuthorizationError> {
+    if roles.len() > MAX_ROLES || assignments.len() > MAX_ASSIGNMENTS {
+        return Err(error(AuthorizationErrorCode::ResourceLimitExceeded));
+    }
+    Ok(())
+}
+
+fn validate_unique_policy_ids(
+    roles: &[RoleDefinition],
+    assignments: &[RoleAssignment],
+) -> Result<(), AuthorizationError> {
+    let mut role_ids = BTreeSet::new();
+    if roles.iter().any(|role| !role_ids.insert(role.id())) {
+        return Err(error(AuthorizationErrorCode::DuplicateIdentity));
+    }
+    let mut assignment_ids = BTreeSet::new();
+    if assignments
+        .iter()
+        .any(|assignment| !assignment_ids.insert(assignment.id()))
+    {
+        return Err(error(AuthorizationErrorCode::DuplicateIdentity));
+    }
+    Ok(())
+}
+
+fn policy_tenant(
+    roles: &[RoleDefinition],
+    assignments: &[RoleAssignment],
+) -> Result<Option<TenantId>, AuthorizationError> {
+    let candidate = roles
+        .first()
+        .map(RoleDefinition::tenant_id)
+        .or_else(|| assignments.first().map(|value| value.scope().tenant_id()));
+    let Some(candidate) = candidate else {
+        return Ok(None);
+    };
+    if roles.iter().any(|role| role.tenant_id() != candidate) {
+        return Err(error(AuthorizationErrorCode::TenantMismatch));
+    }
+    if assignments
+        .iter()
+        .any(|assignment| assignment.scope().tenant_id() != candidate)
+    {
+        return Err(error(AuthorizationErrorCode::TenantMismatch));
+    }
+    Ok(Some(candidate.clone()))
+}
+
+fn validate_assignments(
+    roles: &[RoleDefinition],
+    assignments: &[RoleAssignment],
+) -> Result<(), AuthorizationError> {
+    if assignments
+        .iter()
+        .any(|assignment| !roles.iter().any(|role| role.id() == assignment.role_id()))
+    {
+        return Err(error(AuthorizationErrorCode::UnknownRole));
+    }
+    Ok(())
+}
