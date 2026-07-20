@@ -8,6 +8,7 @@ use ariadnion_core::{CancellationToken, CoreError, ModuleConfigurationSnapshot, 
 use ariadnion_diagnostics::{
     DEFAULT_CONFIGURATION_DIGEST, DiagnosticsModule, DiagnosticsReadPort,
 };
+use ariadnion_storage_rnmdb::REVIEWED_RNMDB_COMMIT;
 
 fn main() -> ExitCode {
     match run() {
@@ -36,9 +37,10 @@ fn run() -> Result<String, CoreError> {
     let report = composition.run_once()?;
     let snapshot = reader.service()?.read();
     Ok(format!(
-        "{} diagnostics_module={} diagnostics_version={}",
+        "{} diagnostics_module={} diagnostics_version={} storage_rnmdb_revision={}",
         report.render_line(),
         snapshot.module_id(),
-        snapshot.version()
+        snapshot.version(),
+        REVIEWED_RNMDB_COMMIT
     ))
 }

@@ -12,6 +12,16 @@ publish = false
 ariadnion-core = { path = "../../crates/ariadnion-core" }
 ariadnion-compose = { path = "../../crates/optional/ariadnion-compose" }
 ariadnion-diagnostics = { path = "../../crates/optional/ariadnion-diagnostics" }
+ariadnion-storage-asset = { path = "../../crates/optional/ariadnion-storage-asset" }
+ariadnion-storage-backup = { path = "../../crates/optional/ariadnion-storage-backup" }
+ariadnion-storage-domain = { path = "../../crates/optional/ariadnion-storage-domain" }
+ariadnion-storage-maintenance = { path = "../../crates/optional/ariadnion-storage-maintenance" }
+ariadnion-storage-migration = { path = "../../crates/optional/ariadnion-storage-migration" }
+ariadnion-storage-outbox = { path = "../../crates/optional/ariadnion-storage-outbox" }
+ariadnion-storage-query = { path = "../../crates/optional/ariadnion-storage-query" }
+ariadnion-storage-restore = { path = "../../crates/optional/ariadnion-storage-restore" }
+ariadnion-storage-rnmdb = { path = "../../crates/optional/ariadnion-storage-rnmdb" }
+ariadnion-storage-upgrade = { path = "../../crates/optional/ariadnion-storage-upgrade" }
 
 [lints.rust]
 unsafe_code = "forbid"
