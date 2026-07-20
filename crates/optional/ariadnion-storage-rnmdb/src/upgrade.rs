@@ -161,14 +161,19 @@ pub trait RnmdbUpgradeEnvironment: Send + Sync {
         context: &RequestContext,
     ) -> Result<RnmdbRetainedSourceInspection, StorageError>;
 
-    /// Atomically compares active identity, consumes authorization, and switches.
+    /// Atomically revalidates bytes, compares active identity, consumes, and switches.
     ///
-    /// The implementation must authenticate the selected instance bytes against
-    /// `authorization.selected_digest()`. The one-shot authorization identity,
-    /// purpose, plan digest, and selected digest must be written durably in the
-    /// same atomic operation as active-pointer selection. A digest mismatch,
-    /// replay, or active mismatch returns an error without changing selection.
-    fn atomic_compare_consume_and_switch(
+    /// The implementation must first exclude every concurrent process and
+    /// environment writer from the selected artifact. Under that same exclusion
+    /// boundary it must authenticate all physical records with the key version
+    /// in `authorization.selected_state()`, validate structure and registered
+    /// domain state, hash those same immutable bytes, and compare the digest with
+    /// `authorization.selected_digest()`. It then compares active identity,
+    /// consumes the one-shot authorization, persists its purpose, plan digest,
+    /// selected digest and state, and changes active selection before releasing
+    /// exclusion. Any failed check, replay, or active mismatch leaves selection
+    /// and authorization consumption unchanged.
+    fn atomic_revalidate_compare_consume_and_switch(
         &self,
         authorization: &SwitchAuthorization,
         context: &RequestContext,
@@ -433,7 +438,7 @@ impl StorageUpgradePort for RnmdbUpgradeAdapter {
         let _maintenance = lock_maintenance(&self.maintenance)?;
         self.require_current_active(authorization.expected_active(), context)?;
         self.environment
-            .atomic_compare_consume_and_switch(&authorization, context)?;
+            .atomic_revalidate_compare_consume_and_switch(&authorization, context)?;
         Ok(SwitchReceipt::from_authorization(authorization))
     }
 }

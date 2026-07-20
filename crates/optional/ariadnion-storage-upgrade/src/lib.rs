@@ -71,7 +71,13 @@ pub trait StorageUpgradePort: Send + Sync {
     ///
     /// The implementation must compare the current active identity with
     /// [`SwitchAuthorization::expected_active`] immediately before switching.
-    /// It must durably reject an already consumed authorization identity.
+    /// While excluding concurrent process and environment writers, it must
+    /// reauthenticate and structurally validate the exact selected bytes,
+    /// validate their domain state against [`SwitchAuthorization::selected_state`],
+    /// and compare their digest with [`SwitchAuthorization::selected_digest`].
+    /// These checks, authorization consumption, and active selection form one
+    /// failure-atomic boundary. It must durably reject an already consumed
+    /// authorization identity.
     /// For [`SwitchPurpose::Rollback`], it must not execute schema changes,
     /// format transforms, key rotation, reverse SQL, or writes to either target.
     /// Returns `Conflict` for active/replay mismatch and stable interruption errors.

@@ -378,6 +378,15 @@ impl SwitchAuthorization {
     pub const fn selected_digest(&self) -> Sha256Digest {
         self.selected_digest
     }
+
+    /// Returns the exact state the atomic switch must revalidate and select.
+    #[must_use]
+    pub const fn selected_state(&self) -> &StorageVersionState {
+        match self.purpose {
+            SwitchPurpose::ActivateUpgrade => self.plan.target_state(),
+            SwitchPurpose::Rollback => &self.plan.source().state,
+        }
+    }
 }
 
 /// Receipt returned only after an atomic selection switch consumes authorization.
