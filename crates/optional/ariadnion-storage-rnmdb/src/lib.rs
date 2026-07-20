@@ -7,6 +7,7 @@ use std::any::type_name;
 
 mod codec;
 mod index;
+mod instance;
 mod location;
 mod maintenance;
 mod migration;
@@ -20,6 +21,9 @@ mod transaction;
 
 pub use codec::{CurrencyCode, MoneyValue, NormalizedJson, StorageUuid, UtcTimestampMicros};
 pub use index::{FixedIndexDefinition, RnmdbIndexManager, RnmdbIndexMethod};
+pub use instance::{
+    RnmdbInstanceProfile, RnmdbInstanceRegistry, RnmdbInstanceResourceLimits,
+};
 pub use location::StorageFileLocation;
 pub use maintenance::{
     BackupSummary, NewTargetSummary, RestorePreflight, RnmdbMaintenance, VerificationSummary,
