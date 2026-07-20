@@ -595,16 +595,32 @@ fn validate_module_metadata(
     module: &ModuleMetadata,
     policy: &DependencyPolicy,
 ) -> Result<(), String> {
+    validate_module_identity(module, policy)?;
+    validate_module_capabilities(module)?;
+    validate_first_party_module(module)
+}
+
+fn validate_module_identity(
+    module: &ModuleMetadata,
+    policy: &DependencyPolicy,
+) -> Result<(), String> {
     validate_identifier(&module.id)?;
     validate_implementation_version(module.version)?;
     validate_abi_version(module.abi)?;
-    validate_capability_metadata(&module.provides, "provided")?;
-    validate_capability_metadata(&module.requires, "required")?;
-    validate_capability_metadata(&module.requires_secrets, "secret")?;
-    validate_secret_requirement_separation(&module.requires, &module.requires_secrets)?;
     if module.abi != policy.core_abi {
         return Err("module ABI is incompatible with the core policy".into());
     }
+    Ok(())
+}
+
+fn validate_module_capabilities(module: &ModuleMetadata) -> Result<(), String> {
+    validate_capability_metadata(&module.provides, "provided")?;
+    validate_capability_metadata(&module.requires, "required")?;
+    validate_capability_metadata(&module.requires_secrets, "secret")?;
+    validate_secret_requirement_separation(&module.requires, &module.requires_secrets)
+}
+
+fn validate_first_party_module(module: &ModuleMetadata) -> Result<(), String> {
     if !module.crate_name.starts_with("ariadnion-") {
         return Err("module crate is not first-party".into());
     }
