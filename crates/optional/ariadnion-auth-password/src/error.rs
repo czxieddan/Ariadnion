@@ -3,7 +3,7 @@
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 
-const ERROR_CODES: [&str; 17] = [
+const ERROR_CODES: [&str; 27] = [
     "PASSWORD_INVALID_LIMITS",
     "PASSWORD_EMPTY",
     "PASSWORD_TOO_SHORT",
@@ -21,6 +21,16 @@ const ERROR_CODES: [&str; 17] = [
     "PASSWORD_INVALID_HASH_RECORD",
     "PASSWORD_HASH_VERIFICATION_BUDGET_EXCEEDED",
     "PASSWORD_HASH_OPERATION_FAILED",
+    "PASSWORD_INVALID_RESET_ARGUMENT",
+    "PASSWORD_INVALID_RESET_LIFETIME",
+    "PASSWORD_INVALID_RESET_EVIDENCE",
+    "PASSWORD_INVALID_RESET_TIME",
+    "PASSWORD_RESET_VERSION_CONFLICT",
+    "PASSWORD_RESET_VERSION_EXHAUSTED",
+    "PASSWORD_RESET_ALREADY_CONSUMED",
+    "PASSWORD_RESET_REVOKED",
+    "PASSWORD_RESET_EXPIRED",
+    "PASSWORD_RESET_NOT_YET_EXPIRED",
 ];
 
 /// A stable machine-readable password failure code.
@@ -62,6 +72,26 @@ pub enum PasswordErrorCode {
     HashVerificationBudgetExceeded = 15,
     /// The cryptographic hashing operation failed without exposing internals.
     HashOperationFailed = 16,
+    /// A password-reset identifier, version, token, or bounded input is invalid.
+    InvalidResetArgument = 17,
+    /// A password-reset validity window is empty, reversed, too long, or unrepresentable.
+    InvalidResetLifetime = 18,
+    /// Password-reset subject or token evidence does not match the aggregate.
+    InvalidResetEvidence = 19,
+    /// A password-reset command occurred before the trusted issuance time.
+    InvalidResetTime = 20,
+    /// The caller supplied a stale optimistic password-reset version.
+    ResetVersionConflict = 21,
+    /// The password-reset version cannot advance beyond `u64::MAX`.
+    ResetVersionExhausted = 22,
+    /// A consumed password reset rejected another lifecycle command.
+    ResetAlreadyConsumed = 23,
+    /// A revoked password reset rejected another lifecycle command.
+    ResetRevoked = 24,
+    /// A password reset expired or reached its exclusive expiry boundary.
+    ResetExpired = 25,
+    /// Expiry was requested before the password-reset expiry boundary.
+    ResetNotYetExpired = 26,
 }
 
 impl PasswordErrorCode {
