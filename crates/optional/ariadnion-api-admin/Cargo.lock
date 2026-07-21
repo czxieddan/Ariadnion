@@ -6,7 +6,10 @@ version = 4
 name = "ariadnion-api-admin"
 version = "0.1.0"
 dependencies = [
+ "ariadnion-audit-domain",
+ "ariadnion-audit-store",
  "ariadnion-auth-api-key",
+ "ariadnion-auth-session",
  "ariadnion-core",
  "ariadnion-invitation",
  "ariadnion-organization",
@@ -15,7 +18,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "ariadnion-audit-domain"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+ "ariadnion-user-domain",
+ "sha2",
+]
+
+[[package]]
+name = "ariadnion-audit-store"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-audit-domain",
+ "ariadnion-core",
+ "ariadnion-user-domain",
+]
+
+[[package]]
 name = "ariadnion-auth-api-key"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+ "ariadnion-user-domain",
+ "sha2",
+ "subtle",
+]
+
+[[package]]
+name = "ariadnion-auth-session"
 version = "0.1.0"
 dependencies = [
  "ariadnion-core",

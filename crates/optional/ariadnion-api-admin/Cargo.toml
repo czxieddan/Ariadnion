@@ -24,3 +24,9 @@ missing_docs = "deny"
 unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"
+
+[dev-dependencies]
+ariadnion-auth-session = { path = "../ariadnion-auth-session" }
+ariadnion-audit-domain = { path = "../ariadnion-audit-domain" }
+ariadnion-audit-store = { path = "../ariadnion-audit-store" }
+
