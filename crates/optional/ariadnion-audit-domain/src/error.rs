@@ -10,6 +10,10 @@ pub enum AuditErrorCode {
     InvalidArgument,
     /// The sequence cannot be incremented.
     SequenceExhausted,
+    /// A persisted chain digest did not match canonical event material.
+    DigestMismatch,
+    /// A persisted event used an unsupported chain digest schema version.
+    UnsupportedVersion,
 }
 
 impl AuditErrorCode {
@@ -19,6 +23,8 @@ impl AuditErrorCode {
         match self {
             Self::InvalidArgument => "AUDIT_INVALID_ARGUMENT",
             Self::SequenceExhausted => "AUDIT_SEQUENCE_EXHAUSTED",
+            Self::DigestMismatch => "AUDIT_DIGEST_MISMATCH",
+            Self::UnsupportedVersion => "AUDIT_UNSUPPORTED_VERSION",
         }
     }
 }
