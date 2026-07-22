@@ -4,34 +4,49 @@ use std::fmt::{self, Debug, Display, Formatter};
 
 /// Stable machine-readable failures returned by audit-store operations.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[repr(u8)]
 #[non_exhaustive]
 pub enum AuditStoreErrorCode {
     /// A value is empty, malformed, or outside its documented bound.
-    InvalidArgument,
+    InvalidArgument = 0,
     /// The append crossed a different tenant boundary.
-    TenantMismatch,
+    TenantMismatch = 1,
     /// The append sequence was not the exact next sequence.
-    SequenceGap,
+    SequenceGap = 2,
     /// The previous chain digest did not match the log tip.
-    ChainBreak,
+    ChainBreak = 3,
     /// The event identity was already present.
-    DuplicateEvent,
+    DuplicateEvent = 4,
     /// The requested export range was empty or inverted.
-    EmptyRange,
+    EmptyRange = 5,
+    /// The stored event digest did not match canonical event material.
+    DigestMismatch = 6,
+    /// The in-memory verification boundary was exceeded.
+    ResourceLimitExceeded = 7,
+    /// A persisted chain component used an unsupported digest schema version.
+    UnsupportedVersion = 8,
+    /// The requested export range was only partially available.
+    IncompleteRange = 9,
 }
+
+const AUDIT_STORE_ERROR_CODES: [&str; 10] = [
+    "AUDIT_STORE_INVALID_ARGUMENT",
+    "AUDIT_STORE_TENANT_MISMATCH",
+    "AUDIT_STORE_SEQUENCE_GAP",
+    "AUDIT_STORE_CHAIN_BREAK",
+    "AUDIT_STORE_DUPLICATE_EVENT",
+    "AUDIT_STORE_EMPTY_RANGE",
+    "AUDIT_STORE_DIGEST_MISMATCH",
+    "AUDIT_STORE_RESOURCE_LIMIT_EXCEEDED",
+    "AUDIT_STORE_UNSUPPORTED_VERSION",
+    "AUDIT_STORE_INCOMPLETE_RANGE",
+];
 
 impl AuditStoreErrorCode {
     /// Returns the stable external machine code.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::InvalidArgument => "AUDIT_STORE_INVALID_ARGUMENT",
-            Self::TenantMismatch => "AUDIT_STORE_TENANT_MISMATCH",
-            Self::SequenceGap => "AUDIT_STORE_SEQUENCE_GAP",
-            Self::ChainBreak => "AUDIT_STORE_CHAIN_BREAK",
-            Self::DuplicateEvent => "AUDIT_STORE_DUPLICATE_EVENT",
-            Self::EmptyRange => "AUDIT_STORE_EMPTY_RANGE",
-        }
+        AUDIT_STORE_ERROR_CODES[self as usize]
     }
 }
 
