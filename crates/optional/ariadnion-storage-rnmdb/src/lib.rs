@@ -73,7 +73,7 @@ pub use upgrade::{
 };
 
 /// The reviewed upstream source revision compiled by this adapter.
-pub const REVIEWED_RNMDB_COMMIT: &str = "8d2b65ad1ee3ee542e1307c1693bc4de4f7edbee";
+pub const REVIEWED_RNMDB_COMMIT: &str = "f07f1da2c1a193ad3732ee779d228ac8ec3dbffd";
 
 /// One compile-time link between an RNMDB package and an adapter boundary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
