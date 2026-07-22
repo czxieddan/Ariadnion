@@ -53,21 +53,29 @@ const PLATFORM_OUTBOX_SHA256: [u8; 32] = [
 
 /// Returns the versioned SHA-256 checksum of an explicitly allowed parsed AST.
 ///
-/// SQL spelling, comments, optional trailing semicolons, and insignificant
+/// SQL spelling, line comments, optional trailing semicolons, and insignificant
 /// whitespace never enter the digest. Unsupported top-level or nested AST
-/// variants fail closed. Before parsing, a conservative lexical budget rejects
-/// combined delimiter nesting and depth-producing expression tokens above 64;
-/// a combined per-statement array/range type-wrapper token budget rejects more
-/// than 16, even when those wrappers belong to independent shallow columns.
-/// These budgets can reject unusually complex shallow SQL to keep parser and
-/// AST-drop recursion bounded.
+/// variants fail closed. Before parsing, lexical validation applies all
+/// resource budgets and then admits only `CREATE TABLE`, `CREATE INDEX`,
+/// `CREATE UNIQUE INDEX`, `CREATE ROLE`, `CREATE POLICY`, and `GRANT` statement
+/// surfaces. Nested queries are rejected before parsing. Each string literal
+/// remains one token, so keywords in its contents do not affect these lexical
+/// checks.
+///
+/// The combined delimiter nesting, depth-producing expression tokens, and set
+/// operations may not exceed 64. A combined per-statement array/range
+/// type-wrapper token budget rejects more than 16, while a conservative
+/// estimate of comma-separated collection items and `CASE` arms rejects more
+/// than 1,024. These budgets can reject unusually complex shallow SQL to keep
+/// parser allocation, parser recursion, and AST-drop recursion bounded.
 ///
 /// # Errors
 ///
 /// Returns [`StorageErrorCode::InvalidArgument`] for an empty definition,
 /// [`StorageErrorCode::ResourceExhausted`] when a documented encoding bound is
-/// exceeded, or [`StorageErrorCode::IntegrityFailure`] when parsing fails or
-/// any statement, field, type, or expression is outside the allowlist.
+/// exceeded, or [`StorageErrorCode::IntegrityFailure`] when lexing or parsing
+/// fails or any statement surface, field, type, or expression is outside the
+/// allowlist.
 pub fn canonical_migration_checksum(
     statements: &[&str],
 ) -> Result<MigrationChecksum, StorageError> {
@@ -101,17 +109,17 @@ pub(crate) enum MigrationLookupOrder {
     LookupBeforeStatements,
 }
 
-pub(crate) struct CanonicalMigrationDefinitionInput {
-    pub(crate) id: &'static str,
-    pub(crate) domain: &'static str,
-    pub(crate) from: u64,
-    pub(crate) to: u64,
-    pub(crate) statements: &'static [&'static str],
-    pub(crate) expected_checksum: [u8; 32],
-    pub(crate) requires_backup: bool,
+struct CanonicalMigrationDefinitionInput {
+    id: &'static str,
+    domain: &'static str,
+    from: u64,
+    to: u64,
+    statements: &'static [&'static str],
+    expected_checksum: [u8; 32],
+    requires_backup: bool,
 }
 
-pub(crate) trait MigrationDefinitionChecksumScheme {
+trait MigrationDefinitionChecksumScheme {
     fn verified_checksum(
         self,
         input: &CanonicalMigrationDefinitionInput,
@@ -120,7 +128,7 @@ pub(crate) trait MigrationDefinitionChecksumScheme {
     fn lookup_order(self) -> MigrationLookupOrder;
 }
 
-pub(crate) fn compile_migration_definition<S: MigrationDefinitionChecksumScheme + Copy>(
+fn compile_migration_definition<S: MigrationDefinitionChecksumScheme + Copy>(
     input: CanonicalMigrationDefinitionInput,
     scheme: S,
 ) -> Result<RnmdbMigrationDefinition, StorageError> {
