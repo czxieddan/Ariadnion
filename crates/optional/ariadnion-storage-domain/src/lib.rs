@@ -16,6 +16,7 @@ const MAX_RECORD_KEY_BYTES: usize = 256;
 const MAX_CURSOR_BYTES: usize = 512;
 const MAX_PAGE_SIZE: usize = 1_000;
 const MAX_MIGRATION_ID_BYTES: usize = 128;
+const MAX_MIGRATION_DOMAIN_BYTES: usize = 128;
 const MAX_MIGRATIONS: usize = 1_024;
 
 /// Stable machine-readable storage failures.
@@ -473,6 +474,26 @@ impl MigrationId {
     }
 }
 
+/// A bounded domain recorded with every immutable migration.
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct MigrationDomain(Box<str>);
+
+impl MigrationDomain {
+    /// Parses a stable ASCII migration domain.
+    pub fn parse(value: &str) -> Result<Self, StorageError> {
+        if !valid_identifier(value, MAX_MIGRATION_DOMAIN_BYTES) {
+            return Err(StorageError::new(StorageErrorCode::InvalidArgument));
+        }
+        Ok(Self(value.into()))
+    }
+
+    /// Returns the validated domain.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 /// A SHA-256 digest of immutable migration content.
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub struct MigrationChecksum([u8; 32]);
@@ -513,6 +534,7 @@ impl Debug for MigrationChecksum {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MigrationDescriptor {
     id: MigrationId,
+    domain: MigrationDomain,
     from: SchemaVersion,
     to: SchemaVersion,
     checksum: MigrationChecksum,
@@ -523,6 +545,7 @@ impl MigrationDescriptor {
     /// Creates a strictly increasing migration transition.
     pub fn new(
         id: MigrationId,
+        domain: MigrationDomain,
         from: SchemaVersion,
         to: SchemaVersion,
         checksum: MigrationChecksum,
@@ -533,6 +556,7 @@ impl MigrationDescriptor {
         }
         Ok(Self {
             id,
+            domain,
             from,
             to,
             checksum,
@@ -544,6 +568,12 @@ impl MigrationDescriptor {
     #[must_use]
     pub const fn id(&self) -> &MigrationId {
         &self.id
+    }
+
+    /// Returns the migration domain recorded in the durable ledger.
+    #[must_use]
+    pub const fn domain(&self) -> &MigrationDomain {
+        &self.domain
     }
 
     /// Returns the source schema version.

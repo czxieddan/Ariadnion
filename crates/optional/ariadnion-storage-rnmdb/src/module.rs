@@ -15,6 +15,7 @@ use ariadnion_core::{
 };
 use ariadnion_storage_domain::{StorageError, StorageErrorCode};
 
+use crate::migration_definition::compiled_migration_definitions;
 use crate::{
     REVIEWED_RNMDB_COMMIT, RnmdbColumnSecurity, RnmdbMigrationRunner, RnmdbSessionOwner,
     SecretLocatorKeyMaterial, SessionOpenOptions, UtcTimestampMicros,
@@ -457,15 +458,14 @@ fn apply_startup_migrations(
 ) -> Result<(), CoreError> {
     let applied_at = utc_micros(SystemTime::now())?;
     let runner = RnmdbMigrationRunner::new(session.clone());
-    runner
-        .apply_platform_initial(applied_at, context)
+    let plan = compiled_migration_definitions()
+        .and_then(|definitions| definitions.startup_plan())
         .map_err(map_storage_error)?;
-    runner
-        .apply_platform_secret_references(applied_at, context)
-        .map_err(map_storage_error)?;
-    runner
-        .apply_platform_outbox(applied_at, context)
-        .map_err(map_storage_error)?;
+    for descriptor in plan.steps() {
+        let _status = runner
+            .apply(descriptor, applied_at, context)
+            .map_err(map_storage_error)?;
+    }
     Ok(())
 }
 

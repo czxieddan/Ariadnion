@@ -18,15 +18,10 @@ use crate::RnmdbInstanceProfile;
 use crate::codec::UtcTimestampMicros;
 use crate::location::StorageFileLocation;
 use crate::maintenance::{RnmdbMaintenance, VerificationSummary};
-use crate::migration::{
-    MigrationApplyStatus, RnmdbMigrationRunner, platform_initial_migration,
-    platform_secret_references_migration,
-};
+use crate::migration::{MigrationApplyStatus, RnmdbMigrationRunner};
+use crate::migration_definition::{RnmdbMigrationDefinitions, compiled_migration_definitions};
 use crate::session::{PageKeyMaterial, RnmdbSessionOwner, SessionOpenOptions};
 
-const PLATFORM_INITIAL_ID: &str = "platform.0001.initial";
-const PLATFORM_SECRET_REFERENCES_ID: &str = "platform.0002.secret-references";
-const PLATFORM_DOMAIN: &str = "platform";
 const MIGRATION_LEDGER_QUERY: &str = "SELECT migration_id, domain, from_version, to_version, checksum FROM platform_schema_migrations LIMIT 1025;";
 
 /// Single-use page-key inputs for one new-target migration operation.
@@ -81,6 +76,7 @@ impl Debug for RnmdbMigrationPageKeys {
 /// preflight and application; the final target is independently authenticated
 /// and its complete migration ledger is checked before a receipt is returned.
 pub struct RnmdbMigrationExecutor {
+    definitions: &'static RnmdbMigrationDefinitions,
     data_root: PathBuf,
     source: StorageFileLocation,
     target: StorageFileLocation,
@@ -106,6 +102,7 @@ impl RnmdbMigrationExecutor {
         target_profile: RnmdbInstanceProfile,
         keys: RnmdbMigrationPageKeys,
     ) -> Result<Self, StorageError> {
+        let definitions = compiled_migration_definitions()?;
         let target = target_profile.instance().clone();
         ensure_distinct_instances(&source, &target)?;
         let data_root = data_root.into();
@@ -113,6 +110,7 @@ impl RnmdbMigrationExecutor {
         let target = StorageFileLocation::new(data_root.clone(), target)?;
         let (source_key, target_session_key, target_authentication_key) = keys.into_parts();
         Ok(Self {
+            definitions,
             data_root,
             source,
             target,
@@ -158,7 +156,7 @@ impl RnmdbMigrationExecutor {
         let options =
             SessionOpenOptions::new(self.target_profile.clone(), self.data_root.clone(), key)?;
         let session = Arc::new(RnmdbSessionOwner::open(options)?);
-        apply_known_plan(&session, plan, context)?;
+        apply_compiled_plan(&session, self.definitions, plan, context)?;
         Ok(session)
     }
 
@@ -171,7 +169,7 @@ impl RnmdbMigrationExecutor {
         let key = take_key(&self.target_authentication_key)?;
         let verification = RnmdbMaintenance::verify(&self.target, key, context)?;
         require_authenticated(&verification)?;
-        verify_application_version(session, expected, context)
+        verify_application_version(session, self.definitions, expected, context)
     }
 
     fn claim_preflight(&self) -> Result<(), StorageError> {
@@ -267,7 +265,7 @@ impl MigrationExecutorPort for RnmdbMigrationExecutor {
         context: &RequestContext,
     ) -> Result<MigrationPreflight, StorageError> {
         self.validate_bound_operation(source, target)?;
-        validate_known_plan(plan)?;
+        self.definitions.validate_plan(plan)?;
         check_context(context)?;
         self.claim_preflight()?;
         let preflight = self.perform_preflight(context)?;
@@ -284,7 +282,7 @@ impl MigrationExecutorPort for RnmdbMigrationExecutor {
         context: &RequestContext,
     ) -> Result<(), StorageError> {
         self.validate_bound_operation(source, target)?;
-        validate_known_plan(plan)?;
+        self.definitions.validate_plan(plan)?;
         require_permitted_preflight(&preflight, plan)?;
         check_context(context)?;
         self.claim_application(plan)?;
@@ -321,12 +319,6 @@ enum ExecutionState {
     },
     Verifying,
     Complete,
-}
-
-#[derive(Clone, Copy)]
-enum KnownMigration {
-    PlatformInitial,
-    PlatformSecretReferences,
 }
 
 fn ensure_distinct_instances(
@@ -367,59 +359,23 @@ fn require_permitted_preflight(
     Ok(())
 }
 
-fn validate_known_plan(plan: &MigrationPlan) -> Result<(), StorageError> {
-    if plan.steps().is_empty() || plan.requires_backup() {
-        return Err(StorageError::new(StorageErrorCode::MigrationRequired));
-    }
-    for descriptor in plan.steps() {
-        KnownMigration::from_descriptor(descriptor)?;
-    }
-    Ok(())
-}
-
-impl KnownMigration {
-    fn from_descriptor(descriptor: &MigrationDescriptor) -> Result<Self, StorageError> {
-        let (known, expected) = match descriptor.id().as_str() {
-            PLATFORM_INITIAL_ID => (Self::PlatformInitial, platform_initial_migration()?),
-            PLATFORM_SECRET_REFERENCES_ID => (
-                Self::PlatformSecretReferences,
-                platform_secret_references_migration()?,
-            ),
-            _ => return Err(StorageError::new(StorageErrorCode::MigrationRequired)),
-        };
-        if descriptor != &expected {
-            return Err(StorageError::new(StorageErrorCode::IntegrityFailure));
-        }
-        Ok(known)
-    }
-}
-
-fn apply_known_plan(
+fn apply_compiled_plan(
     session: &Arc<RnmdbSessionOwner>,
+    definitions: &RnmdbMigrationDefinitions,
     plan: &MigrationPlan,
     context: &RequestContext,
 ) -> Result<(), StorageError> {
+    definitions.validate_plan(plan)?;
     let applied_at = current_utc_micros()?;
     let runner = RnmdbMigrationRunner::new(session.clone());
     for descriptor in plan.steps() {
-        let migration = KnownMigration::from_descriptor(descriptor)?;
-        apply_known_migration(&runner, migration, applied_at, context)?;
+        let status = runner.apply(descriptor, applied_at, context)?;
+        require_applied(status)?;
     }
     Ok(())
 }
 
-fn apply_known_migration(
-    runner: &RnmdbMigrationRunner,
-    migration: KnownMigration,
-    applied_at: UtcTimestampMicros,
-    context: &RequestContext,
-) -> Result<(), StorageError> {
-    let status = match migration {
-        KnownMigration::PlatformInitial => runner.apply_platform_initial(applied_at, context)?,
-        KnownMigration::PlatformSecretReferences => {
-            runner.apply_platform_secret_references(applied_at, context)?
-        }
-    };
+fn require_applied(status: MigrationApplyStatus) -> Result<(), StorageError> {
     if status != MigrationApplyStatus::Applied {
         return Err(StorageError::new(StorageErrorCode::IntegrityFailure));
     }
@@ -437,22 +393,24 @@ fn current_utc_micros() -> Result<UtcTimestampMicros, StorageError> {
 
 fn verify_application_version(
     session: &RnmdbSessionOwner,
+    definitions: &RnmdbMigrationDefinitions,
     expected: SchemaVersion,
     context: &RequestContext,
 ) -> Result<(), StorageError> {
     let output = session.with_session(context, |local| local.execute(MIGRATION_LEDGER_QUERY))?;
-    validate_migration_ledger(output, expected)
+    validate_migration_ledger(output, definitions, expected)
 }
 
 fn validate_migration_ledger(
     output: CommandOutput,
+    definitions: &RnmdbMigrationDefinitions,
     expected_version: SchemaVersion,
 ) -> Result<(), StorageError> {
     let CommandOutput::Rows(batch) = output else {
         return Err(StorageError::new(StorageErrorCode::IntegrityFailure));
     };
     validate_ledger_columns(batch.columns())?;
-    let descriptors = expected_ledger(expected_version)?;
+    let descriptors = definitions.ledger_descriptors(expected_version)?;
     if batch.rows().len() != descriptors.len() {
         return Err(StorageError::new(StorageErrorCode::IntegrityFailure));
     }
@@ -460,17 +418,6 @@ fn validate_migration_ledger(
         require_one_ledger_row(batch.rows(), descriptor)?;
     }
     Ok(())
-}
-
-fn expected_ledger(version: SchemaVersion) -> Result<Vec<MigrationDescriptor>, StorageError> {
-    match version.get() {
-        2 => Ok(vec![platform_initial_migration()?]),
-        3 => Ok(vec![
-            platform_initial_migration()?,
-            platform_secret_references_migration()?,
-        ]),
-        _ => Err(StorageError::new(StorageErrorCode::MigrationRequired)),
-    }
 }
 
 fn validate_ledger_columns(columns: &[ColumnSchema]) -> Result<(), StorageError> {
@@ -525,7 +472,7 @@ fn ledger_row_matches(row: &Row, descriptor: &MigrationDescriptor) -> Result<boo
         .map_err(|_| StorageError::new(StorageErrorCode::IntegrityFailure))?;
     let expected_checksum = descriptor.checksum().to_string();
     Ok(id.as_str() == descriptor.id().as_str()
-        && domain.as_str() == PLATFORM_DOMAIN
+        && domain.as_str() == descriptor.domain().as_str()
         && *from == expected_from
         && *to == expected_to
         && checksum.as_str() == expected_checksum)

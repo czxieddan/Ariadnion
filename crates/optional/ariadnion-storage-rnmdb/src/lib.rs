@@ -14,6 +14,7 @@ mod instance;
 mod location;
 mod maintenance;
 mod migration;
+mod migration_definition;
 mod migration_executor;
 mod module;
 mod outbox;
@@ -41,6 +42,7 @@ pub use migration::{
     MigrationApplyStatus, RnmdbMigrationRunner, platform_initial_migration,
     platform_outbox_migration, platform_secret_references_migration,
 };
+pub use migration_definition::canonical_migration_checksum;
 pub use migration_executor::{RnmdbMigrationExecutor, RnmdbMigrationPageKeys};
 pub use module::{StorageRnmdbModule, StorageRnmdbModuleOptions};
 pub use outbox::{OutboxLeaseKeyMaterial, RnmdbOutboxRepository};
