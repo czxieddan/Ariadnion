@@ -5,6 +5,7 @@
 
 mod error;
 mod ids;
+pub mod migrations;
 mod model;
 
 pub use error::{AuditError, AuditErrorCode};

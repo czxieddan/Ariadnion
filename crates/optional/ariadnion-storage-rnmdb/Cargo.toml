@@ -9,6 +9,8 @@ publish = false
 [workspace]
 
 [dependencies]
+ariadnion-audit-domain = { path = "../ariadnion-audit-domain" }
+ariadnion-audit-store = { path = "../ariadnion-audit-store" }
 ariadnion-core = { path = "../../ariadnion-core" }
 ariadnion-storage-backup = { path = "../ariadnion-storage-backup" }
 ariadnion-storage-domain = { path = "../ariadnion-storage-domain" }

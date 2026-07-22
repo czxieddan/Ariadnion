@@ -52,6 +52,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "ariadnion-audit-domain"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+ "ariadnion-user-domain",
+ "sha2 0.10.9",
+]
+
+[[package]]
+name = "ariadnion-audit-store"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-audit-domain",
+ "ariadnion-core",
+ "ariadnion-user-domain",
+]
+
+[[package]]
 name = "ariadnion-core"
 version = "0.1.0"
 dependencies = [
@@ -110,6 +128,8 @@ dependencies = [
 name = "ariadnion-storage-rnmdb"
 version = "0.1.0"
 dependencies = [
+ "ariadnion-audit-domain",
+ "ariadnion-audit-store",
  "ariadnion-core",
  "ariadnion-storage-backup",
  "ariadnion-storage-domain",

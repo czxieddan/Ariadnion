@@ -5,6 +5,12 @@ mod canonical;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
+use ariadnion_audit_domain::migrations::{
+    IDENTITY_AUDIT_MIGRATION_CANONICAL_V1_SHA256, IDENTITY_AUDIT_MIGRATION_DOMAIN,
+    IDENTITY_AUDIT_MIGRATION_FROM_VERSION, IDENTITY_AUDIT_MIGRATION_ID,
+    IDENTITY_AUDIT_MIGRATION_REQUIRES_BACKUP, IDENTITY_AUDIT_MIGRATION_STATEMENTS,
+    IDENTITY_AUDIT_MIGRATION_TO_VERSION,
+};
 use ariadnion_storage_domain::{
     MigrationCatalog, MigrationChecksum, MigrationDescriptor, MigrationDomain, MigrationId,
     MigrationPlan, SchemaVersion, StorageError, StorageErrorCode,
@@ -186,6 +192,11 @@ impl RnmdbMigrationDefinitions {
         let identity_users = compile_identity_users_definition()?;
         let identity_id = identity_users.descriptor().id().clone();
         if definitions.insert(identity_id, identity_users).is_some() {
+            return Err(integrity_failure());
+        }
+        let identity_audit = compile_identity_audit_definition()?;
+        let audit_id = identity_audit.descriptor().id().clone();
+        if definitions.insert(audit_id, identity_audit).is_some() {
             return Err(integrity_failure());
         }
         Ok(Self {
@@ -390,6 +401,19 @@ fn compile_identity_users_definition() -> Result<RnmdbMigrationDefinition, Stora
         statements: IDENTITY_USERS_MIGRATION_STATEMENTS,
         expected_checksum: IDENTITY_USERS_MIGRATION_CANONICAL_V1_SHA256,
         requires_backup: IDENTITY_USERS_MIGRATION_REQUIRES_BACKUP,
+    };
+    compile_migration_definition(input, CanonicalAstV1)
+}
+
+fn compile_identity_audit_definition() -> Result<RnmdbMigrationDefinition, StorageError> {
+    let input = CanonicalMigrationDefinitionInput {
+        id: IDENTITY_AUDIT_MIGRATION_ID,
+        domain: IDENTITY_AUDIT_MIGRATION_DOMAIN,
+        from: IDENTITY_AUDIT_MIGRATION_FROM_VERSION,
+        to: IDENTITY_AUDIT_MIGRATION_TO_VERSION,
+        statements: IDENTITY_AUDIT_MIGRATION_STATEMENTS,
+        expected_checksum: IDENTITY_AUDIT_MIGRATION_CANONICAL_V1_SHA256,
+        requires_backup: IDENTITY_AUDIT_MIGRATION_REQUIRES_BACKUP,
     };
     compile_migration_definition(input, CanonicalAstV1)
 }

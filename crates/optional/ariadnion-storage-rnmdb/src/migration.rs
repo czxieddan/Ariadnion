@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use ariadnion_audit_domain::migrations::IDENTITY_AUDIT_MIGRATION_ID;
 use ariadnion_core::RequestContext;
 use ariadnion_storage_domain::{MigrationDescriptor, StorageError, StorageErrorCode};
 use ariadnion_user_domain::migrations::IDENTITY_USERS_MIGRATION_ID;
@@ -142,6 +143,14 @@ pub fn platform_outbox_migration() -> Result<MigrationDescriptor, StorageError> 
 /// version-four to version-five transition explicitly through the registry.
 pub fn identity_users_migration() -> Result<MigrationDescriptor, StorageError> {
     compiled_migration_definitions()?.descriptor(IDENTITY_USERS_MIGRATION_ID)
+}
+
+/// Returns the durable identity audit migration after canonical digest verification.
+///
+/// The migration remains outside module startup. Callers must request the
+/// version-five to version-six transition explicitly through the registry.
+pub fn identity_audit_migration() -> Result<MigrationDescriptor, StorageError> {
+    compiled_migration_definitions()?.descriptor(IDENTITY_AUDIT_MIGRATION_ID)
 }
 
 fn migration_insert(
