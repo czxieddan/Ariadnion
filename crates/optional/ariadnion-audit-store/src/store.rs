@@ -130,11 +130,11 @@ impl AuditChainHead {
     }
 }
 
-/// Inclusive start and exclusive end sequence cursor for export.
+/// Inclusive sequence bounds for one exact export page.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AuditExportCursor {
     start: AuditSequence,
-    end_exclusive: AuditSequence,
+    end_inclusive: AuditSequence,
 }
 
 impl AuditExportCursor {
@@ -152,16 +152,31 @@ impl AuditExportCursor {
         if end_exclusive.get() <= start.get() {
             return Err(error(AuditStoreErrorCode::EmptyRange));
         }
-        let span = end_exclusive
+        let end_inclusive = end_exclusive
             .get()
-            .checked_sub(start.get())
+            .checked_sub(1)
+            .and_then(|value| AuditSequence::new(value).ok())
             .ok_or_else(|| error(AuditStoreErrorCode::InvalidArgument))?;
-        if span > MAX_AUDIT_EXPORT_SPAN {
-            return Err(error(AuditStoreErrorCode::InvalidArgument));
-        }
+        Self::through(start, end_inclusive)
+    }
+
+    /// Creates an export cursor with inclusive start and end sequences.
+    ///
+    /// Equal bounds select one event, including at `u64::MAX`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AuditStoreErrorCode::EmptyRange`] when the end is below the
+    /// start, or [`AuditStoreErrorCode::InvalidArgument`] when the inclusive
+    /// span exceeds 1,024 events.
+    pub fn through(
+        start: AuditSequence,
+        end_inclusive: AuditSequence,
+    ) -> Result<Self, AuditStoreError> {
+        validate_export_span(start, end_inclusive)?;
         Ok(Self {
             start,
-            end_exclusive,
+            end_inclusive,
         })
     }
 
@@ -171,11 +186,32 @@ impl AuditExportCursor {
         self.start
     }
 
-    /// Returns the exclusive end sequence.
+    /// Returns the inclusive end sequence.
     #[must_use]
-    pub const fn end_exclusive(self) -> AuditSequence {
-        self.end_exclusive
+    pub const fn end_inclusive(self) -> AuditSequence {
+        self.end_inclusive
     }
+
+    /// Returns the exclusive end, or none when the inclusive end is `u64::MAX`.
+    #[must_use]
+    pub fn end_exclusive(self) -> Option<AuditSequence> {
+        self.end_inclusive.next().ok()
+    }
+}
+
+fn validate_export_span(
+    start: AuditSequence,
+    end_inclusive: AuditSequence,
+) -> Result<(), AuditStoreError> {
+    let span = end_inclusive
+        .get()
+        .checked_sub(start.get())
+        .and_then(|value| value.checked_add(1))
+        .ok_or_else(|| error(AuditStoreErrorCode::EmptyRange))?;
+    if span > MAX_AUDIT_EXPORT_SPAN {
+        return Err(error(AuditStoreErrorCode::InvalidArgument));
+    }
+    Ok(())
 }
 
 /// Immutable ordered snapshot of one tenant audit log.
@@ -315,7 +351,7 @@ pub fn export_audit_range(
         .iter()
         .filter(|event| {
             event.sequence().get() >= cursor.start().get()
-                && event.sequence().get() < cursor.end_exclusive().get()
+                && event.sequence().get() <= cursor.end_inclusive().get()
         })
         .cloned()
         .collect();
@@ -463,11 +499,7 @@ fn validate_export_coverage(
     let Some((first, last)) = events.first().zip(events.last()) else {
         return Err(error(AuditStoreErrorCode::EmptyRange));
     };
-    let actual_end = last
-        .sequence()
-        .next()
-        .map_err(|_| error(AuditStoreErrorCode::InvalidArgument))?;
-    if first.sequence() != cursor.start() || actual_end != cursor.end_exclusive() {
+    if first.sequence() != cursor.start() || last.sequence() != cursor.end_inclusive() {
         return Err(error(AuditStoreErrorCode::IncompleteRange));
     }
     Ok(())
