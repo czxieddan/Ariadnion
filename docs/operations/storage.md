@@ -3,7 +3,7 @@
 Ariadnion uses RNovModularDB (RNMDB) as its embedded data engine. The standard
 and complete compositions run storage in the Ariadnion process; the primary
 data path does not use TCP or an internal database service. The reviewed RNMDB
-revision is `8d2b65ad1ee3ee542e1307c1693bc4de4f7edbee`.
+revision is `f07f1da2c1a193ad3732ee779d228ac8ec3dbffd`.
 
 This document defines the operator boundary for inspection, verification,
 backup, restore, upgrade, and rollback. It does not define a public SQL or
@@ -132,12 +132,14 @@ material.
 The current implementation keeps two executors separate:
 
 - `RnmdbUpgradeAdapter` accepts exactly one RNMDB legacy v1 to current v2
-  format window and may rotate the page key during that physical rewrite.
+  format window and may rotate the page key during that physical rewrite. The
+  pinned RNMDB revision also supports authenticated current-v2 rekey, but that
+  upstream capability is not yet exposed by this adapter and current-v2
+  key-only plans remain rejected here.
 - `RnmdbMigrationExecutor` copies a supported-format source and applies only
   registered, checksum-bound application-schema transitions to the new target.
 
-The pinned RNMDB revision cannot rekey an already-current v2 file. The physical
-adapter therefore rejects key-only plans, application-schema steps, multiple
+The physical adapter rejects key-only plans, application-schema steps, multiple
 format windows, and any format window other than v1 to v2 before it writes a
 target. A coordinator must not combine the two executor receipts into evidence
 for a single plan.
@@ -214,13 +216,10 @@ secrets, filesystem paths from internal errors, or sensitive row content.
 
 ## Current Security Gate
 
-The reviewed RNMDB revision does not enforce row policies for every write
-shape: `INSERT` lacks row-policy enforcement, and policy predicates are lost in
-the reviewed `UPDATE` and `DELETE` planning paths. Ariadnion therefore requires
-an unskippable typed tenant predicate in every write adapter and fails closed
-when tenant scope is absent or inconsistent.
-
-This application-level control is mandatory but does not close the engine-level
-defect. Storage security acceptance remains blocked until RNMDB fixes all three
-write paths, Ariadnion pins and reviews the new 40-character Git revision, and
-cross-tenant attack tests verify both physical plans and actual changed rows.
+The pinned RNMDB revision enforces row-policy checks for `INSERT`, `UPDATE`,
+and `DELETE`; the Ariadnion P2 validation also exercises physical plans and
+actual changed rows across tenants. Ariadnion still requires an unskippable
+typed tenant predicate in every write adapter and fails closed when tenant
+scope is absent or inconsistent. This application-level control remains a
+defense-in-depth boundary and must not be replaced by an implicit database
+role or a caller-supplied string.
