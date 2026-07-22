@@ -3,6 +3,8 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod migrations;
+
 use std::fmt::{self, Debug, Display, Formatter};
 use std::num::NonZeroU64;
 
@@ -212,8 +214,31 @@ pub enum DeletionRecoveryState {
     Suspended,
 }
 
+/// The complete lossless lifecycle state stored for a user snapshot.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum UserSnapshotState {
+    /// The user can only consume the associated one-time invitation.
+    Invited,
+    /// The user may perform activity permitted by authorization policy.
+    Active,
+    /// New user activity must remain blocked.
+    Suspended,
+    /// Activity is blocked while the deletion cooling-off period runs.
+    DeletionPending {
+        /// UTC time at which deletion was requested.
+        requested_at: UtcTimestamp,
+        /// Earliest UTC time at which final deletion may occur.
+        not_before: DeletionNotBefore,
+        /// State to restore if the deletion is recovered.
+        recovery_state: DeletionRecoveryState,
+    },
+    /// The user has entered the irreversible terminal lifecycle state.
+    Deleted,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct PendingDeletion {
+    requested_at: UtcTimestamp,
     not_before: DeletionNotBefore,
     recovery_state: DeletionRecoveryState,
 }
@@ -260,6 +285,30 @@ impl User {
         }
     }
 
+    /// Reconstructs a user from one complete persisted snapshot.
+    ///
+    /// The constructor accepts only lifecycle states and optimistic versions
+    /// reachable through the public transition rules. Pending deletion also
+    /// revalidates its stored request and not-before timestamps instead of
+    /// relying on how the typed boundary was originally constructed.
+    ///
+    /// # Errors
+    /// Returns [`UserDomainErrorCode::InvalidArgument`] when the state,
+    /// version, or pending-deletion timestamps cannot form a reachable user.
+    pub fn from_snapshot(
+        id: UserId,
+        tenant_id: TenantId,
+        version: UserVersion,
+        state: UserSnapshotState,
+    ) -> Result<Self, UserDomainError> {
+        Ok(Self {
+            id,
+            tenant_id,
+            version,
+            state: user_state_from_snapshot(version, state)?,
+        })
+    }
+
     /// Returns the immutable aggregate identity.
     #[must_use]
     pub const fn id(&self) -> &UserId {
@@ -282,6 +331,22 @@ impl User {
     #[must_use]
     pub const fn lifecycle_state(&self) -> UserLifecycleState {
         self.state.lifecycle()
+    }
+
+    /// Returns the complete lifecycle state required for durable persistence.
+    #[must_use]
+    pub const fn snapshot_state(&self) -> UserSnapshotState {
+        match &self.state {
+            UserState::Invited => UserSnapshotState::Invited,
+            UserState::Active => UserSnapshotState::Active,
+            UserState::Suspended => UserSnapshotState::Suspended,
+            UserState::DeletionPending(pending) => UserSnapshotState::DeletionPending {
+                requested_at: pending.requested_at,
+                not_before: pending.not_before,
+                recovery_state: pending.recovery_state,
+            },
+            UserState::Deleted => UserSnapshotState::Deleted,
+        }
     }
 
     /// Returns the deletion boundary only while deletion is pending.
@@ -349,11 +414,20 @@ impl DeletionRecoveryAuthorization {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UserTransitionAction {
     /// Consumes the invited state and activates the user.
-    Activate,
+    Activate {
+        /// Trusted UTC time at which activation occurred.
+        occurred_at: UtcTimestamp,
+    },
     /// Suspends an active user.
-    Suspend,
+    Suspend {
+        /// Trusted UTC time at which suspension occurred.
+        occurred_at: UtcTimestamp,
+    },
     /// Restores a suspended user to active operation.
-    Resume,
+    Resume {
+        /// Trusted UTC time at which resumption occurred.
+        occurred_at: UtcTimestamp,
+    },
     /// Begins a deletion cooling-off period.
     RequestDeletion {
         /// UTC time at which the request was accepted.
@@ -443,6 +517,7 @@ pub struct UserLifecycleEvent {
     user_id: UserId,
     tenant_id: TenantId,
     version: UserVersion,
+    occurred_at: UtcTimestamp,
     kind: UserLifecycleEventKind,
 }
 
@@ -463,6 +538,12 @@ impl UserLifecycleEvent {
     #[must_use]
     pub const fn version(&self) -> UserVersion {
         self.version
+    }
+
+    /// Returns the trusted UTC time at which the lifecycle change occurred.
+    #[must_use]
+    pub const fn occurred_at(&self) -> UtcTimestamp {
+        self.occurred_at
     }
 
     /// Returns the domain-specific event facts.
@@ -532,9 +613,9 @@ fn dispatch(
         return Err(error(UserDomainErrorCode::DeletedTerminal));
     }
     match action {
-        UserTransitionAction::Activate => activate(current),
-        UserTransitionAction::Suspend => suspend(current),
-        UserTransitionAction::Resume => resume(current),
+        UserTransitionAction::Activate { occurred_at } => activate(current, occurred_at),
+        UserTransitionAction::Suspend { occurred_at } => suspend(current, occurred_at),
+        UserTransitionAction::Resume { occurred_at } => resume(current, occurred_at),
         UserTransitionAction::RequestDeletion {
             requested_at,
             not_before,
@@ -549,33 +630,40 @@ fn dispatch(
     }
 }
 
-fn activate(current: &User) -> Result<UserTransition, UserDomainError> {
+fn activate(current: &User, occurred_at: UtcTimestamp) -> Result<UserTransition, UserDomainError> {
     if !matches!(current.state, UserState::Invited) {
         return Err(error(UserDomainErrorCode::InvalidTransition));
     }
     evolve(
         current,
         UserState::Active,
+        occurred_at,
         UserLifecycleEventKind::Activated,
     )
 }
 
-fn suspend(current: &User) -> Result<UserTransition, UserDomainError> {
+fn suspend(current: &User, occurred_at: UtcTimestamp) -> Result<UserTransition, UserDomainError> {
     if !matches!(current.state, UserState::Active) {
         return Err(error(UserDomainErrorCode::InvalidTransition));
     }
     evolve(
         current,
         UserState::Suspended,
+        occurred_at,
         UserLifecycleEventKind::Suspended,
     )
 }
 
-fn resume(current: &User) -> Result<UserTransition, UserDomainError> {
+fn resume(current: &User, occurred_at: UtcTimestamp) -> Result<UserTransition, UserDomainError> {
     if !matches!(current.state, UserState::Suspended) {
         return Err(error(UserDomainErrorCode::InvalidTransition));
     }
-    evolve(current, UserState::Active, UserLifecycleEventKind::Resumed)
+    evolve(
+        current,
+        UserState::Active,
+        occurred_at,
+        UserLifecycleEventKind::Resumed,
+    )
 }
 
 fn request_deletion(
@@ -588,6 +676,7 @@ fn request_deletion(
     }
     let recovery_state = deletion_recovery_state(current)?;
     let pending = PendingDeletion {
+        requested_at,
         not_before,
         recovery_state,
     };
@@ -596,7 +685,12 @@ fn request_deletion(
         not_before,
         recovery_state,
     };
-    evolve(current, UserState::DeletionPending(pending), event)
+    evolve(
+        current,
+        UserState::DeletionPending(pending),
+        requested_at,
+        event,
+    )
 }
 
 fn deletion_recovery_state(current: &User) -> Result<DeletionRecoveryState, UserDomainError> {
@@ -623,7 +717,7 @@ fn recover_deletion(
         recovered_at: observed_at,
         restored_state: pending.recovery_state,
     };
-    evolve(current, state, event)
+    evolve(current, state, observed_at, event)
 }
 
 const fn restored_user_state(recovery: DeletionRecoveryState) -> UserState {
@@ -646,6 +740,7 @@ fn complete_deletion(
     evolve(
         current,
         UserState::Deleted,
+        observed_at,
         UserLifecycleEventKind::Deleted {
             deleted_at: observed_at,
         },
@@ -655,6 +750,7 @@ fn complete_deletion(
 fn evolve(
     current: &User,
     state: UserState,
+    occurred_at: UtcTimestamp,
     kind: UserLifecycleEventKind,
 ) -> Result<UserTransition, UserDomainError> {
     let version = current.version.next()?;
@@ -668,9 +764,79 @@ fn evolve(
         user_id: current.id.clone(),
         tenant_id: current.tenant_id.clone(),
         version,
+        occurred_at,
         kind,
     };
     Ok(UserTransition { user, event })
+}
+
+fn user_state_from_snapshot(
+    version: UserVersion,
+    state: UserSnapshotState,
+) -> Result<UserState, UserDomainError> {
+    match state {
+        UserSnapshotState::Invited => {
+            validated_state(version == UserVersion::initial(), UserState::Invited)
+        }
+        UserSnapshotState::Active => {
+            validated_state(valid_active_version(version), UserState::Active)
+        }
+        UserSnapshotState::Suspended => {
+            validated_state(valid_suspended_version(version), UserState::Suspended)
+        }
+        UserSnapshotState::DeletionPending {
+            requested_at,
+            not_before,
+            recovery_state,
+        } => pending_state_from_snapshot(version, requested_at, not_before, recovery_state),
+        UserSnapshotState::Deleted => validated_state(version.get() >= 4, UserState::Deleted),
+    }
+}
+
+fn pending_state_from_snapshot(
+    version: UserVersion,
+    requested_at: UtcTimestamp,
+    not_before: DeletionNotBefore,
+    recovery_state: DeletionRecoveryState,
+) -> Result<UserState, UserDomainError> {
+    if not_before.timestamp() <= requested_at {
+        return Err(error(UserDomainErrorCode::InvalidArgument));
+    }
+    let valid_version = match recovery_state {
+        DeletionRecoveryState::Active => valid_active_pending_version(version),
+        DeletionRecoveryState::Suspended => valid_suspended_pending_version(version),
+    };
+    validated_state(
+        valid_version,
+        UserState::DeletionPending(PendingDeletion {
+            requested_at,
+            not_before,
+            recovery_state,
+        }),
+    )
+}
+
+fn validated_state(valid: bool, state: UserState) -> Result<UserState, UserDomainError> {
+    if !valid {
+        return Err(error(UserDomainErrorCode::InvalidArgument));
+    }
+    Ok(state)
+}
+
+const fn valid_active_version(version: UserVersion) -> bool {
+    version.get() >= 2 && version.get().is_multiple_of(2)
+}
+
+const fn valid_suspended_version(version: UserVersion) -> bool {
+    version.get() >= 3 && !version.get().is_multiple_of(2)
+}
+
+const fn valid_active_pending_version(version: UserVersion) -> bool {
+    version.get() >= 3 && !version.get().is_multiple_of(2)
+}
+
+const fn valid_suspended_pending_version(version: UserVersion) -> bool {
+    version.get() >= 4 && version.get().is_multiple_of(2)
 }
 
 fn valid_user_id(value: &str) -> bool {
