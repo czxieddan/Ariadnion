@@ -5,9 +5,11 @@
 
 use std::any::type_name;
 
+mod audit_repository;
 mod backup;
 mod codec;
 mod file_integrity;
+mod identity_transaction;
 mod index;
 mod inspection;
 mod instance;
@@ -28,6 +30,7 @@ mod transaction;
 mod udf;
 mod upgrade;
 
+pub use audit_repository::RnmdbAuditRepository;
 pub use backup::{RnmdbBackupAdapter, RnmdbBackupEnvironment};
 pub use codec::{CurrencyCode, MoneyValue, NormalizedJson, StorageUuid, UtcTimestampMicros};
 pub use index::{FixedIndexDefinition, RnmdbIndexManager, RnmdbIndexMethod};
@@ -39,7 +42,7 @@ pub use maintenance::{
     VerificationSummary,
 };
 pub use migration::{
-    MigrationApplyStatus, RnmdbMigrationRunner, identity_users_migration,
+    MigrationApplyStatus, RnmdbMigrationRunner, identity_audit_migration, identity_users_migration,
     platform_initial_migration, platform_outbox_migration, platform_secret_references_migration,
 };
 pub use migration_definition::canonical_migration_checksum;
