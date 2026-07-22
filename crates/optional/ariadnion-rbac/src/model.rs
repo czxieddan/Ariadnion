@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use ariadnion_core::TenantId;
+use ariadnion_core::{PrincipalId, TenantId};
 use ariadnion_organization::OrganizationId;
 use ariadnion_user_domain::UtcTimestamp;
 
@@ -107,6 +107,15 @@ pub enum AuthorizationScope {
         /// Tenant boundary for the scope.
         tenant_id: TenantId,
     },
+    /// One tenant-owned resource without an organization boundary.
+    TenantResource {
+        /// Tenant boundary for the resource.
+        tenant_id: TenantId,
+        /// Stable kind used to prevent identity collisions between domains.
+        resource_kind: ResourceKind,
+        /// Stable tenant-owned resource identity.
+        resource_id: ResourceId,
+    },
     /// Every resource within one organization.
     Organization {
         /// Tenant boundary for the scope.
@@ -134,6 +143,20 @@ impl AuthorizationScope {
     #[must_use]
     pub const fn tenant(tenant_id: TenantId) -> Self {
         Self::Tenant { tenant_id }
+    }
+
+    /// Creates an exact tenant-owned resource scope.
+    #[must_use]
+    pub const fn tenant_resource(
+        tenant_id: TenantId,
+        resource_kind: ResourceKind,
+        resource_id: ResourceId,
+    ) -> Self {
+        Self::TenantResource {
+            tenant_id,
+            resource_kind,
+            resource_id,
+        }
     }
 
     /// Creates an organization-wide scope.
@@ -174,16 +197,19 @@ impl AuthorizationScope {
     pub const fn tenant_id(&self) -> &TenantId {
         match self {
             Self::Tenant { tenant_id }
+            | Self::TenantResource { tenant_id, .. }
             | Self::Organization { tenant_id, .. }
             | Self::Resource { tenant_id, .. } => tenant_id,
         }
     }
 
-    /// Returns the organization boundary when the scope is not tenant-wide.
+    /// Returns the organization boundary for organization-owned scopes.
+    ///
+    /// Tenant-wide and exact tenant-resource scopes do not carry one.
     #[must_use]
     pub const fn organization_id(&self) -> Option<&OrganizationId> {
         match self {
-            Self::Tenant { .. } => None,
+            Self::Tenant { .. } | Self::TenantResource { .. } => None,
             Self::Organization {
                 organization_id, ..
             }
@@ -199,6 +225,11 @@ impl AuthorizationScope {
         }
         match self {
             Self::Tenant { .. } => true,
+            Self::TenantResource {
+                resource_kind,
+                resource_id,
+                ..
+            } => tenant_resource_contains(resource_kind, resource_id, requested),
             Self::Organization {
                 organization_id, ..
             } => requested.organization_id() == Some(organization_id),
@@ -207,15 +238,41 @@ impl AuthorizationScope {
     }
 }
 
+fn tenant_resource_contains(
+    assigned_kind: &ResourceKind,
+    assigned_id: &ResourceId,
+    requested: &AuthorizationScope,
+) -> bool {
+    match requested {
+        AuthorizationScope::TenantResource {
+            resource_kind,
+            resource_id,
+            ..
+        } => assigned_kind == resource_kind && assigned_id == resource_id,
+        _ => false,
+    }
+}
+
 /// The trusted availability state of a protected resource.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ResourceState {
     /// The resource may participate in authorization decisions.
     Active,
+    /// The resource is blocked from normal access but may be recovered.
+    Restricted,
     /// The resource is retained but unavailable for access.
     Unavailable,
     /// The resource is in a terminal deleted state.
     Deleted,
+}
+
+/// The operation class evaluated against a protected resource state.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum AuthorizationIntent {
+    /// A normal operation that requires an active resource.
+    Access,
+    /// A lifecycle recovery that requires a restricted resource.
+    Recovery,
 }
 
 /// Explicit protected-resource facts required by every authorization request.
@@ -224,6 +281,7 @@ pub struct AuthorizationTarget {
     permission_id: PermissionId,
     scope: AuthorizationScope,
     resource_state: ResourceState,
+    intent: AuthorizationIntent,
 }
 
 impl AuthorizationTarget {
@@ -239,6 +297,21 @@ impl AuthorizationTarget {
             permission_id,
             scope,
             resource_state,
+            intent: AuthorizationIntent::Access,
+        }
+    }
+
+    /// Creates a recovery target for a restricted resource.
+    ///
+    /// Recovery intent is separate from normal access so a suspended user or
+    /// frozen organization cannot be treated as active merely to restore it.
+    #[must_use]
+    pub const fn for_recovery(permission_id: PermissionId, scope: AuthorizationScope) -> Self {
+        Self {
+            permission_id,
+            scope,
+            resource_state: ResourceState::Restricted,
+            intent: AuthorizationIntent::Recovery,
         }
     }
 
@@ -258,6 +331,12 @@ impl AuthorizationTarget {
     #[must_use]
     pub const fn resource_state(&self) -> ResourceState {
         self.resource_state
+    }
+
+    /// Returns whether evaluation is for normal access or lifecycle recovery.
+    #[must_use]
+    pub const fn intent(&self) -> AuthorizationIntent {
+        self.intent
     }
 }
 
@@ -324,6 +403,12 @@ impl AuthorizationRequest {
     #[must_use]
     pub const fn resource_state(&self) -> ResourceState {
         self.target.resource_state()
+    }
+
+    /// Returns the target operation class.
+    #[must_use]
+    pub const fn intent(&self) -> AuthorizationIntent {
+        self.target.intent()
     }
 
     /// Returns the trusted UTC evaluation instant.
@@ -442,25 +527,40 @@ impl MatchedRoleSummary {
     }
 }
 
-/// A deterministic authorization result without request content or credentials.
+/// A deterministic authorization result containing only authorization facts and no credentials.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AuthorizationDecision {
-    decision_id: DecisionId,
-    policy_version: PolicyVersion,
+    binding: AuthorizationDecisionBinding,
     reason: AuthorizationDecisionReason,
     matched_roles: Vec<MatchedRoleSummary>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct AuthorizationDecisionBinding {
+    decision_id: DecisionId,
+    policy_version: PolicyVersion,
+    tenant_id: TenantId,
+    principal_id: PrincipalId,
+    target: AuthorizationTarget,
+    evaluated_at: UtcTimestamp,
+}
+
 impl AuthorizationDecision {
-    pub(crate) const fn new(
-        decision_id: DecisionId,
+    pub(crate) fn new(
+        request: &AuthorizationRequest,
         policy_version: PolicyVersion,
         reason: AuthorizationDecisionReason,
         matched_roles: Vec<MatchedRoleSummary>,
     ) -> Self {
         Self {
-            decision_id,
-            policy_version,
+            binding: AuthorizationDecisionBinding {
+                decision_id: request.decision_id.clone(),
+                policy_version,
+                tenant_id: request.subject.principal().tenant_id().clone(),
+                principal_id: request.subject.principal().principal_id().clone(),
+                target: request.target.clone(),
+                evaluated_at: request.now,
+            },
             reason,
             matched_roles,
         }
@@ -475,13 +575,55 @@ impl AuthorizationDecision {
     /// Returns the caller-supplied decision identity.
     #[must_use]
     pub const fn decision_id(&self) -> &DecisionId {
-        &self.decision_id
+        &self.binding.decision_id
     }
 
     /// Returns the policy version that produced this result.
     #[must_use]
     pub const fn policy_version(&self) -> PolicyVersion {
-        self.policy_version
+        self.binding.policy_version
+    }
+
+    /// Returns the authenticated tenant evaluated for this result.
+    #[must_use]
+    pub const fn tenant_id(&self) -> &TenantId {
+        &self.binding.tenant_id
+    }
+
+    /// Returns the authenticated principal evaluated for this result.
+    #[must_use]
+    pub const fn principal_id(&self) -> &PrincipalId {
+        &self.binding.principal_id
+    }
+
+    /// Returns the exact permission evaluated for this result.
+    #[must_use]
+    pub const fn permission_id(&self) -> &PermissionId {
+        self.binding.target.permission_id()
+    }
+
+    /// Returns the exact resource scope evaluated for this result.
+    #[must_use]
+    pub const fn scope(&self) -> &AuthorizationScope {
+        self.binding.target.scope()
+    }
+
+    /// Returns the trusted resource state evaluated for this result.
+    #[must_use]
+    pub const fn resource_state(&self) -> ResourceState {
+        self.binding.target.resource_state()
+    }
+
+    /// Returns the target operation class evaluated by the policy.
+    #[must_use]
+    pub const fn intent(&self) -> AuthorizationIntent {
+        self.binding.target.intent()
+    }
+
+    /// Returns the trusted UTC evaluation instant.
+    #[must_use]
+    pub const fn evaluated_at(&self) -> UtcTimestamp {
+        self.binding.evaluated_at
     }
 
     /// Returns the stable fail-closed decision reason.

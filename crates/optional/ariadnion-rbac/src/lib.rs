@@ -19,7 +19,7 @@ pub use ids::{
     AssignmentId, DecisionId, PermissionId, PolicyVersion, ResourceId, ResourceKind, RoleId,
 };
 pub use model::{
-    AuthorizationDecision, AuthorizationDecisionReason, AuthorizationPolicy, AuthorizationRequest,
-    AuthorizationScope, AuthorizationTarget, MatchedRoleSummary, PermissionEffect, PermissionRule,
-    ResourceState, RoleDefinition,
+    AuthorizationDecision, AuthorizationDecisionReason, AuthorizationIntent, AuthorizationPolicy,
+    AuthorizationRequest, AuthorizationScope, AuthorizationTarget, MatchedRoleSummary,
+    PermissionEffect, PermissionRule, ResourceState, RoleDefinition,
 };

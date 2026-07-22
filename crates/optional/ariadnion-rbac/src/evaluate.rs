@@ -5,16 +5,19 @@ use ariadnion_user_domain::UserLifecycleState;
 
 use crate::binding::{MembershipAuthorizationContext, RoleAssignment};
 use crate::model::{
-    AuthorizationDecision, AuthorizationDecisionReason, AuthorizationPolicy, AuthorizationRequest,
-    MatchedRoleSummary, PermissionEffect, ResourceState,
+    AuthorizationDecision, AuthorizationDecisionReason, AuthorizationIntent, AuthorizationPolicy,
+    AuthorizationRequest, MatchedRoleSummary, PermissionEffect, ResourceState,
 };
 
 /// Evaluates one trusted request against an immutable policy snapshot.
 ///
 /// Version and tenant checks run before lifecycle gates. Matching denies take
 /// precedence over matching allows, and absence of an allow always fails closed.
-/// The result contains only stable identities, a reason, a policy version, and
-/// bounded matched-role summaries.
+/// The result retains the exact authorization inputs, a stable reason, the
+/// policy version, and bounded matched-role summaries. The caller must obtain `policy` from the
+/// authoritative active snapshot and build `request` from authenticated subject
+/// and resource facts immediately before evaluation; decisions are not durable
+/// or deserializable grants.
 #[must_use]
 pub fn evaluate(
     policy: &AuthorizationPolicy,
@@ -106,10 +109,11 @@ fn membership_state_failure(
 }
 
 fn resource_failure(request: &AuthorizationRequest) -> Option<AuthorizationDecisionReason> {
-    if request.resource_state() == ResourceState::Active {
-        return None;
+    match (request.intent(), request.resource_state()) {
+        (AuthorizationIntent::Access, ResourceState::Active)
+        | (AuthorizationIntent::Recovery, ResourceState::Restricted) => None,
+        _ => Some(AuthorizationDecisionReason::ResourceInactive),
     }
-    Some(AuthorizationDecisionReason::ResourceInactive)
 }
 
 fn matching_roles(
@@ -175,10 +179,5 @@ fn decision(
     reason: AuthorizationDecisionReason,
     matched_roles: Vec<MatchedRoleSummary>,
 ) -> AuthorizationDecision {
-    AuthorizationDecision::new(
-        request.decision_id().clone(),
-        policy.version(),
-        reason,
-        matched_roles,
-    )
+    AuthorizationDecision::new(request, policy.version(), reason, matched_roles)
 }
