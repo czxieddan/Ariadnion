@@ -9,5 +9,5 @@ mod model;
 pub use error::{AdminError, AdminErrorCode};
 pub use model::{
     AdminActionKind, AdminCommand, AdminCommandBinding, AdminCommandId, AdminCommandRequest,
-    AdminDecision, AdminTarget, AdminTargetKind, accept_admin_command,
+    AdminTarget, AdminTargetKind, accept_admin_command,
 };

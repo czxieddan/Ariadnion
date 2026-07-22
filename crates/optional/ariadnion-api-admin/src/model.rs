@@ -6,7 +6,10 @@ use ariadnion_auth_api_key::ApiKeyId;
 use ariadnion_core::{PrincipalId, TenantId};
 use ariadnion_invitation::InvitationId;
 use ariadnion_organization::OrganizationId;
-use ariadnion_rbac::DecisionId;
+use ariadnion_rbac::{
+    AuthorizationDecision, AuthorizationIntent, AuthorizationScope, DecisionId, PolicyVersion,
+    ResourceId, ResourceKind, ResourceState,
+};
 use ariadnion_user_domain::{UserId, UtcTimestamp};
 
 use crate::error::error;
@@ -101,44 +104,6 @@ impl AdminTarget {
     }
 }
 
-/// Trusted precomputed authorization decision summary for one admin command.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AdminDecision {
-    decision_id: DecisionId,
-    tenant_id: TenantId,
-    allowed: bool,
-}
-
-impl AdminDecision {
-    /// Creates a redacted authorization decision summary.
-    #[must_use]
-    pub const fn new(decision_id: DecisionId, tenant_id: TenantId, allowed: bool) -> Self {
-        Self {
-            decision_id,
-            tenant_id,
-            allowed,
-        }
-    }
-
-    /// Returns the decision identity.
-    #[must_use]
-    pub const fn decision_id(&self) -> &DecisionId {
-        &self.decision_id
-    }
-
-    /// Returns the tenant boundary evaluated by authorization.
-    #[must_use]
-    pub const fn tenant_id(&self) -> &TenantId {
-        &self.tenant_id
-    }
-
-    /// Returns whether authorization explicitly allowed the command.
-    #[must_use]
-    pub const fn allowed(&self) -> bool {
-        self.allowed
-    }
-}
-
 /// One accepted administration command intent ready for adapter execution.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AdminCommand {
@@ -150,6 +115,7 @@ pub struct AdminCommand {
     target: AdminTarget,
     reason_code: Box<str>,
     decision_id: DecisionId,
+    policy_version: PolicyVersion,
 }
 
 impl AdminCommand {
@@ -200,43 +166,59 @@ impl AdminCommand {
     pub const fn decision_id(&self) -> &DecisionId {
         &self.decision_id
     }
+
+    /// Returns the policy version that authorized this command.
+    #[must_use]
+    pub const fn policy_version(&self) -> PolicyVersion {
+        self.policy_version
+    }
 }
 
-/// Tenant-bound identity for one administration command.
+/// Tenant-bound identity and expected authorization version for one command.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AdminCommandBinding {
     id: AdminCommandId,
     tenant_id: TenantId,
     actor: PrincipalId,
     occurred_at: UtcTimestamp,
+    decision_id: DecisionId,
+    policy_version: PolicyVersion,
 }
 
 impl AdminCommandBinding {
-    /// Creates identity metadata for one administration command.
+    /// Creates command identity metadata bound to one authorization decision.
     #[must_use]
     pub const fn new(
         id: AdminCommandId,
         tenant_id: TenantId,
         actor: PrincipalId,
         occurred_at: UtcTimestamp,
+        decision_id: DecisionId,
+        policy_version: PolicyVersion,
     ) -> Self {
         Self {
             id,
             tenant_id,
             actor,
             occurred_at,
+            decision_id,
+            policy_version,
         }
     }
 }
 
 /// Trusted inputs required to accept one administration command.
+///
+/// The decision must be evaluated just in time from the authoritative policy
+/// snapshot and authenticated principal by the owning entrypoint. Protocol
+/// adapters must never deserialize or persist decisions as reusable grants.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AdminCommandRequest {
     binding: AdminCommandBinding,
     action: AdminActionKind,
     target: AdminTarget,
     reason_code: Box<str>,
-    decision: AdminDecision,
+    decision: AuthorizationDecision,
 }
 
 impl AdminCommandRequest {
@@ -250,7 +232,7 @@ impl AdminCommandRequest {
         action: AdminActionKind,
         target: AdminTarget,
         reason_code: &str,
-        decision: AdminDecision,
+        decision: AuthorizationDecision,
     ) -> Result<Self, AdminError> {
         Ok(Self {
             binding,
@@ -270,10 +252,15 @@ impl AdminCommandRequest {
 /// # Errors
 ///
 /// Returns stable redacted failures for tenant mismatch, denied authorization,
-/// or incompatible action/target pairs.
+/// decision-binding mismatch, or incompatible action/target pairs.
 pub fn accept_admin_command(request: AdminCommandRequest) -> Result<AdminCommand, AdminError> {
     validate_action_target(request.action, &request.target)?;
-    validate_decision(&request.binding.tenant_id, &request.decision)?;
+    validate_decision(
+        &request.binding,
+        request.action,
+        &request.target,
+        &request.decision,
+    )?;
     Ok(AdminCommand {
         id: request.binding.id,
         tenant_id: request.binding.tenant_id,
@@ -282,18 +269,133 @@ pub fn accept_admin_command(request: AdminCommandRequest) -> Result<AdminCommand
         action: request.action,
         target: request.target,
         reason_code: request.reason_code,
-        decision_id: request.decision.decision_id().clone(),
+        decision_id: request.binding.decision_id,
+        policy_version: request.binding.policy_version,
     })
 }
 
-fn validate_decision(tenant_id: &TenantId, decision: &AdminDecision) -> Result<(), AdminError> {
-    if decision.tenant_id() != tenant_id {
+fn validate_decision(
+    binding: &AdminCommandBinding,
+    action: AdminActionKind,
+    target: &AdminTarget,
+    decision: &AuthorizationDecision,
+) -> Result<(), AdminError> {
+    validate_decision_identity(binding, decision)?;
+    validate_decision_subject(binding, decision)?;
+    validate_decision_result(action, decision)?;
+    validate_decision_target(binding, action, target, decision)
+}
+
+fn validate_decision_identity(
+    binding: &AdminCommandBinding,
+    decision: &AuthorizationDecision,
+) -> Result<(), AdminError> {
+    if decision.decision_id() != &binding.decision_id {
+        return Err(error(AdminErrorCode::DecisionMismatch));
+    }
+    if decision.policy_version() != binding.policy_version {
+        return Err(error(AdminErrorCode::DecisionMismatch));
+    }
+    if decision.evaluated_at() != binding.occurred_at {
+        return Err(error(AdminErrorCode::DecisionMismatch));
+    }
+    Ok(())
+}
+
+fn validate_decision_subject(
+    binding: &AdminCommandBinding,
+    decision: &AuthorizationDecision,
+) -> Result<(), AdminError> {
+    if decision.tenant_id() != &binding.tenant_id {
         return Err(error(AdminErrorCode::TenantMismatch));
     }
+    if decision.principal_id() != &binding.actor {
+        return Err(error(AdminErrorCode::DecisionMismatch));
+    }
+    Ok(())
+}
+
+fn validate_decision_result(
+    action: AdminActionKind,
+    decision: &AuthorizationDecision,
+) -> Result<(), AdminError> {
     if !decision.allowed() {
         return Err(error(AdminErrorCode::AuthorizationDenied));
     }
+    let (intent, state) = expected_target_state(action);
+    if decision.intent() != intent || decision.resource_state() != state {
+        return Err(error(AdminErrorCode::DecisionMismatch));
+    }
     Ok(())
+}
+
+fn expected_target_state(action: AdminActionKind) -> (AuthorizationIntent, ResourceState) {
+    match action {
+        AdminActionKind::RestoreUser | AdminActionKind::UnfreezeOrganization => {
+            (AuthorizationIntent::Recovery, ResourceState::Restricted)
+        }
+        _ => (AuthorizationIntent::Access, ResourceState::Active),
+    }
+}
+
+fn validate_decision_target(
+    binding: &AdminCommandBinding,
+    action: AdminActionKind,
+    target: &AdminTarget,
+    decision: &AuthorizationDecision,
+) -> Result<(), AdminError> {
+    if decision.permission_id().as_str() != action_permission(action) {
+        return Err(error(AdminErrorCode::DecisionMismatch));
+    }
+    let expected_scope = expected_scope(binding.tenant_id.clone(), target)?;
+    if decision.scope() != &expected_scope {
+        return Err(error(AdminErrorCode::DecisionMismatch));
+    }
+    Ok(())
+}
+
+fn action_permission(action: AdminActionKind) -> &'static str {
+    match action {
+        AdminActionKind::SuspendUser => "admin.user.suspend",
+        AdminActionKind::RestoreUser => "admin.user.restore",
+        AdminActionKind::FreezeOrganization => "admin.organization.freeze",
+        AdminActionKind::UnfreezeOrganization => "admin.organization.unfreeze",
+        AdminActionKind::RevokeInvitation => "admin.invitation.revoke",
+        AdminActionKind::RevokeApiKey => "admin.api-key.revoke",
+    }
+}
+
+fn expected_scope(
+    tenant_id: TenantId,
+    target: &AdminTarget,
+) -> Result<AuthorizationScope, AdminError> {
+    match target {
+        AdminTarget::Organization(organization_id) => {
+            tenant_resource_scope(tenant_id, "organization", organization_id.as_str())
+        }
+        AdminTarget::User(user_id) => tenant_resource_scope(tenant_id, "user", user_id.as_str()),
+        AdminTarget::Invitation(invitation_id) => {
+            tenant_resource_scope(tenant_id, "invitation", invitation_id.as_str())
+        }
+        AdminTarget::ApiKey(api_key_id) => {
+            tenant_resource_scope(tenant_id, "api-key", api_key_id.as_str())
+        }
+    }
+}
+
+fn tenant_resource_scope(
+    tenant_id: TenantId,
+    kind: &str,
+    id: &str,
+) -> Result<AuthorizationScope, AdminError> {
+    let resource_kind =
+        ResourceKind::parse(kind).map_err(|_| error(AdminErrorCode::InvalidArgument))?;
+    let resource_id = ResourceId::parse(id).map_err(|_| error(AdminErrorCode::InvalidArgument))?;
+    Ok(AuthorizationScope::tenant_resource(
+        tenant_id,
+        resource_kind,
+        resource_id,
+    ))
 }
 
 fn validate_action_target(action: AdminActionKind, target: &AdminTarget) -> Result<(), AdminError> {
