@@ -5,7 +5,7 @@ use std::fmt::{self, Debug, Formatter};
 use ariadnion_core::{PrincipalId, TenantId};
 use ariadnion_user_domain::{UserId, UtcTimestamp};
 use sha2::{Digest, Sha256};
-use subtle::ConstantTimeEq;
+use subtle::{Choice, ConstantTimeEq};
 
 use crate::{SessionFamilyId, SessionFamilyVersion, SessionId, SessionVersion};
 
@@ -17,6 +17,8 @@ pub const MAX_IDLE_LIFETIME_SECONDS: i64 = 12 * 60 * 60;
 pub const MIN_SESSION_TOKEN_BYTES: usize = 32;
 /// Maximum accepted high-entropy session token length in bytes.
 pub const MAX_SESSION_TOKEN_BYTES: usize = 256;
+/// Maximum rotated leaves retained for family-wide token-reuse detection.
+pub const MAX_ROTATED_SESSIONS: usize = 4_096;
 
 const SESSION_TOKEN_DOMAIN: &[u8] = b"ariadnion.browser-session.token.v1\0";
 
@@ -79,8 +81,8 @@ impl SessionTokenDigest {
         self.0
     }
 
-    pub(crate) fn matches(self, presented: Self) -> bool {
-        bool::from(self.0.ct_eq(&presented.0))
+    pub(crate) fn ct_matches(self, presented: Self) -> Choice {
+        self.0.ct_eq(&presented.0)
     }
 }
 
@@ -357,7 +359,7 @@ pub struct SessionFamily {
     version: SessionFamilyVersion,
     state: SessionFamilyState,
     current: Session,
-    previous: Option<Session>,
+    rotated: Vec<Session>,
 }
 
 impl SessionFamily {
@@ -418,7 +420,16 @@ impl SessionFamily {
     /// Returns the immediately previous leaf when one exists.
     #[must_use]
     pub const fn previous(&self) -> Option<&Session> {
-        self.previous.as_ref()
+        self.rotated.as_slice().last()
+    }
+
+    /// Returns all rotated leaves in issuance order.
+    ///
+    /// The collection contains at most [`MAX_ROTATED_SESSIONS`] entries and
+    /// lets persistence adapters retain every digest needed to detect reuse.
+    #[must_use]
+    pub fn rotated(&self) -> &[Session] {
+        &self.rotated
     }
 
     pub(crate) fn issued(request: SessionIssueRequest) -> Self {
@@ -437,7 +448,7 @@ impl SessionFamily {
             version: SessionFamilyVersion::initial(),
             state: SessionFamilyState::Active,
             current: leaf,
-            previous: None,
+            rotated: Vec::new(),
         }
     }
 
@@ -446,7 +457,7 @@ impl SessionFamily {
         version: SessionFamilyVersion,
         state: SessionFamilyState,
         current: Session,
-        previous: Option<Session>,
+        rotated: Vec<Session>,
     ) -> Self {
         Self {
             id: self.id.clone(),
@@ -456,7 +467,7 @@ impl SessionFamily {
             version,
             state,
             current,
-            previous,
+            rotated,
         }
     }
 }

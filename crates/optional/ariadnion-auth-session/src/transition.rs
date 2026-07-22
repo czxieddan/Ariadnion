@@ -2,12 +2,14 @@
 
 use ariadnion_core::PrincipalId;
 use ariadnion_user_domain::UtcTimestamp;
+use subtle::Choice;
 
 use crate::error::error;
 use crate::{
-    MAX_ABSOLUTE_LIFETIME_SECONDS, MAX_IDLE_LIFETIME_SECONDS, Session, SessionError,
-    SessionErrorCode, SessionFamily, SessionFamilyState, SessionFamilyVersion, SessionId,
-    SessionIssueRequest, SessionState, SessionSubject, SessionTokenDigest, SessionValidityWindow,
+    MAX_ABSOLUTE_LIFETIME_SECONDS, MAX_IDLE_LIFETIME_SECONDS, MAX_ROTATED_SESSIONS, Session,
+    SessionError, SessionErrorCode, SessionFamily, SessionFamilyState, SessionFamilyVersion,
+    SessionId, SessionIssueRequest, SessionState, SessionSubject, SessionTokenDigest,
+    SessionValidityWindow,
 };
 
 /// Evidence required to rotate the active leaf of a session family.
@@ -222,8 +224,8 @@ pub fn issue_session(request: SessionIssueRequest) -> Result<SessionTransition, 
 
 /// Applies one deterministic optimistic session-family transition.
 ///
-/// Token comparison is constant time. Presenting a rotated previous token
-/// revokes the family through reuse detection. This pure transition does not
+/// Token comparison is constant time. Presenting any rotated token revokes the
+/// family through reuse detection. This pure transition does not
 /// itself prove durable single use. The persistence adapter must atomically
 /// compare-and-swap the expected family version, replace leaf digests, and
 /// append the event.
@@ -232,7 +234,8 @@ pub fn issue_session(request: SessionIssueRequest) -> Result<SessionTransition, 
 ///
 /// Returns stable redacted failures for invalid evidence, optimistic-version
 /// conflicts, pre-issuance commands, expiry boundaries, terminal states,
-/// inactive leaves, token reuse, or version exhaustion.
+/// inactive leaves, token reuse, exhausted history capacity, or version
+/// exhaustion.
 pub fn transition_session_family(
     current: &SessionFamily,
     command: SessionCommand,
@@ -277,6 +280,8 @@ fn apply_rotation(
     validate_rotation_preconditions(current, occurred_at, &rotation)?;
     match evaluate_presented_token(current, rotation.presented_token) {
         PresentedTokenOutcome::ActiveMatch => {
+            validate_idle_window(current, occurred_at, rotation.idle_expires_at)?;
+            validate_successor(current, &rotation)?;
             rotate_active_leaf(current, actor, occurred_at, rotation)
         }
         PresentedTokenOutcome::PreviousMatch => revoke_for_reuse(current, actor, occurred_at),
@@ -294,10 +299,12 @@ fn evaluate_presented_token(
     current: &SessionFamily,
     presented: SessionTokenDigest,
 ) -> PresentedTokenOutcome {
-    if current.current().token_digest().matches(presented) {
+    let current_matches = current.current().token_digest().ct_matches(presented);
+    let rotated_matches = rotated_token_match_choice(current, presented);
+    if bool::from(current_matches) {
         return PresentedTokenOutcome::ActiveMatch;
     }
-    if previous_token_matches(current, presented) {
+    if bool::from(rotated_matches) {
         return PresentedTokenOutcome::PreviousMatch;
     }
     PresentedTokenOutcome::Mismatch
@@ -312,8 +319,7 @@ fn validate_rotation_preconditions(
     validate_subject(current, &rotation.subject)?;
     validate_family_id(current, &rotation.family_id)?;
     validate_current_leaf(current, &rotation.session_id)?;
-    validate_not_expired(current, occurred_at)?;
-    validate_idle_window(current, occurred_at, rotation.idle_expires_at)
+    validate_not_expired(current, occurred_at)
 }
 
 fn rotate_active_leaf(
@@ -331,12 +337,9 @@ fn rotate_active_leaf(
         rotation.idle_expires_at,
         Some(predecessor.id().clone()),
     );
-    let family = current.advance(
-        version,
-        SessionFamilyState::Active,
-        successor,
-        Some(predecessor),
-    );
+    let mut rotated = current.rotated().to_vec();
+    rotated.push(predecessor);
+    let family = current.advance(version, SessionFamilyState::Active, successor, rotated);
     let event = event_from(&family, actor, occurred_at, SessionEventKind::Rotated);
     Ok(SessionTransition { family, event })
 }
@@ -355,11 +358,7 @@ fn apply_reuse_detection(
     if current.state() != SessionFamilyState::Active {
         return Err(error(SessionErrorCode::FamilyTerminal));
     }
-    let matches_previous = current
-        .previous()
-        .is_some_and(|previous| previous.id() == &session_id)
-        && previous_token_matches(current, presented_token);
-    if !matches_previous {
+    if !rotated_session_matches(current, &session_id, presented_token) {
         return Err(error(SessionErrorCode::TokenMismatch));
     }
     revoke_for_reuse(current, actor, occurred_at)
@@ -375,10 +374,8 @@ fn apply_revoke(
     validate_active_family(current)?;
     let version = current.version().next()?;
     let current_leaf = current.current().with_state(SessionState::Revoked);
-    let previous = current
-        .previous()
-        .map(|leaf| leaf.with_state(SessionState::Revoked));
-    let family = current.advance(version, SessionFamilyState::Revoked, current_leaf, previous);
+    let rotated = rotated_with_state(current, SessionState::Revoked);
+    let family = current.advance(version, SessionFamilyState::Revoked, current_leaf, rotated);
     let event = event_from(&family, actor, occurred_at, SessionEventKind::Revoked);
     Ok(SessionTransition { family, event })
 }
@@ -398,10 +395,8 @@ fn apply_expire(
     }
     let version = current.version().next()?;
     let current_leaf = current.current().with_state(SessionState::Expired);
-    let previous = current
-        .previous()
-        .map(|leaf| leaf.with_state(SessionState::Expired));
-    let family = current.advance(version, SessionFamilyState::Expired, current_leaf, previous);
+    let rotated = rotated_with_state(current, SessionState::Expired);
+    let family = current.advance(version, SessionFamilyState::Expired, current_leaf, rotated);
     let event = event_from(&family, actor, occurred_at, SessionEventKind::Expired);
     Ok(SessionTransition { family, event })
 }
@@ -413,10 +408,8 @@ fn revoke_for_reuse(
 ) -> Result<SessionTransition, SessionError> {
     let version = current.version().next()?;
     let current_leaf = current.current().with_state(SessionState::Revoked);
-    let previous = current
-        .previous()
-        .map(|leaf| leaf.with_state(SessionState::Revoked));
-    let family = current.advance(version, SessionFamilyState::Revoked, current_leaf, previous);
+    let rotated = rotated_with_state(current, SessionState::Revoked);
+    let family = current.advance(version, SessionFamilyState::Revoked, current_leaf, rotated);
     let event = event_from(&family, actor, occurred_at, SessionEventKind::ReuseRevoked);
     Ok(SessionTransition { family, event })
 }
@@ -568,8 +561,62 @@ fn validate_idle_window(
     Ok(())
 }
 
-fn previous_token_matches(current: &SessionFamily, presented: SessionTokenDigest) -> bool {
+fn validate_successor(
+    current: &SessionFamily,
+    rotation: &SessionRotation,
+) -> Result<(), SessionError> {
+    if current.rotated().len() >= MAX_ROTATED_SESSIONS {
+        return Err(error(SessionErrorCode::ResourceLimitExceeded));
+    }
+    let id_was_used = session_id_was_used(current, &rotation.successor_session_id);
+    let token_was_used = token_was_used(current, rotation.successor_token);
+    if id_was_used | token_was_used {
+        return Err(error(SessionErrorCode::InvalidArgument));
+    }
+    Ok(())
+}
+
+fn session_id_was_used(current: &SessionFamily, candidate: &SessionId) -> bool {
+    let mut found = current.current().id() == candidate;
+    for leaf in current.rotated() {
+        found |= leaf.id() == candidate;
+    }
+    found
+}
+
+fn token_was_used(current: &SessionFamily, candidate: SessionTokenDigest) -> bool {
+    let mut found = current.current().token_digest().ct_matches(candidate);
+    for leaf in current.rotated() {
+        found |= leaf.token_digest().ct_matches(candidate);
+    }
+    bool::from(found)
+}
+
+fn rotated_token_match_choice(current: &SessionFamily, presented: SessionTokenDigest) -> Choice {
+    let mut found = Choice::from(0);
+    for leaf in current.rotated() {
+        found |= leaf.token_digest().ct_matches(presented);
+    }
+    found
+}
+
+fn rotated_session_matches(
+    current: &SessionFamily,
+    session_id: &SessionId,
+    presented: SessionTokenDigest,
+) -> bool {
+    let mut found = Choice::from(0);
+    for leaf in current.rotated() {
+        let id_matches = Choice::from(u8::from(leaf.id() == session_id));
+        found |= id_matches & leaf.token_digest().ct_matches(presented);
+    }
+    bool::from(found)
+}
+
+fn rotated_with_state(current: &SessionFamily, state: SessionState) -> Vec<Session> {
     current
-        .previous()
-        .is_some_and(|previous| previous.token_digest().matches(presented))
+        .rotated()
+        .iter()
+        .map(|leaf| leaf.with_state(state))
+        .collect()
 }

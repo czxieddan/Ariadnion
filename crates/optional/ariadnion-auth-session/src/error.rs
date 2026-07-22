@@ -4,58 +4,64 @@ use std::fmt::{self, Debug, Display, Formatter};
 
 /// Stable machine-readable failures returned by session-family operations.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[repr(u8)]
 #[non_exhaustive]
 pub enum SessionErrorCode {
     /// A value is empty, malformed, or outside its documented bound.
-    InvalidArgument,
+    InvalidArgument = 0,
     /// The command expected a different optimistic family version.
-    VersionConflict,
+    VersionConflict = 1,
     /// The monotonic family version cannot be incremented.
-    VersionExhausted,
+    VersionExhausted = 2,
+    /// The bounded rotated-leaf history cannot accept another session.
+    ResourceLimitExceeded = 3,
     /// The command crossed a different tenant boundary.
-    TenantMismatch,
+    TenantMismatch = 4,
     /// The command crossed a different user boundary.
-    UserMismatch,
+    UserMismatch = 5,
     /// The presented family identity did not match the aggregate.
-    FamilyMismatch,
+    FamilyMismatch = 6,
     /// The presented session identity did not match the active leaf.
-    SessionMismatch,
+    SessionMismatch = 7,
     /// The presented token digest did not match the active leaf.
-    TokenMismatch,
+    TokenMismatch = 8,
     /// The command arrived before the trusted issuance time.
-    NotYetValid,
+    NotYetValid = 9,
     /// The exclusive absolute or idle expiry boundary was reached.
-    Expired,
+    Expired = 10,
     /// An explicit expiry transition was requested before the boundary.
-    NotYetExpired,
+    NotYetExpired = 11,
     /// The leaf is no longer active for rotation.
-    InactiveLeaf,
+    InactiveLeaf = 12,
     /// The family is already terminal.
-    FamilyTerminal,
+    FamilyTerminal = 13,
     /// A rotated token was presented again and the family was revoked.
-    TokenReuseDetected,
+    TokenReuseDetected = 14,
 }
+
+const SESSION_ERROR_CODES: [&str; 15] = [
+    "SESSION_INVALID_ARGUMENT",
+    "SESSION_VERSION_CONFLICT",
+    "SESSION_VERSION_EXHAUSTED",
+    "SESSION_RESOURCE_LIMIT_EXCEEDED",
+    "SESSION_TENANT_MISMATCH",
+    "SESSION_USER_MISMATCH",
+    "SESSION_FAMILY_MISMATCH",
+    "SESSION_SESSION_MISMATCH",
+    "SESSION_TOKEN_MISMATCH",
+    "SESSION_NOT_YET_VALID",
+    "SESSION_EXPIRED",
+    "SESSION_NOT_YET_EXPIRED",
+    "SESSION_INACTIVE_LEAF",
+    "SESSION_FAMILY_TERMINAL",
+    "SESSION_TOKEN_REUSE_DETECTED",
+];
 
 impl SessionErrorCode {
     /// Returns the stable external machine code.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::InvalidArgument => "SESSION_INVALID_ARGUMENT",
-            Self::VersionConflict => "SESSION_VERSION_CONFLICT",
-            Self::VersionExhausted => "SESSION_VERSION_EXHAUSTED",
-            Self::TenantMismatch => "SESSION_TENANT_MISMATCH",
-            Self::UserMismatch => "SESSION_USER_MISMATCH",
-            Self::FamilyMismatch => "SESSION_FAMILY_MISMATCH",
-            Self::SessionMismatch => "SESSION_SESSION_MISMATCH",
-            Self::TokenMismatch => "SESSION_TOKEN_MISMATCH",
-            Self::NotYetValid => "SESSION_NOT_YET_VALID",
-            Self::Expired => "SESSION_EXPIRED",
-            Self::NotYetExpired => "SESSION_NOT_YET_EXPIRED",
-            Self::InactiveLeaf => "SESSION_INACTIVE_LEAF",
-            Self::FamilyTerminal => "SESSION_FAMILY_TERMINAL",
-            Self::TokenReuseDetected => "SESSION_TOKEN_REUSE_DETECTED",
-        }
+        SESSION_ERROR_CODES[self as usize]
     }
 }
 
