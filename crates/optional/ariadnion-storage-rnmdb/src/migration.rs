@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use ariadnion_core::RequestContext;
 use ariadnion_storage_domain::{MigrationDescriptor, StorageError, StorageErrorCode};
+use ariadnion_user_domain::migrations::IDENTITY_USERS_MIGRATION_ID;
 use rnmdb_cli::{CommandOutput, LocalSession};
 use rnmdb_common::{ErrorKind, RnovError};
 use rnmdb_executor::vector::{ColumnSchema, Row};
@@ -133,6 +134,14 @@ pub fn platform_secret_references_migration() -> Result<MigrationDescriptor, Sto
 /// Returns the transactional outbox migration after digest verification.
 pub fn platform_outbox_migration() -> Result<MigrationDescriptor, StorageError> {
     compiled_migration_definitions()?.descriptor(PLATFORM_OUTBOX_ID)
+}
+
+/// Returns the durable user migration after canonical digest verification.
+///
+/// The migration remains outside module startup. Callers must request the
+/// version-four to version-five transition explicitly through the registry.
+pub fn identity_users_migration() -> Result<MigrationDescriptor, StorageError> {
+    compiled_migration_definitions()?.descriptor(IDENTITY_USERS_MIGRATION_ID)
 }
 
 fn migration_insert(

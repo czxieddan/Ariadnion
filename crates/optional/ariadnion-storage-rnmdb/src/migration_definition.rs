@@ -9,6 +9,12 @@ use ariadnion_storage_domain::{
     MigrationCatalog, MigrationChecksum, MigrationDescriptor, MigrationDomain, MigrationId,
     MigrationPlan, SchemaVersion, StorageError, StorageErrorCode,
 };
+use ariadnion_user_domain::migrations::{
+    IDENTITY_USERS_MIGRATION_CANONICAL_V1_SHA256, IDENTITY_USERS_MIGRATION_DOMAIN,
+    IDENTITY_USERS_MIGRATION_FROM_VERSION, IDENTITY_USERS_MIGRATION_ID,
+    IDENTITY_USERS_MIGRATION_REQUIRES_BACKUP, IDENTITY_USERS_MIGRATION_STATEMENTS,
+    IDENTITY_USERS_MIGRATION_TO_VERSION,
+};
 use sha2::{Digest, Sha256};
 
 use self::canonical::CanonicalAstV1;
@@ -168,6 +174,11 @@ impl RnmdbMigrationDefinitions {
                 return Err(integrity_failure());
             }
             bootstrap_ids.insert(id);
+        }
+        let identity_users = compile_identity_users_definition()?;
+        let identity_id = identity_users.descriptor().id().clone();
+        if definitions.insert(identity_id, identity_users).is_some() {
+            return Err(integrity_failure());
         }
         Ok(Self {
             definitions,
@@ -360,6 +371,19 @@ fn compile_legacy_platform_definition(
         requires_backup: false,
     };
     compile_migration_definition(input, LegacyRawV0(migration))
+}
+
+fn compile_identity_users_definition() -> Result<RnmdbMigrationDefinition, StorageError> {
+    let input = CanonicalMigrationDefinitionInput {
+        id: IDENTITY_USERS_MIGRATION_ID,
+        domain: IDENTITY_USERS_MIGRATION_DOMAIN,
+        from: IDENTITY_USERS_MIGRATION_FROM_VERSION,
+        to: IDENTITY_USERS_MIGRATION_TO_VERSION,
+        statements: IDENTITY_USERS_MIGRATION_STATEMENTS,
+        expected_checksum: IDENTITY_USERS_MIGRATION_CANONICAL_V1_SHA256,
+        requires_backup: IDENTITY_USERS_MIGRATION_REQUIRES_BACKUP,
+    };
+    compile_migration_definition(input, CanonicalAstV1)
 }
 
 // Legacy raw hashing is permanently scoped to these three exact shipped
