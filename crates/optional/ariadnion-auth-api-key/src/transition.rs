@@ -2,12 +2,14 @@
 
 use ariadnion_core::PrincipalId;
 use ariadnion_user_domain::UtcTimestamp;
+use subtle::Choice;
 
 use crate::error::error;
+use crate::model::ApiKeyAdvance;
 use crate::{
     ApiKey, ApiKeyError, ApiKeyErrorCode, ApiKeyId, ApiKeyIssueRequest, ApiKeyOwner, ApiKeyPrefix,
     ApiKeyScope, ApiKeySecretDigest, ApiKeyState, ApiKeyValidityWindow, ApiKeyVersion,
-    MAX_API_KEY_LIFETIME_SECONDS, MAX_OVERLAP_SECONDS,
+    MAX_API_KEY_LIFETIME_SECONDS, MAX_OVERLAP_SECONDS, MAX_RETIRED_SECRETS,
 };
 
 /// Evidence required to rotate an API-key secret with a short overlap window.
@@ -269,29 +271,12 @@ pub fn verify_api_key_presentation(
     current: &ApiKey,
     presentation: ApiKeyPresentation,
 ) -> Result<ApiKeyVerification, ApiKeyError> {
-    validate_owner(current, &presentation.owner)?;
-    if current.id() != &presentation.key_id {
-        return Err(error(ApiKeyErrorCode::KeyMismatch));
-    }
-    if current.prefix() != &presentation.prefix {
-        return Err(error(ApiKeyErrorCode::PrefixMismatch));
-    }
+    validate_presentation_identity(current, &presentation)?;
     validate_usable_state(current)?;
+    validate_command_time(current, presentation.presented_at)?;
     validate_not_expired(current, presentation.presented_at)?;
-    if !secret_is_acceptable(
-        current,
-        presentation.secret_digest,
-        presentation.presented_at,
-    ) {
-        return Err(error(ApiKeyErrorCode::SecretMismatch));
-    }
-    if !current
-        .scopes()
-        .iter()
-        .any(|scope| scope == &presentation.required_scope)
-    {
-        return Err(error(ApiKeyErrorCode::ScopeDenied));
-    }
+    validate_presented_secret(current, &presentation)?;
+    validate_required_scope(current, &presentation.required_scope)?;
     Ok(ApiKeyVerification {
         key_id: current.id().clone(),
         tenant_id: current.tenant_id().clone(),
@@ -334,24 +319,9 @@ fn apply_rotation(
     occurred_at: UtcTimestamp,
     rotation: ApiKeyRotation,
 ) -> Result<ApiKeyTransition, ApiKeyError> {
-    validate_usable_state(current)?;
-    validate_owner(current, &rotation.owner)?;
-    if current.id() != &rotation.key_id {
-        return Err(error(ApiKeyErrorCode::KeyMismatch));
-    }
-    validate_not_expired(current, occurred_at)?;
-    validate_overlap_window(current, occurred_at, rotation.previous_secret_expires_at)?;
-    if current.current_secret().matches(rotation.new_secret) {
-        return Err(error(ApiKeyErrorCode::InvalidArgument));
-    }
+    validate_rotation_request(current, occurred_at, &rotation)?;
     let version = current.version().next()?;
-    let key = current.advance(
-        version,
-        ApiKeyState::Rotating,
-        rotation.new_secret,
-        Some(current.current_secret()),
-        Some(rotation.previous_secret_expires_at),
-    );
+    let key = rotating_key(current, version, &rotation);
     let event = event_from(&key, actor, occurred_at, ApiKeyEventKind::Rotated);
     Ok(ApiKeyTransition { key, event })
 }
@@ -370,14 +340,16 @@ fn apply_complete_rotation(
     if occurred_at.unix_seconds() < previous_expires.unix_seconds() {
         return Err(error(ApiKeyErrorCode::NotYetExpired));
     }
+    let retired_secrets = retire_previous_secret(current)?;
     let version = current.version().next()?;
-    let key = current.advance(
+    let key = current.advance(ApiKeyAdvance {
         version,
-        ApiKeyState::Active,
-        current.current_secret(),
-        None,
-        None,
-    );
+        state: ApiKeyState::Active,
+        current_secret: current.current_secret(),
+        previous_secret: None,
+        previous_secret_expires_at: None,
+        retired_secrets,
+    });
     let event = event_from(&key, actor, occurred_at, ApiKeyEventKind::RotationCompleted);
     Ok(ApiKeyTransition { key, event })
 }
@@ -390,14 +362,16 @@ fn apply_revoke(
 ) -> Result<ApiKeyTransition, ApiKeyError> {
     validate_owner(current, &owner)?;
     validate_usable_state(current)?;
+    let retired_secrets = retire_previous_secret(current)?;
     let version = current.version().next()?;
-    let key = current.advance(
+    let key = current.advance(ApiKeyAdvance {
         version,
-        ApiKeyState::Revoked,
-        current.current_secret(),
-        None,
-        None,
-    );
+        state: ApiKeyState::Revoked,
+        current_secret: current.current_secret(),
+        previous_secret: None,
+        previous_secret_expires_at: None,
+        retired_secrets,
+    });
     let event = event_from(&key, actor, occurred_at, ApiKeyEventKind::Revoked);
     Ok(ApiKeyTransition { key, event })
 }
@@ -416,14 +390,16 @@ fn apply_expire(
     if occurred_at.unix_seconds() < expires_at.unix_seconds() {
         return Err(error(ApiKeyErrorCode::NotYetExpired));
     }
+    let retired_secrets = retire_previous_secret(current)?;
     let version = current.version().next()?;
-    let key = current.advance(
+    let key = current.advance(ApiKeyAdvance {
         version,
-        ApiKeyState::Expired,
-        current.current_secret(),
-        None,
-        None,
-    );
+        state: ApiKeyState::Expired,
+        current_secret: current.current_secret(),
+        previous_secret: None,
+        previous_secret_expires_at: None,
+        retired_secrets,
+    });
     let event = event_from(&key, actor, occurred_at, ApiKeyEventKind::Expired);
     Ok(ApiKeyTransition { key, event })
 }
@@ -477,6 +453,76 @@ fn validate_command_time(current: &ApiKey, occurred_at: UtcTimestamp) -> Result<
     Ok(())
 }
 
+fn validate_presentation_identity(
+    current: &ApiKey,
+    presentation: &ApiKeyPresentation,
+) -> Result<(), ApiKeyError> {
+    validate_owner(current, &presentation.owner)?;
+    if current.id() != &presentation.key_id {
+        return Err(error(ApiKeyErrorCode::KeyMismatch));
+    }
+    if current.prefix() != &presentation.prefix {
+        return Err(error(ApiKeyErrorCode::PrefixMismatch));
+    }
+    Ok(())
+}
+
+fn validate_presented_secret(
+    current: &ApiKey,
+    presentation: &ApiKeyPresentation,
+) -> Result<(), ApiKeyError> {
+    if secret_is_acceptable(
+        current,
+        presentation.secret_digest,
+        presentation.presented_at,
+    ) {
+        return Ok(());
+    }
+    Err(error(ApiKeyErrorCode::SecretMismatch))
+}
+
+fn validate_required_scope(
+    current: &ApiKey,
+    required_scope: &ApiKeyScope,
+) -> Result<(), ApiKeyError> {
+    if current.scopes().iter().any(|scope| scope == required_scope) {
+        return Ok(());
+    }
+    Err(error(ApiKeyErrorCode::ScopeDenied))
+}
+
+fn validate_rotation_request(
+    current: &ApiKey,
+    occurred_at: UtcTimestamp,
+    rotation: &ApiKeyRotation,
+) -> Result<(), ApiKeyError> {
+    validate_rotation_state(current)?;
+    validate_owner(current, &rotation.owner)?;
+    validate_rotation_key(current, rotation)?;
+    validate_not_expired(current, occurred_at)?;
+    validate_overlap_window(current, occurred_at, rotation.previous_secret_expires_at)?;
+    validate_new_secret(current, rotation.new_secret)?;
+    validate_retired_capacity(current)
+}
+
+fn validate_rotation_key(current: &ApiKey, rotation: &ApiKeyRotation) -> Result<(), ApiKeyError> {
+    if current.id() == &rotation.key_id {
+        return Ok(());
+    }
+    Err(error(ApiKeyErrorCode::KeyMismatch))
+}
+
+fn rotating_key(current: &ApiKey, version: ApiKeyVersion, rotation: &ApiKeyRotation) -> ApiKey {
+    current.advance(ApiKeyAdvance {
+        version,
+        state: ApiKeyState::Rotating,
+        current_secret: rotation.new_secret,
+        previous_secret: Some(current.current_secret()),
+        previous_secret_expires_at: Some(rotation.previous_secret_expires_at),
+        retired_secrets: current.retired_secrets().to_vec(),
+    })
+}
+
 fn validate_owner(current: &ApiKey, owner: &ApiKeyOwner) -> Result<(), ApiKeyError> {
     if current.tenant_id() != owner.tenant_id() {
         return Err(error(ApiKeyErrorCode::TenantMismatch));
@@ -490,6 +536,14 @@ fn validate_owner(current: &ApiKey, owner: &ApiKeyOwner) -> Result<(), ApiKeyErr
 fn validate_usable_state(current: &ApiKey) -> Result<(), ApiKeyError> {
     match current.state() {
         ApiKeyState::Active | ApiKeyState::Rotating => Ok(()),
+        ApiKeyState::Revoked | ApiKeyState::Expired => Err(error(ApiKeyErrorCode::Terminal)),
+    }
+}
+
+fn validate_rotation_state(current: &ApiKey) -> Result<(), ApiKeyError> {
+    match current.state() {
+        ApiKeyState::Active => Ok(()),
+        ApiKeyState::Rotating => Err(error(ApiKeyErrorCode::RotationInProgress)),
         ApiKeyState::Revoked | ApiKeyState::Expired => Err(error(ApiKeyErrorCode::Terminal)),
     }
 }
@@ -508,22 +562,51 @@ fn validate_overlap_window(
     occurred_at: UtcTimestamp,
     previous_secret_expires_at: UtcTimestamp,
 ) -> Result<(), ApiKeyError> {
-    if previous_secret_expires_at.unix_seconds() <= occurred_at.unix_seconds() {
-        return Err(error(ApiKeyErrorCode::InvalidArgument));
+    validate_overlap_order(occurred_at, previous_secret_expires_at)?;
+    let span = overlap_span(occurred_at, previous_secret_expires_at)?;
+    validate_overlap_bound(span)?;
+    validate_overlap_absolute(current, previous_secret_expires_at)?;
+    Ok(())
+}
+
+fn validate_overlap_order(
+    occurred_at: UtcTimestamp,
+    previous_secret_expires_at: UtcTimestamp,
+) -> Result<(), ApiKeyError> {
+    if previous_secret_expires_at.unix_seconds() > occurred_at.unix_seconds() {
+        return Ok(());
     }
-    let span = previous_secret_expires_at
+    Err(error(ApiKeyErrorCode::InvalidArgument))
+}
+
+fn overlap_span(
+    occurred_at: UtcTimestamp,
+    previous_secret_expires_at: UtcTimestamp,
+) -> Result<i64, ApiKeyError> {
+    previous_secret_expires_at
         .unix_seconds()
         .checked_sub(occurred_at.unix_seconds())
-        .ok_or_else(|| error(ApiKeyErrorCode::InvalidArgument))?;
-    if span > MAX_OVERLAP_SECONDS {
-        return Err(error(ApiKeyErrorCode::InvalidArgument));
+        .ok_or_else(|| error(ApiKeyErrorCode::InvalidArgument))
+}
+
+fn validate_overlap_bound(span: i64) -> Result<(), ApiKeyError> {
+    if span <= MAX_OVERLAP_SECONDS {
+        return Ok(());
     }
-    if let Some(absolute) = current.expires_at()
-        && previous_secret_expires_at.unix_seconds() > absolute.unix_seconds()
-    {
-        return Err(error(ApiKeyErrorCode::InvalidArgument));
+    Err(error(ApiKeyErrorCode::InvalidArgument))
+}
+
+fn validate_overlap_absolute(
+    current: &ApiKey,
+    previous_secret_expires_at: UtcTimestamp,
+) -> Result<(), ApiKeyError> {
+    let Some(absolute) = current.expires_at() else {
+        return Ok(());
+    };
+    if previous_secret_expires_at.unix_seconds() <= absolute.unix_seconds() {
+        return Ok(());
     }
-    Ok(())
+    Err(error(ApiKeyErrorCode::InvalidArgument))
 }
 
 fn secret_is_acceptable(
@@ -531,25 +614,62 @@ fn secret_is_acceptable(
     presented: ApiKeySecretDigest,
     presented_at: UtcTimestamp,
 ) -> bool {
-    if current.current_secret().matches(presented) {
-        return true;
-    }
-    previous_secret_is_acceptable(current, presented, presented_at)
+    let current_matches = current.current_secret().ct_matches(presented);
+    let previous_matches = previous_secret_match_choice(current, presented);
+    let previous_is_active = previous_secret_is_active(current, presented_at);
+    bool::from(current_matches | (previous_matches & previous_is_active))
 }
 
-fn previous_secret_is_acceptable(
-    current: &ApiKey,
-    presented: ApiKeySecretDigest,
-    presented_at: UtcTimestamp,
-) -> bool {
-    let Some(previous) = current.previous_secret() else {
-        return false;
-    };
-    let Some(previous_expires) = current.previous_secret_expires_at() else {
-        return false;
-    };
-    if presented_at.unix_seconds() >= previous_expires.unix_seconds() {
-        return false;
+fn previous_secret_match_choice(current: &ApiKey, presented: ApiKeySecretDigest) -> Choice {
+    current
+        .previous_secret()
+        .map_or(Choice::from(0), |previous| previous.ct_matches(presented))
+}
+
+fn previous_secret_is_active(current: &ApiKey, presented_at: UtcTimestamp) -> Choice {
+    let active = current.previous_secret().is_some()
+        && current
+            .previous_secret_expires_at()
+            .is_some_and(|expires| presented_at.unix_seconds() < expires.unix_seconds());
+    Choice::from(u8::from(active))
+}
+
+fn validate_new_secret(current: &ApiKey, candidate: ApiKeySecretDigest) -> Result<(), ApiKeyError> {
+    let current_matches = current.current_secret().ct_matches(candidate);
+    let previous_matches = previous_secret_match_choice(current, candidate);
+    let retired_matches = retired_secret_match_choice(current, candidate);
+    if bool::from(current_matches) {
+        return Err(error(ApiKeyErrorCode::InvalidArgument));
     }
-    previous.matches(presented)
+    if bool::from(previous_matches | retired_matches) {
+        return Err(error(ApiKeyErrorCode::SecretReuseDetected));
+    }
+    Ok(())
+}
+
+fn retired_secret_match_choice(current: &ApiKey, candidate: ApiKeySecretDigest) -> Choice {
+    let mut found = Choice::from(0);
+    for retired in current.retired_secrets() {
+        found |= retired.ct_matches(candidate);
+    }
+    found
+}
+
+fn validate_retired_capacity(current: &ApiKey) -> Result<(), ApiKeyError> {
+    if current.retired_secrets().len() >= MAX_RETIRED_SECRETS {
+        return Err(error(ApiKeyErrorCode::ResourceLimitExceeded));
+    }
+    Ok(())
+}
+
+fn retire_previous_secret(current: &ApiKey) -> Result<Vec<ApiKeySecretDigest>, ApiKeyError> {
+    let mut retired = current.retired_secrets().to_vec();
+    let Some(previous) = current.previous_secret() else {
+        return Ok(retired);
+    };
+    if retired.len() >= MAX_RETIRED_SECRETS {
+        return Err(error(ApiKeyErrorCode::ResourceLimitExceeded));
+    }
+    retired.push(previous);
+    Ok(retired)
 }
