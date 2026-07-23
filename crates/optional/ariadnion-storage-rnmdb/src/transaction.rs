@@ -113,7 +113,8 @@ impl TransactionPort for RnmdbTransaction {
 impl Drop for RnmdbTransaction {
     fn drop(&mut self) {
         if !self.completed {
-            self.session.rollback_active_transaction();
+            // The owner records a monotonic taint before returning a rollback error.
+            let _rollback = self.session.rollback_active_transaction();
         }
     }
 }

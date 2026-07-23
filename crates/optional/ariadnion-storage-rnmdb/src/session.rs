@@ -3,6 +3,7 @@
 use std::collections::BTreeSet;
 use std::fmt::{self, Debug, Formatter};
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard};
 use std::time::SystemTime;
 
@@ -101,6 +102,7 @@ pub struct RnmdbSessionOwner {
     profile: RnmdbInstanceProfile,
     transaction_scope: TransactionScope,
     session: Mutex<LocalSession>,
+    tainted: AtomicBool,
     configured_columns: Mutex<BTreeSet<ColumnEncryptionTarget>>,
 }
 
@@ -114,6 +116,7 @@ impl RnmdbSessionOwner {
             profile: options.profile,
             transaction_scope: TransactionScope::new(),
             session: Mutex::new(session),
+            tainted: AtomicBool::new(false),
             configured_columns: Mutex::new(BTreeSet::new()),
         })
     }
@@ -137,50 +140,102 @@ impl RnmdbSessionOwner {
     /// Persists a complete checkpoint after checking cancellation/deadline.
     pub fn checkpoint(&self, context: &RequestContext) -> Result<(), StorageError> {
         check_context(context)?;
+        self.ensure_usable()?;
         let mut session = lock_session(&self.session);
+        check_context(context)?;
+        self.ensure_usable()?;
         session.checkpoint().map_err(map_rnmdb_error)
     }
 
     /// Returns whether the embedded session currently owns a transaction.
     pub fn transaction_active(&self, context: &RequestContext) -> Result<bool, StorageError> {
         check_context(context)?;
-        Ok(lock_session(&self.session).in_transaction())
+        self.ensure_usable()?;
+        let session = lock_session(&self.session);
+        check_context(context)?;
+        self.ensure_usable()?;
+        Ok(session.in_transaction())
     }
 
     pub(crate) fn begin_transaction(&self, context: &RequestContext) -> Result<(), StorageError> {
         check_context(context)?;
+        self.ensure_usable()?;
         let mut session = lock_session(&self.session);
-        if session.in_transaction() {
-            return Err(StorageError::new(StorageErrorCode::Conflict));
-        }
-        session
-            .execute("BEGIN")
-            .map(|_| ())
-            .map_err(map_rnmdb_error)
+        check_context(context)?;
+        self.ensure_usable()?;
+        self.begin_transaction_on_session(&mut session)
     }
 
     pub(crate) fn commit_transaction(&self, context: &RequestContext) -> Result<(), StorageError> {
-        self.execute_transaction_command("COMMIT", context)
+        self.execute_transaction_command("COMMIT", commit_indeterminate(), context)
     }
 
     pub(crate) fn rollback_transaction(
         &self,
         context: &RequestContext,
     ) -> Result<(), StorageError> {
-        self.execute_transaction_command("ROLLBACK", context)
+        self.execute_transaction_command("ROLLBACK", integrity_failure(), context)
     }
 
-    pub(crate) fn rollback_active_transaction(&self) {
+    pub(crate) fn rollback_active_transaction(&self) -> Result<(), StorageError> {
         let mut session = lock_session(&self.session);
-        if session.in_transaction() {
-            let _ = session.execute("ROLLBACK");
+        if !session.in_transaction() {
+            return Ok(());
         }
+        let result = session.execute("ROLLBACK").map_err(map_rnmdb_error);
+        if result.is_err() || session.in_transaction() {
+            self.mark_tainted();
+            return Err(integrity_failure());
+        }
+        result.map(|_| ())
     }
 
     pub(crate) fn shutdown_before(&self, deadline: SystemTime) -> Result<bool, StorageError> {
         check_shutdown_deadline(deadline)?;
+        self.ensure_usable()?;
         let mut session = lock_session(&self.session);
-        let rolled_back = rollback_for_shutdown(&mut session)?;
+        self.shutdown_on_session(&mut session, deadline)
+    }
+
+    fn begin_transaction_on_session(&self, session: &mut LocalSession) -> Result<(), StorageError> {
+        if session.in_transaction() {
+            return Err(StorageError::new(StorageErrorCode::Conflict));
+        }
+        let result = session.execute("BEGIN").map_err(map_rnmdb_error);
+        if session.in_transaction() {
+            if result.is_ok() {
+                return Ok(());
+            }
+            return Err(self.taint_begin_failure(session));
+        }
+        if result.is_ok() {
+            self.mark_tainted();
+            return Err(integrity_failure());
+        }
+        result.map(|_| ())
+    }
+
+    fn taint_begin_failure(&self, session: &mut LocalSession) -> StorageError {
+        // A successful best-effort rollback cannot make an ambiguous BEGIN reusable.
+        let _ = session.execute("ROLLBACK");
+        self.mark_tainted();
+        integrity_failure()
+    }
+
+    fn shutdown_on_session(
+        &self,
+        session: &mut LocalSession,
+        deadline: SystemTime,
+    ) -> Result<bool, StorageError> {
+        check_shutdown_deadline(deadline)?;
+        self.ensure_usable()?;
+        let rolled_back = match rollback_for_shutdown(session) {
+            Ok(rolled_back) => rolled_back,
+            Err(error) => {
+                self.mark_tainted();
+                return Err(error);
+            }
+        };
         check_shutdown_deadline(deadline)?;
         session.checkpoint().map_err(map_rnmdb_error)?;
         check_shutdown_deadline(deadline)?;
@@ -193,7 +248,11 @@ impl RnmdbSessionOwner {
         operation: impl FnOnce(&mut LocalSession) -> Result<T, RnovError>,
     ) -> Result<T, StorageError> {
         check_context(context)?;
-        operation(&mut lock_session(&self.session)).map_err(map_rnmdb_error)
+        self.ensure_usable()?;
+        let mut session = lock_session(&self.session);
+        check_context(context)?;
+        self.ensure_usable()?;
+        operation(&mut session).map_err(map_rnmdb_error)
     }
 
     pub(crate) fn with_storage_session<T>(
@@ -202,7 +261,39 @@ impl RnmdbSessionOwner {
         operation: impl FnOnce(&mut LocalSession) -> Result<T, StorageError>,
     ) -> Result<T, StorageError> {
         check_context(context)?;
-        operation(&mut lock_session(&self.session))
+        self.ensure_usable()?;
+        let mut session = lock_session(&self.session);
+        check_context(context)?;
+        self.ensure_usable()?;
+        operation(&mut session)
+    }
+
+    pub(crate) fn with_identity_session<T>(
+        &self,
+        context: &RequestContext,
+        operation: impl FnOnce(
+            &mut LocalSession,
+        ) -> crate::identity_transaction::IdentityTransactionResult<T>,
+    ) -> Result<T, StorageError> {
+        check_context(context)?;
+        self.ensure_usable()?;
+        let mut session = lock_session(&self.session);
+        check_context(context)?;
+        self.ensure_usable()?;
+        if session.in_transaction() {
+            return Err(StorageError::new(StorageErrorCode::Conflict));
+        }
+        let result = operation(&mut session);
+        if session.in_transaction() {
+            self.mark_tainted();
+            return Err(integrity_failure());
+        }
+        result.map_err(|error| {
+            if error.taints_session() {
+                self.mark_tainted();
+            }
+            error.into_storage_error()
+        })
     }
 
     /// Configures one managed column while holding the configuration lock.
@@ -229,9 +320,34 @@ impl RnmdbSessionOwner {
     fn execute_transaction_command(
         &self,
         command: &str,
+        command_failure: StorageError,
         context: &RequestContext,
     ) -> Result<(), StorageError> {
-        self.with_session(context, |session| session.execute(command).map(|_| ()))
+        check_context(context)?;
+        self.ensure_usable()?;
+        let mut session = lock_session(&self.session);
+        check_context(context)?;
+        self.ensure_usable()?;
+        if session.execute(command).is_err() {
+            self.mark_tainted();
+            return Err(command_failure);
+        }
+        if session.in_transaction() {
+            self.mark_tainted();
+            return Err(integrity_failure());
+        }
+        Ok(())
+    }
+
+    fn ensure_usable(&self) -> Result<(), StorageError> {
+        if self.tainted.load(Ordering::Acquire) {
+            return Err(integrity_failure());
+        }
+        Ok(())
+    }
+
+    fn mark_tainted(&self) {
+        self.tainted.store(true, Ordering::Release);
     }
 }
 
@@ -270,7 +386,7 @@ fn validate_data_root(path: &Path) -> Result<(), StorageError> {
     Ok(())
 }
 
-fn check_context(context: &RequestContext) -> Result<(), StorageError> {
+pub(crate) fn check_context(context: &RequestContext) -> Result<(), StorageError> {
     context.check_active().map_err(|error| match error.code() {
         ErrorCode::Cancelled => StorageError::new(StorageErrorCode::Cancelled),
         ErrorCode::DeadlineExceeded => StorageError::new(StorageErrorCode::DeadlineExceeded),
@@ -278,11 +394,24 @@ fn check_context(context: &RequestContext) -> Result<(), StorageError> {
     })
 }
 
+const fn integrity_failure() -> StorageError {
+    StorageError::new(StorageErrorCode::IntegrityFailure)
+}
+
+const fn commit_indeterminate() -> StorageError {
+    StorageError::new(StorageErrorCode::CommitIndeterminate)
+}
+
 fn rollback_for_shutdown(session: &mut LocalSession) -> Result<bool, StorageError> {
     if !session.in_transaction() {
         return Ok(false);
     }
-    session.execute("ROLLBACK").map_err(map_rnmdb_error)?;
+    session
+        .execute("ROLLBACK")
+        .map_err(|_| integrity_failure())?;
+    if session.in_transaction() {
+        return Err(integrity_failure());
+    }
     Ok(true)
 }
 

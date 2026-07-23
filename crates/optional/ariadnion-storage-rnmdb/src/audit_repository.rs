@@ -1,5 +1,7 @@
 //! Durable tenant-local identity audit repository.
 
+mod chain;
+
 use std::sync::Arc;
 
 use ariadnion_audit_domain::{
@@ -29,6 +31,9 @@ const HEAD_PROJECTION: &str = "tenant_id, last_sequence, chain_digest_version, c
 const MAX_AUDIT_SQL_BYTES: usize = 16_384;
 const SEQUENCE_TEXT_BYTES: usize = 20;
 const DIGEST_TEXT_BYTES: usize = 64;
+
+/// Maximum number of chain links, including a local anchor link, verified by one durable read.
+pub const MAX_AUDIT_MEMBERSHIP_DISTANCE: u64 = 65_536;
 
 /// Persists and verifies one authenticated tenant's immutable identity audit chain.
 pub struct RnmdbAuditRepository {
@@ -63,8 +68,8 @@ impl RnmdbAuditRepository {
     ) -> Result<AuditChainHead, StorageError> {
         let principal = authenticated_principal(context)?;
         validate_append_identity(principal, expected_head, event)?;
-        self.session.with_storage_session(context, |session| {
-            run_identity_transaction(session, |session| {
+        self.session.with_identity_session(context, |session| {
+            run_identity_transaction(session, context, |session| {
                 append_in_transaction(session, principal, expected_head, event)
             })
         })
@@ -108,7 +113,7 @@ impl RnmdbAuditRepository {
     ) -> Result<AuditEvent, StorageError> {
         validate_authenticated_tenant(context, tenant_id)?;
         self.session.with_storage_session(context, |session| {
-            load_durable_event_by_id(session, tenant_id, event_id)
+            load_durable_event_by_id(session, tenant_id, event_id, context)
         })
     }
 
@@ -116,12 +121,14 @@ impl RnmdbAuditRepository {
     ///
     /// The cursor is capped by the audit-store contract. The predecessor event
     /// and every exported row are rehydrated from authenticated storage, then
-    /// the audit-store verifies continuity and exact page coverage.
+    /// the audit-store verifies continuity and exact page coverage. The page
+    /// tail must also reach the durable head within the membership budget.
     ///
     /// # Errors
     ///
     /// Returns a stable storage error when authentication fails, the exact
-    /// range is unavailable, persisted material is malformed, or I/O fails.
+    /// range is unavailable, membership exceeds its budget, persisted material
+    /// is malformed, cancellation is observed, or I/O fails.
     pub fn export(
         &self,
         tenant_id: &TenantId,
@@ -130,7 +137,7 @@ impl RnmdbAuditRepository {
     ) -> Result<Box<[AuditEvent]>, StorageError> {
         validate_authenticated_tenant(context, tenant_id)?;
         self.session.with_storage_session(context, |session| {
-            export_from_session(session, tenant_id, cursor)
+            export_from_session(session, tenant_id, cursor, context)
         })
     }
 }
@@ -211,13 +218,34 @@ fn export_from_session(
     session: &mut LocalSession,
     tenant_id: &TenantId,
     cursor: AuditExportCursor,
+    context: &RequestContext,
 ) -> Result<Box<[AuditEvent]>, StorageError> {
     let durable_head = load_head_from_session(session, tenant_id)?;
     validate_export_bound(&durable_head, cursor)?;
     let head = export_base_head(session, tenant_id, cursor.start())?;
+    let events = load_export_events(session, tenant_id, cursor)?;
+    let exported = export_audit_batch(&head, &events, cursor).map_err(map_store_error)?;
+    validate_export_membership(session, context, &durable_head, &exported)?;
+    Ok(exported)
+}
+
+fn load_export_events(
+    session: &mut LocalSession,
+    tenant_id: &TenantId,
+    cursor: AuditExportCursor,
+) -> Result<Vec<AuditEvent>, StorageError> {
     let sql = event_range_sql(tenant_id, cursor)?;
-    let events = decode_event_page(execute(session, &sql)?, tenant_id)?;
-    export_audit_batch(&head, &events, cursor).map_err(map_store_error)
+    decode_event_page(execute(session, &sql)?, tenant_id)
+}
+
+fn validate_export_membership(
+    session: &mut LocalSession,
+    context: &RequestContext,
+    durable_head: &AuditChainHead,
+    exported: &[AuditEvent],
+) -> Result<(), StorageError> {
+    let tail = exported.last().ok_or_else(integrity_failure)?;
+    chain::validate_durable_membership(session, context, durable_head, tail)
 }
 
 fn export_base_head(
@@ -231,7 +259,7 @@ fn export_base_head(
     let value = start.get().checked_sub(1).ok_or_else(integrity_failure)?;
     let sequence = AuditSequence::new(value).map_err(map_domain_error)?;
     let event = load_event_by_sequence(session, tenant_id, sequence)?.ok_or_else(not_found)?;
-    validate_persisted_event_link(session, &event)?;
+    chain::validate_persisted_event_link(session, &event)?;
     AuditChainHead::from_event(&event).map_err(map_store_error)
 }
 
@@ -309,7 +337,7 @@ fn rehydrate_stored_head(
         &boundary,
     )
     .map_err(map_store_error)?;
-    validate_persisted_event_link(session, &boundary)?;
+    chain::validate_persisted_event_link(session, &boundary)?;
     reject_events_after_head(session, expected_tenant, stored.last_sequence)?;
     Ok(head)
 }
@@ -343,58 +371,25 @@ fn reject_events_after_head(
     Ok(())
 }
 
-fn load_durable_event_by_id(
+pub(crate) fn load_durable_event_by_id(
     session: &mut LocalSession,
     tenant_id: &TenantId,
     event_id: &AuditEventId,
+    context: &RequestContext,
 ) -> Result<AuditEvent, StorageError> {
+    load_durable_event_with_head(session, tenant_id, event_id, context).map(|(event, _head)| event)
+}
+
+pub(crate) fn load_durable_event_with_head(
+    session: &mut LocalSession,
+    tenant_id: &TenantId,
+    event_id: &AuditEventId,
+    context: &RequestContext,
+) -> Result<(AuditEvent, AuditChainHead), StorageError> {
     let event = load_event_by_id(session, tenant_id, event_id)?.ok_or_else(not_found)?;
     let head = load_head_from_session(session, tenant_id)?;
-    validate_durable_membership(&head, &event)?;
-    validate_persisted_event_link(session, &event)?;
-    Ok(event)
-}
-
-fn validate_durable_membership(
-    head: &AuditChainHead,
-    event: &AuditEvent,
-) -> Result<(), StorageError> {
-    let last_sequence = head.last_sequence().ok_or_else(integrity_failure)?;
-    if event.tenant_id() != head.tenant_id() || event.sequence().get() > last_sequence.get() {
-        return Err(integrity_failure());
-    }
-    Ok(())
-}
-
-fn validate_persisted_event_link(
-    session: &mut LocalSession,
-    event: &AuditEvent,
-) -> Result<(), StorageError> {
-    let head = load_predecessor_head(session, event)?;
-    verify_audit_batch(&head, std::slice::from_ref(event))
-        .map(|_| ())
-        .map_err(map_store_error)
-}
-
-fn load_predecessor_head(
-    session: &mut LocalSession,
-    event: &AuditEvent,
-) -> Result<AuditChainHead, StorageError> {
-    if event.sequence() == AuditSequence::initial() {
-        return Ok(AuditChainHead::empty(event.tenant_id().clone()));
-    }
-    let sequence = predecessor_sequence(event.sequence())?;
-    let predecessor = load_event_by_sequence(session, event.tenant_id(), sequence)?
-        .ok_or_else(integrity_failure)?;
-    AuditChainHead::from_event(&predecessor).map_err(map_store_error)
-}
-
-fn predecessor_sequence(sequence: AuditSequence) -> Result<AuditSequence, StorageError> {
-    let value = sequence
-        .get()
-        .checked_sub(1)
-        .ok_or_else(integrity_failure)?;
-    AuditSequence::new(value).map_err(map_domain_error)
+    chain::validate_durable_membership(session, context, &head, &event)?;
+    Ok((event, head))
 }
 
 fn validate_export_bound(

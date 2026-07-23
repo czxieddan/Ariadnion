@@ -497,7 +497,9 @@ fn map_storage_error(error: StorageError) -> CoreError {
         StorageErrorCode::DeadlineExceeded => ErrorCode::DeadlineExceeded,
         StorageErrorCode::Cancelled => ErrorCode::Cancelled,
         StorageErrorCode::ResourceExhausted => ErrorCode::ResourceExhausted,
-        StorageErrorCode::NotFound | StorageErrorCode::Unavailable => ErrorCode::Unavailable,
+        StorageErrorCode::NotFound
+        | StorageErrorCode::Unavailable
+        | StorageErrorCode::CommitIndeterminate => ErrorCode::Unavailable,
         _ => ErrorCode::Internal,
     };
     CoreError::from_code(code).with_internal_context("RNMDB module operation failed")
