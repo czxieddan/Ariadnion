@@ -11,6 +11,12 @@ use ariadnion_audit_domain::migrations::{
     IDENTITY_AUDIT_MIGRATION_REQUIRES_BACKUP, IDENTITY_AUDIT_MIGRATION_STATEMENTS,
     IDENTITY_AUDIT_MIGRATION_TO_VERSION,
 };
+use ariadnion_invitation::migrations::{
+    IDENTITY_INVITATION_MIGRATION_CANONICAL_V1_SHA256, IDENTITY_INVITATION_MIGRATION_DOMAIN,
+    IDENTITY_INVITATION_MIGRATION_FROM_VERSION, IDENTITY_INVITATION_MIGRATION_ID,
+    IDENTITY_INVITATION_MIGRATION_REQUIRES_BACKUP, IDENTITY_INVITATION_MIGRATION_STATEMENTS,
+    IDENTITY_INVITATION_MIGRATION_TO_VERSION,
+};
 use ariadnion_organization::migrations::{
     IDENTITY_ORGANIZATION_MIGRATION_CANONICAL_V1_SHA256, IDENTITY_ORGANIZATION_MIGRATION_DOMAIN,
     IDENTITY_ORGANIZATION_MIGRATION_FROM_VERSION, IDENTITY_ORGANIZATION_MIGRATION_ID,
@@ -185,34 +191,8 @@ pub(crate) struct RnmdbMigrationDefinitions {
 
 impl RnmdbMigrationDefinitions {
     fn compile() -> Result<Self, StorageError> {
-        let mut definitions = BTreeMap::new();
-        let mut bootstrap_ids = BTreeSet::new();
-        for legacy in LegacyPlatformMigration::ALL {
-            let definition = compile_legacy_platform_definition(legacy)?;
-            let id = definition.descriptor().id().clone();
-            if definitions.insert(id.clone(), definition).is_some() {
-                return Err(integrity_failure());
-            }
-            bootstrap_ids.insert(id);
-        }
-        let identity_users = compile_identity_users_definition()?;
-        let identity_id = identity_users.descriptor().id().clone();
-        if definitions.insert(identity_id, identity_users).is_some() {
-            return Err(integrity_failure());
-        }
-        let identity_audit = compile_identity_audit_definition()?;
-        let audit_id = identity_audit.descriptor().id().clone();
-        if definitions.insert(audit_id, identity_audit).is_some() {
-            return Err(integrity_failure());
-        }
-        let identity_organization = compile_identity_organization_definition()?;
-        let organization_id = identity_organization.descriptor().id().clone();
-        if definitions
-            .insert(organization_id, identity_organization)
-            .is_some()
-        {
-            return Err(integrity_failure());
-        }
+        let (mut definitions, bootstrap_ids) = compile_bootstrap_definitions()?;
+        compile_identity_definitions(&mut definitions)?;
         Ok(Self {
             definitions,
             bootstrap_ids,
@@ -309,6 +289,48 @@ impl RnmdbMigrationDefinitions {
             .min()
             .ok_or_else(integrity_failure)
     }
+}
+
+fn compile_bootstrap_definitions() -> Result<CompiledBootstrapDefinitions, StorageError> {
+    let mut definitions = BTreeMap::new();
+    let mut bootstrap_ids = BTreeSet::new();
+    for legacy in LegacyPlatformMigration::ALL {
+        let definition = compile_legacy_platform_definition(legacy)?;
+        let id = definition.descriptor().id().clone();
+        insert_definition(&mut definitions, definition)?;
+        bootstrap_ids.insert(id);
+    }
+    Ok((definitions, bootstrap_ids))
+}
+
+fn compile_identity_definitions(
+    definitions: &mut BTreeMap<MigrationId, RnmdbMigrationDefinition>,
+) -> Result<(), StorageError> {
+    for definition in [
+        compile_identity_users_definition()?,
+        compile_identity_audit_definition()?,
+        compile_identity_organization_definition()?,
+        compile_identity_invitation_definition()?,
+    ] {
+        insert_definition(definitions, definition)?;
+    }
+    Ok(())
+}
+
+type CompiledBootstrapDefinitions = (
+    BTreeMap<MigrationId, RnmdbMigrationDefinition>,
+    BTreeSet<MigrationId>,
+);
+
+fn insert_definition(
+    definitions: &mut BTreeMap<MigrationId, RnmdbMigrationDefinition>,
+    definition: RnmdbMigrationDefinition,
+) -> Result<(), StorageError> {
+    let id = definition.descriptor().id().clone();
+    if definitions.insert(id, definition).is_some() {
+        return Err(integrity_failure());
+    }
+    Ok(())
 }
 
 pub(crate) fn compiled_migration_definitions()
@@ -441,6 +463,19 @@ fn compile_identity_organization_definition() -> Result<RnmdbMigrationDefinition
         statements: IDENTITY_ORGANIZATION_MIGRATION_STATEMENTS,
         expected_checksum: IDENTITY_ORGANIZATION_MIGRATION_CANONICAL_V1_SHA256,
         requires_backup: IDENTITY_ORGANIZATION_MIGRATION_REQUIRES_BACKUP,
+    };
+    compile_migration_definition(input, CanonicalAstV1)
+}
+
+fn compile_identity_invitation_definition() -> Result<RnmdbMigrationDefinition, StorageError> {
+    let input = CanonicalMigrationDefinitionInput {
+        id: IDENTITY_INVITATION_MIGRATION_ID,
+        domain: IDENTITY_INVITATION_MIGRATION_DOMAIN,
+        from: IDENTITY_INVITATION_MIGRATION_FROM_VERSION,
+        to: IDENTITY_INVITATION_MIGRATION_TO_VERSION,
+        statements: IDENTITY_INVITATION_MIGRATION_STATEMENTS,
+        expected_checksum: IDENTITY_INVITATION_MIGRATION_CANONICAL_V1_SHA256,
+        requires_backup: IDENTITY_INVITATION_MIGRATION_REQUIRES_BACKUP,
     };
     compile_migration_definition(input, CanonicalAstV1)
 }
