@@ -1,5 +1,6 @@
 //! Immutable scoped API-key model values.
 
+use std::collections::HashSet;
 use std::fmt::{self, Debug, Formatter};
 
 use ariadnion_core::{PrincipalId, TenantId};
@@ -324,6 +325,7 @@ pub struct ApiKey {
     prefix: ApiKeyPrefix,
     current_secret: ApiKeySecretDigest,
     previous_secret: Option<ApiKeySecretDigest>,
+    rotation_started_at: Option<UtcTimestamp>,
     previous_secret_expires_at: Option<UtcTimestamp>,
     retired_secrets: Vec<ApiKeySecretDigest>,
     scopes: Box<[ApiKeyScope]>,
@@ -333,7 +335,99 @@ pub struct ApiKey {
     state: ApiKeyState,
 }
 
+/// Complete typed state required to reconstruct one API key from persistence.
+///
+/// Fields are public so a storage adapter can decode one candidate without a
+/// permissive constructor. [`ApiKey::from_snapshot`] remains the validation
+/// boundary and rejects combinations that public transitions cannot produce.
+#[derive(Clone, Eq, PartialEq)]
+pub struct ApiKeySnapshot {
+    /// Stable API-key aggregate identity.
+    pub id: ApiKeyId,
+    /// Tenant and user identities that own the key.
+    pub owner: ApiKeyOwner,
+    /// Recognizable non-secret lookup prefix.
+    pub prefix: ApiKeyPrefix,
+    /// Current domain-separated secret digest.
+    pub current_secret: ApiKeySecretDigest,
+    /// Previous digest accepted only during rotation overlap.
+    pub previous_secret: Option<ApiKeySecretDigest>,
+    /// Trusted instant at which the current rotation overlap began.
+    pub rotation_started_at: Option<UtcTimestamp>,
+    /// Exclusive boundary for accepting the previous digest.
+    pub previous_secret_expires_at: Option<UtcTimestamp>,
+    /// Retired digests retained in retirement order for reuse detection.
+    pub retired_secrets: Vec<ApiKeySecretDigest>,
+    /// Granted scopes, normalized during reconstruction.
+    pub scopes: Vec<ApiKeyScope>,
+    /// Trusted issuance timestamp.
+    pub issued_at: UtcTimestamp,
+    /// Optional exclusive absolute expiry boundary.
+    pub expires_at: Option<UtcTimestamp>,
+    /// Non-zero optimistic aggregate version.
+    pub version: ApiKeyVersion,
+    /// Persisted lifecycle state.
+    pub state: ApiKeyState,
+}
+
+/// Compatibility alias for callers that name aggregate state snapshots.
+pub type ApiKeySnapshotState = ApiKeySnapshot;
+
+impl Debug for ApiKeySnapshot {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ApiKeySnapshot")
+            .field("id", &self.id)
+            .field("owner", &self.owner)
+            .field("prefix", &self.prefix)
+            .field("current_secret", &"<redacted>")
+            .field("has_previous_secret", &self.previous_secret.is_some())
+            .field("rotation_started_at", &self.rotation_started_at)
+            .field(
+                "previous_secret_expires_at",
+                &self.previous_secret_expires_at,
+            )
+            .field("retired_secret_count", &self.retired_secrets.len())
+            .field("scopes", &self.scopes)
+            .field("issued_at", &self.issued_at)
+            .field("expires_at", &self.expires_at)
+            .field("version", &self.version)
+            .field("state", &self.state)
+            .finish()
+    }
+}
+
 impl ApiKey {
+    /// Reconstructs an API key from one complete typed persistence snapshot.
+    ///
+    /// The reconstruction boundary validates identity and version floors,
+    /// normalizes bounded scopes, verifies validity and overlap ordering, and
+    /// rejects incomplete lifecycle state or duplicate/reused secret digests.
+    /// It accepts only one-way digests and never receives plaintext key data.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiKeyErrorCode::InvalidArgument`] when the persisted fields
+    /// cannot represent a state reachable through the public transition API.
+    pub fn from_snapshot(snapshot: ApiKeySnapshot) -> Result<Self, ApiKeyError> {
+        let scopes = validate_snapshot(&snapshot)?;
+        Ok(Self {
+            id: snapshot.id,
+            owner: snapshot.owner,
+            prefix: snapshot.prefix,
+            current_secret: snapshot.current_secret,
+            previous_secret: snapshot.previous_secret,
+            rotation_started_at: snapshot.rotation_started_at,
+            previous_secret_expires_at: snapshot.previous_secret_expires_at,
+            retired_secrets: snapshot.retired_secrets,
+            scopes,
+            issued_at: snapshot.issued_at,
+            expires_at: snapshot.expires_at,
+            version: snapshot.version,
+            state: snapshot.state,
+        })
+    }
+
     /// Returns the key identity.
     #[must_use]
     pub const fn id(&self) -> &ApiKeyId {
@@ -374,6 +468,12 @@ impl ApiKey {
     #[must_use]
     pub const fn previous_secret(&self) -> Option<ApiKeySecretDigest> {
         self.previous_secret
+    }
+
+    /// Returns the trusted instant at which the current rotation began.
+    #[must_use]
+    pub const fn rotation_started_at(&self) -> Option<UtcTimestamp> {
+        self.rotation_started_at
     }
 
     /// Returns when the previous secret stops being accepted.
@@ -421,6 +521,26 @@ impl ApiKey {
         self.state
     }
 
+    /// Returns every durable field needed for lossless reconstruction.
+    #[must_use]
+    pub fn snapshot_state(&self) -> ApiKeySnapshot {
+        ApiKeySnapshot {
+            id: self.id.clone(),
+            owner: self.owner.clone(),
+            prefix: self.prefix.clone(),
+            current_secret: self.current_secret,
+            previous_secret: self.previous_secret,
+            rotation_started_at: self.rotation_started_at,
+            previous_secret_expires_at: self.previous_secret_expires_at,
+            retired_secrets: self.retired_secrets.clone(),
+            scopes: self.scopes.to_vec(),
+            issued_at: self.issued_at,
+            expires_at: self.expires_at,
+            version: self.version,
+            state: self.state,
+        }
+    }
+
     pub(crate) fn issued(request: ApiKeyIssueRequest) -> Self {
         Self {
             id: request.binding.id,
@@ -428,6 +548,7 @@ impl ApiKey {
             prefix: request.binding.prefix,
             current_secret: request.secret_digest,
             previous_secret: None,
+            rotation_started_at: None,
             previous_secret_expires_at: None,
             retired_secrets: Vec::new(),
             scopes: request.scopes,
@@ -445,6 +566,7 @@ impl ApiKey {
             prefix: self.prefix.clone(),
             current_secret: next.current_secret,
             previous_secret: next.previous_secret,
+            rotation_started_at: next.rotation_started_at,
             previous_secret_expires_at: next.previous_secret_expires_at,
             retired_secrets: next.retired_secrets,
             scopes: self.scopes.clone(),
@@ -461,6 +583,7 @@ pub(crate) struct ApiKeyAdvance {
     pub(crate) state: ApiKeyState,
     pub(crate) current_secret: ApiKeySecretDigest,
     pub(crate) previous_secret: Option<ApiKeySecretDigest>,
+    pub(crate) rotation_started_at: Option<UtcTimestamp>,
     pub(crate) previous_secret_expires_at: Option<UtcTimestamp>,
     pub(crate) retired_secrets: Vec<ApiKeySecretDigest>,
 }
@@ -478,6 +601,180 @@ pub(crate) fn normalize_scopes(
         return Err(error(ApiKeyErrorCode::InvalidArgument));
     }
     Ok(normalized.into_boxed_slice())
+}
+
+fn validate_snapshot(snapshot: &ApiKeySnapshot) -> Result<Box<[ApiKeyScope]>, ApiKeyError> {
+    validate_snapshot_identity(snapshot)?;
+    validate_snapshot_version(snapshot)?;
+    validate_snapshot_validity(snapshot)?;
+    validate_snapshot_secret_state(snapshot)?;
+    validate_retired_secrets(snapshot)?;
+    normalize_scopes(snapshot.scopes.clone())
+}
+
+fn validate_snapshot_identity(snapshot: &ApiKeySnapshot) -> Result<(), ApiKeyError> {
+    let valid = !snapshot.id.as_str().is_empty()
+        && !snapshot.owner.tenant_id().as_str().is_empty()
+        && !snapshot.owner.user_id().as_str().is_empty()
+        && !snapshot.prefix.as_str().is_empty()
+        && snapshot.version.get() != 0;
+    if !valid {
+        return Err(error(ApiKeyErrorCode::InvalidArgument));
+    }
+    Ok(())
+}
+
+fn validate_snapshot_version(snapshot: &ApiKeySnapshot) -> Result<(), ApiKeyError> {
+    let retired = u64::try_from(snapshot.retired_secrets.len())
+        .map_err(|_| error(ApiKeyErrorCode::InvalidArgument))?;
+    let rotation_cost = retired
+        .checked_mul(2)
+        .ok_or_else(|| error(ApiKeyErrorCode::InvalidArgument))?;
+    let active = version_with_cost(1, rotation_cost)?;
+    let rotating = version_with_cost(2, rotation_cost)?;
+    let valid = match snapshot.state {
+        ApiKeyState::Active => snapshot.version.get() == active,
+        ApiKeyState::Rotating => snapshot.version.get() == rotating,
+        ApiKeyState::Revoked | ApiKeyState::Expired => {
+            valid_terminal_version(snapshot.version.get(), retired, active, rotating)
+        }
+    };
+    if !valid {
+        return Err(error(ApiKeyErrorCode::InvalidArgument));
+    }
+    Ok(())
+}
+
+fn version_with_cost(base: u64, cost: u64) -> Result<u64, ApiKeyError> {
+    base.checked_add(cost)
+        .ok_or_else(|| error(ApiKeyErrorCode::InvalidArgument))
+}
+
+fn valid_terminal_version(version: u64, retired: u64, active: u64, rotating: u64) -> bool {
+    version == rotating || (retired > 0 && version == active)
+}
+
+fn validate_snapshot_validity(snapshot: &ApiKeySnapshot) -> Result<(), ApiKeyError> {
+    let Some(expires_at) = snapshot.expires_at else {
+        return validate_expired_state(snapshot);
+    };
+    let span = expires_at
+        .unix_seconds()
+        .checked_sub(snapshot.issued_at.unix_seconds())
+        .ok_or_else(|| error(ApiKeyErrorCode::InvalidArgument))?;
+    if span <= 0 || span > MAX_API_KEY_LIFETIME_SECONDS {
+        return Err(error(ApiKeyErrorCode::InvalidArgument));
+    }
+    Ok(())
+}
+
+fn validate_expired_state(snapshot: &ApiKeySnapshot) -> Result<(), ApiKeyError> {
+    if snapshot.state == ApiKeyState::Expired {
+        return Err(error(ApiKeyErrorCode::InvalidArgument));
+    }
+    Ok(())
+}
+
+fn validate_snapshot_secret_state(snapshot: &ApiKeySnapshot) -> Result<(), ApiKeyError> {
+    let has_previous = snapshot.previous_secret.is_some();
+    let complete_pairing = has_previous == snapshot.rotation_started_at.is_some()
+        && has_previous == snapshot.previous_secret_expires_at.is_some();
+    if !complete_pairing {
+        return Err(error(ApiKeyErrorCode::InvalidArgument));
+    }
+    validate_previous_state(snapshot, has_previous)?;
+    validate_previous_digest(snapshot)?;
+    validate_snapshot_overlap(snapshot)
+}
+
+fn validate_previous_state(
+    snapshot: &ApiKeySnapshot,
+    has_previous: bool,
+) -> Result<(), ApiKeyError> {
+    let valid = match snapshot.state {
+        ApiKeyState::Rotating => has_previous,
+        ApiKeyState::Active | ApiKeyState::Revoked | ApiKeyState::Expired => !has_previous,
+    };
+    if !valid {
+        return Err(error(ApiKeyErrorCode::InvalidArgument));
+    }
+    Ok(())
+}
+
+fn validate_previous_digest(snapshot: &ApiKeySnapshot) -> Result<(), ApiKeyError> {
+    if snapshot.previous_secret == Some(snapshot.current_secret) {
+        return Err(error(ApiKeyErrorCode::InvalidArgument));
+    }
+    Ok(())
+}
+
+fn validate_snapshot_overlap(snapshot: &ApiKeySnapshot) -> Result<(), ApiKeyError> {
+    let Some((rotation_started, overlap_expiry)) = snapshot
+        .rotation_started_at
+        .zip(snapshot.previous_secret_expires_at)
+    else {
+        return Ok(());
+    };
+    let span = overlap_expiry
+        .unix_seconds()
+        .checked_sub(rotation_started.unix_seconds())
+        .ok_or_else(|| error(ApiKeyErrorCode::InvalidArgument))?;
+    if span <= 0 || span > MAX_OVERLAP_SECONDS {
+        return Err(error(ApiKeyErrorCode::InvalidArgument));
+    }
+    validate_rotation_start(snapshot, rotation_started)?;
+    validate_overlap_before_expiry(snapshot, overlap_expiry)
+}
+
+fn validate_rotation_start(
+    snapshot: &ApiKeySnapshot,
+    rotation_started: UtcTimestamp,
+) -> Result<(), ApiKeyError> {
+    let after_issue = rotation_started.unix_seconds() >= snapshot.issued_at.unix_seconds();
+    let before_expiry = snapshot
+        .expires_at
+        .is_none_or(|absolute| rotation_started.unix_seconds() < absolute.unix_seconds());
+    if !after_issue || !before_expiry {
+        return Err(error(ApiKeyErrorCode::InvalidArgument));
+    }
+    Ok(())
+}
+
+fn validate_overlap_before_expiry(
+    snapshot: &ApiKeySnapshot,
+    overlap_expiry: UtcTimestamp,
+) -> Result<(), ApiKeyError> {
+    let within_absolute = snapshot
+        .expires_at
+        .is_none_or(|absolute| overlap_expiry.unix_seconds() <= absolute.unix_seconds());
+    if !within_absolute {
+        return Err(error(ApiKeyErrorCode::InvalidArgument));
+    }
+    Ok(())
+}
+
+fn validate_retired_secrets(snapshot: &ApiKeySnapshot) -> Result<(), ApiKeyError> {
+    if snapshot.retired_secrets.len() > MAX_RETIRED_SECRETS {
+        return Err(error(ApiKeyErrorCode::InvalidArgument));
+    }
+    let mut seen = HashSet::with_capacity(snapshot.retired_secrets.len());
+    for digest in &snapshot.retired_secrets {
+        validate_retired_digest(snapshot, *digest, &mut seen)?;
+    }
+    Ok(())
+}
+
+fn validate_retired_digest(
+    snapshot: &ApiKeySnapshot,
+    digest: ApiKeySecretDigest,
+    seen: &mut HashSet<ApiKeySecretDigest>,
+) -> Result<(), ApiKeyError> {
+    let duplicates_live =
+        digest == snapshot.current_secret || Some(digest) == snapshot.previous_secret;
+    if duplicates_live || !seen.insert(digest) {
+        return Err(error(ApiKeyErrorCode::InvalidArgument));
+    }
+    Ok(())
 }
 
 fn domain_separated_digest(domain: &[u8], value: &[u8]) -> [u8; 32] {

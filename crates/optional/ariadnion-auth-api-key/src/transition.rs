@@ -321,7 +321,7 @@ fn apply_rotation(
 ) -> Result<ApiKeyTransition, ApiKeyError> {
     validate_rotation_request(current, occurred_at, &rotation)?;
     let version = current.version().next()?;
-    let key = rotating_key(current, version, &rotation);
+    let key = rotating_key(current, version, occurred_at, &rotation);
     let event = event_from(&key, actor, occurred_at, ApiKeyEventKind::Rotated);
     Ok(ApiKeyTransition { key, event })
 }
@@ -347,6 +347,7 @@ fn apply_complete_rotation(
         state: ApiKeyState::Active,
         current_secret: current.current_secret(),
         previous_secret: None,
+        rotation_started_at: None,
         previous_secret_expires_at: None,
         retired_secrets,
     });
@@ -369,6 +370,7 @@ fn apply_revoke(
         state: ApiKeyState::Revoked,
         current_secret: current.current_secret(),
         previous_secret: None,
+        rotation_started_at: None,
         previous_secret_expires_at: None,
         retired_secrets,
     });
@@ -397,6 +399,7 @@ fn apply_expire(
         state: ApiKeyState::Expired,
         current_secret: current.current_secret(),
         previous_secret: None,
+        rotation_started_at: None,
         previous_secret_expires_at: None,
         retired_secrets,
     });
@@ -512,12 +515,18 @@ fn validate_rotation_key(current: &ApiKey, rotation: &ApiKeyRotation) -> Result<
     Err(error(ApiKeyErrorCode::KeyMismatch))
 }
 
-fn rotating_key(current: &ApiKey, version: ApiKeyVersion, rotation: &ApiKeyRotation) -> ApiKey {
+fn rotating_key(
+    current: &ApiKey,
+    version: ApiKeyVersion,
+    occurred_at: UtcTimestamp,
+    rotation: &ApiKeyRotation,
+) -> ApiKey {
     current.advance(ApiKeyAdvance {
         version,
         state: ApiKeyState::Rotating,
         current_secret: rotation.new_secret,
         previous_secret: Some(current.current_secret()),
+        rotation_started_at: Some(occurred_at),
         previous_secret_expires_at: Some(rotation.previous_secret_expires_at),
         retired_secrets: current.retired_secrets().to_vec(),
     })
