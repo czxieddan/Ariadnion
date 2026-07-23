@@ -12,13 +12,37 @@ use crate::{
     SessionValidityWindow,
 };
 
-/// Evidence required to rotate the active leaf of a session family.
+/// Presented-token evidence required to rotate a session-family leaf.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SessionRotation {
+pub struct SessionRotationEvidence {
     family_id: crate::SessionFamilyId,
     session_id: SessionId,
     subject: SessionSubject,
     presented_token: SessionTokenDigest,
+}
+
+impl SessionRotationEvidence {
+    /// Creates immutable family, leaf, subject, and presented-token evidence.
+    #[must_use]
+    pub const fn new(
+        family_id: crate::SessionFamilyId,
+        session_id: SessionId,
+        subject: SessionSubject,
+        presented_token: SessionTokenDigest,
+    ) -> Self {
+        Self {
+            family_id,
+            session_id,
+            subject,
+            presented_token,
+        }
+    }
+}
+
+/// Evidence and successor material required to rotate a session-family leaf.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SessionRotation {
+    evidence: SessionRotationEvidence,
     successor_session_id: SessionId,
     successor_token: SessionTokenDigest,
     idle_expires_at: UtcTimestamp,
@@ -28,19 +52,13 @@ impl SessionRotation {
     /// Creates immutable rotation evidence and successor leaf material.
     #[must_use]
     pub const fn new(
-        family_id: crate::SessionFamilyId,
-        session_id: SessionId,
-        subject: SessionSubject,
-        presented_token: SessionTokenDigest,
+        evidence: SessionRotationEvidence,
         successor_session_id: SessionId,
         successor_token: SessionTokenDigest,
         idle_expires_at: UtcTimestamp,
     ) -> Self {
         Self {
-            family_id,
-            session_id,
-            subject,
-            presented_token,
+            evidence,
             successor_session_id,
             successor_token,
             idle_expires_at,
@@ -261,10 +279,12 @@ pub fn transition_session_family(
             current,
             actor,
             occurred_at,
-            family_id,
-            session_id,
-            subject,
-            presented_token,
+            ReuseEvidence {
+                family_id,
+                session_id,
+                subject,
+                presented_token,
+            },
         ),
         SessionAction::Revoke { subject } => apply_revoke(current, actor, occurred_at, subject),
         SessionAction::Expire { subject } => apply_expire(current, actor, occurred_at, subject),
@@ -278,7 +298,7 @@ fn apply_rotation(
     rotation: SessionRotation,
 ) -> Result<SessionTransition, SessionError> {
     validate_rotation_preconditions(current, occurred_at, &rotation)?;
-    match evaluate_presented_token(current, rotation.presented_token) {
+    match evaluate_presented_token(current, rotation.evidence.presented_token) {
         PresentedTokenOutcome::ActiveMatch => {
             validate_idle_window(current, occurred_at, rotation.idle_expires_at)?;
             validate_successor(current, &rotation)?;
@@ -316,9 +336,9 @@ fn validate_rotation_preconditions(
     rotation: &SessionRotation,
 ) -> Result<(), SessionError> {
     validate_active_family(current)?;
-    validate_subject(current, &rotation.subject)?;
-    validate_family_id(current, &rotation.family_id)?;
-    validate_current_leaf(current, &rotation.session_id)?;
+    validate_subject(current, &rotation.evidence.subject)?;
+    validate_family_id(current, &rotation.evidence.family_id)?;
+    validate_current_leaf(current, &rotation.evidence.session_id)?;
     validate_not_expired(current, occurred_at)
 }
 
@@ -344,15 +364,25 @@ fn rotate_active_leaf(
     Ok(SessionTransition { family, event })
 }
 
-fn apply_reuse_detection(
-    current: &SessionFamily,
-    actor: PrincipalId,
-    occurred_at: UtcTimestamp,
+struct ReuseEvidence {
     family_id: crate::SessionFamilyId,
     session_id: SessionId,
     subject: SessionSubject,
     presented_token: SessionTokenDigest,
+}
+
+fn apply_reuse_detection(
+    current: &SessionFamily,
+    actor: PrincipalId,
+    occurred_at: UtcTimestamp,
+    evidence: ReuseEvidence,
 ) -> Result<SessionTransition, SessionError> {
+    let ReuseEvidence {
+        family_id,
+        session_id,
+        subject,
+        presented_token,
+    } = evidence;
     validate_subject(current, &subject)?;
     validate_family_id(current, &family_id)?;
     if current.state() != SessionFamilyState::Active {

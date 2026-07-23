@@ -18,5 +18,5 @@ pub use model::{
 };
 pub use transition::{
     SessionAction, SessionCommand, SessionEvent, SessionEventKind, SessionRotation,
-    SessionTransition, issue_session, transition_session_family,
+    SessionRotationEvidence, SessionTransition, issue_session, transition_session_family,
 };
