@@ -37,6 +37,8 @@ pub enum StorageErrorCode {
     ResourceExhausted,
     /// Storage is temporarily unavailable without exposing internals.
     Unavailable,
+    /// The commit boundary returned without a trustworthy durable outcome.
+    CommitIndeterminate,
     /// Authentication or integrity verification failed closed.
     IntegrityFailure,
     /// The requested schema transition is not supported.
@@ -57,6 +59,7 @@ impl StorageErrorCode {
             Self::Cancelled => "STORAGE_CANCELLED",
             Self::ResourceExhausted => "STORAGE_RESOURCE_EXHAUSTED",
             Self::Unavailable => "STORAGE_UNAVAILABLE",
+            Self::CommitIndeterminate => "STORAGE_COMMIT_INDETERMINATE",
             Self::IntegrityFailure => "STORAGE_INTEGRITY_FAILURE",
             Self::MigrationRequired => "STORAGE_MIGRATION_REQUIRED",
             Self::Internal => "STORAGE_INTERNAL",
