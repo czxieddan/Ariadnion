@@ -18,8 +18,10 @@ use crate::{UserRepositoryError, UserServiceError, UserServiceErrorCode};
 pub trait UserRepositoryPort: Send + Sync {
     /// Loads the exact user inside the supplied authenticated tenant boundary.
     ///
-    /// Implementations return `NotFound` for an absent exact key, `Unavailable`
-    /// for transient access failure, and `IntegrityFailure` for malformed data.
+    /// Implementations return `NotFound` for an absent exact key, interruption
+    /// codes for cancellation/deadline/resource limits, `Unavailable` for a
+    /// deterministic transient access failure, and `IntegrityFailure` for
+    /// malformed data.
     fn load(
         &self,
         tenant_id: &TenantId,
@@ -34,6 +36,9 @@ pub trait UserRepositoryPort: Send + Sync {
     /// `expected_previous_version` under the same atomic boundary. A changed
     /// version returns repository `Conflict`; no partial user or event write is
     /// permitted. Success returns a receipt only after durable commit.
+    /// `CommitIndeterminate` is reserved for a commit boundary whose durable
+    /// result cannot be trusted. Cancellation, deadline, resource, and ordinary
+    /// unavailable failures are definitive and must not use that code.
     fn compare_and_commit(
         &self,
         tenant_id: &TenantId,
@@ -50,7 +55,9 @@ pub trait UserRepositoryPort: Send + Sync {
     /// subsequent activity backed by its exact durable lifecycle event; a
     /// same-version snapshot must equal the target. Missing, behind, duplicate,
     /// malformed, or divergent evidence returns `IntegrityFailure`; this
-    /// operation must never replay the transition.
+    /// operation must never replay the transition. Adapters that invalidate a
+    /// session after `CommitIndeterminate` require this read through a freshly
+    /// opened repository instance.
     fn reconcile_commit(
         &self,
         tenant_id: &TenantId,
@@ -146,9 +153,9 @@ impl PreparedUserTransition {
 
 /// A redacted one-shot transition failure with optional recovery material.
 ///
-/// Only an indeterminate repository-unavailable result retains the exact
-/// prepared transition. Formatting never exposes that transition or its
-/// tenant, principal, request, or trace bindings.
+/// Only a commit-indeterminate repository result retains the exact prepared
+/// transition. Formatting never exposes that transition or its tenant,
+/// principal, request, or trace bindings.
 #[derive(Clone, Eq, PartialEq)]
 pub struct UserTransitionError {
     error: UserServiceError,
@@ -179,8 +186,9 @@ impl UserTransitionError {
     /// Returns the exact transition needed for indeterminate reconciliation.
     ///
     /// This is `Some` only when [`Self::code`] is
-    /// [`UserServiceErrorCode::RepositoryUnavailable`]. The retained request
-    /// binding still requires the original context at reconciliation time.
+    /// [`UserServiceErrorCode::RepositoryCommitIndeterminate`]. The retained
+    /// request binding still requires the original context at reconciliation
+    /// time.
     #[must_use]
     pub fn prepared_transition(&self) -> Option<&PreparedUserTransition> {
         self.prepared.as_deref()
@@ -285,11 +293,13 @@ impl UserService {
     /// # Errors
     /// Returns stable redacted service codes for unauthenticated requests,
     /// missing or inconsistent records, repository failures, interruption, or
-    /// deterministic domain rejection. A repository-unavailable failure
-    /// reported after compare-and-commit is indeterminate because the durable
-    /// write may already exist. In that case [`UserTransitionError`] retains
-    /// the exact prepared transition for [`UserService::reconcile_prepared`]; callers
-    /// must not blindly retry the command.
+    /// deterministic domain rejection. A commit-indeterminate failure
+    /// reported after compare-and-commit means the durable write may already
+    /// exist. In that case [`UserTransitionError`] retains the exact prepared
+    /// transition for [`UserService::reconcile_prepared`]; callers must not
+    /// blindly retry the command. Cancellation, deadline, resource, ordinary
+    /// unavailable, and integrity failures are deterministic and do not retain
+    /// recovery material.
     pub fn transition(
         &self,
         user_id: &UserId,
@@ -301,7 +311,7 @@ impl UserService {
             .map_err(UserTransitionError::ordinary)?;
         match self.commit_prepared(&prepared, context) {
             Ok(committed) => Ok(committed),
-            Err(error) if error.code() == UserServiceErrorCode::RepositoryUnavailable => {
+            Err(error) if error.code() == UserServiceErrorCode::RepositoryCommitIndeterminate => {
                 Err(UserTransitionError::indeterminate(error, prepared))
             }
             Err(error) => Err(UserTransitionError::ordinary(error)),
@@ -347,9 +357,9 @@ impl UserService {
     /// # Errors
     /// Returns a stable redacted service error for an inactive or substituted
     /// context, version conflict, unavailable persistence, or inconsistent
-    /// durable evidence. [`UserServiceErrorCode::RepositoryUnavailable`] is
-    /// indeterminate; the caller must retain `prepared` and reconcile it rather
-    /// than invoking this method again.
+    /// durable evidence. A [`UserServiceErrorCode::RepositoryCommitIndeterminate`]
+    /// result is recoverable by retaining `prepared`; callers must reconcile it
+    /// rather than invoking this method again.
     pub fn commit_prepared(
         &self,
         prepared: &PreparedUserTransition,
@@ -370,7 +380,9 @@ impl UserService {
     ///
     /// The original identity binding is revalidated before the repository
     /// reads exact lifecycle, audit, and outbox evidence. This method never
-    /// replays the transition.
+    /// replays the transition. If the previous adapter tainted its session at
+    /// the ambiguous commit boundary, construct a fresh repository and service
+    /// over a newly opened session before calling this method.
     ///
     /// # Errors
     /// Returns a stable redacted service error for an inactive or substituted

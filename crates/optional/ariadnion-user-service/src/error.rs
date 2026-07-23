@@ -5,7 +5,7 @@ use std::fmt::{self, Display, Formatter};
 use ariadnion_core::{CoreError, ErrorCode};
 use ariadnion_user_domain::{UserDomainError, UserDomainErrorCode};
 
-const USER_SERVICE_ERROR_CODES: [&str; 16] = [
+const USER_SERVICE_ERROR_CODES: [&str; 18] = [
     "USER_SERVICE_UNAUTHENTICATED",
     "USER_SERVICE_NOT_FOUND",
     "USER_SERVICE_REPOSITORY_CONFLICT",
@@ -22,6 +22,8 @@ const USER_SERVICE_ERROR_CODES: [&str; 16] = [
     "USER_SERVICE_CANCELLED",
     "USER_SERVICE_DEADLINE_EXCEEDED",
     "USER_SERVICE_INTERNAL",
+    "USER_SERVICE_REPOSITORY_RESOURCE_EXHAUSTED",
+    "USER_SERVICE_REPOSITORY_COMMIT_INDETERMINATE",
 ];
 
 /// Stable machine-readable failures returned by a user repository adapter.
@@ -32,8 +34,16 @@ pub enum UserRepositoryErrorCode {
     NotFound,
     /// The expected previous version or another atomic precondition changed.
     Conflict,
+    /// Cancellation was observed before a commit was attempted.
+    Cancelled,
+    /// The request deadline elapsed before a commit was attempted.
+    DeadlineExceeded,
+    /// A deterministic repository resource bound prevented the commit.
+    ResourceExhausted,
     /// The repository cannot complete an otherwise valid operation.
     Unavailable,
+    /// The commit boundary returned without a trustworthy durable outcome.
+    CommitIndeterminate,
     /// Stored data, an atomic result, or a repository invariant is inconsistent.
     IntegrityFailure,
 }
@@ -45,7 +55,11 @@ impl UserRepositoryErrorCode {
         match self {
             Self::NotFound => "USER_REPOSITORY_NOT_FOUND",
             Self::Conflict => "USER_REPOSITORY_CONFLICT",
+            Self::Cancelled => "USER_REPOSITORY_CANCELLED",
+            Self::DeadlineExceeded => "USER_REPOSITORY_DEADLINE_EXCEEDED",
+            Self::ResourceExhausted => "USER_REPOSITORY_RESOURCE_EXHAUSTED",
             Self::Unavailable => "USER_REPOSITORY_UNAVAILABLE",
+            Self::CommitIndeterminate => "USER_REPOSITORY_COMMIT_INDETERMINATE",
             Self::IntegrityFailure => "USER_REPOSITORY_INTEGRITY_FAILURE",
         }
     }
@@ -116,6 +130,10 @@ pub enum UserServiceErrorCode {
     DeadlineExceeded,
     /// An unexpected core invariant failed without safe public details.
     Internal,
+    /// A deterministic repository resource bound prevented the operation.
+    RepositoryResourceExhausted,
+    /// A commit may or may not be durable and requires read reconciliation.
+    RepositoryCommitIndeterminate,
 }
 
 impl UserServiceErrorCode {
@@ -167,7 +185,15 @@ pub(crate) fn map_repository_error(error: UserRepositoryError) -> UserServiceErr
     let code = match error.code() {
         UserRepositoryErrorCode::NotFound => UserServiceErrorCode::UserNotFound,
         UserRepositoryErrorCode::Conflict => UserServiceErrorCode::RepositoryConflict,
+        UserRepositoryErrorCode::Cancelled => UserServiceErrorCode::Cancelled,
+        UserRepositoryErrorCode::DeadlineExceeded => UserServiceErrorCode::DeadlineExceeded,
+        UserRepositoryErrorCode::ResourceExhausted => {
+            UserServiceErrorCode::RepositoryResourceExhausted
+        }
         UserRepositoryErrorCode::Unavailable => UserServiceErrorCode::RepositoryUnavailable,
+        UserRepositoryErrorCode::CommitIndeterminate => {
+            UserServiceErrorCode::RepositoryCommitIndeterminate
+        }
         UserRepositoryErrorCode::IntegrityFailure => {
             UserServiceErrorCode::RepositoryIntegrityFailure
         }
