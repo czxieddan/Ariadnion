@@ -3,6 +3,8 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod migrations;
+
 mod binding;
 mod error;
 mod evaluate;
@@ -19,7 +21,9 @@ pub use ids::{
     AssignmentId, DecisionId, PermissionId, PolicyVersion, ResourceId, ResourceKind, RoleId,
 };
 pub use model::{
-    AuthorizationDecision, AuthorizationDecisionReason, AuthorizationIntent, AuthorizationPolicy,
-    AuthorizationRequest, AuthorizationScope, AuthorizationTarget, MatchedRoleSummary,
-    PermissionEffect, PermissionRule, ResourceState, RoleDefinition,
+    AuthorizationAssignmentSnapshot, AuthorizationDecision, AuthorizationDecisionReason,
+    AuthorizationIntent, AuthorizationPolicy, AuthorizationPolicySnapshot, AuthorizationRequest,
+    AuthorizationRoleSnapshot, AuthorizationScope, AuthorizationTarget, MatchedRoleSummary,
+    PermissionEffect, PermissionRule, ResourceState, RoleAssignmentSnapshot, RoleDefinition,
+    RoleDefinitionSnapshot,
 };

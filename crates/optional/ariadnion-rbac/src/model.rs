@@ -1,5 +1,12 @@
 //! Immutable scoped authorization policy and request models.
 
+mod snapshot;
+
+pub use snapshot::{
+    AuthorizationAssignmentSnapshot, AuthorizationPolicySnapshot, AuthorizationRoleSnapshot,
+    RoleAssignmentSnapshot, RoleDefinitionSnapshot,
+};
+
 use std::collections::BTreeSet;
 
 use ariadnion_core::{PrincipalId, TenantId};
