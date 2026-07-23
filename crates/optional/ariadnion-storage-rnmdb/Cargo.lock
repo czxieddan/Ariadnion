@@ -139,6 +139,7 @@ dependencies = [
  "ariadnion-storage-restore",
  "ariadnion-storage-upgrade",
  "ariadnion-user-domain",
+ "ariadnion-user-service",
  "hmac 0.12.1",
  "rnmdb-catalog",
  "rnmdb-cli",
@@ -172,6 +173,14 @@ name = "ariadnion-user-domain"
 version = "0.1.0"
 dependencies = [
  "ariadnion-core",
+]
+
+[[package]]
+name = "ariadnion-user-service"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+ "ariadnion-user-domain",
 ]
 
 [[package]]

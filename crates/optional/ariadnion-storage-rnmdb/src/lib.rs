@@ -29,8 +29,9 @@ mod session;
 mod transaction;
 mod udf;
 mod upgrade;
+mod user_repository;
 
-pub use audit_repository::RnmdbAuditRepository;
+pub use audit_repository::{MAX_AUDIT_MEMBERSHIP_DISTANCE, RnmdbAuditRepository};
 pub use backup::{RnmdbBackupAdapter, RnmdbBackupEnvironment};
 pub use codec::{CurrencyCode, MoneyValue, NormalizedJson, StorageUuid, UtcTimestampMicros};
 pub use index::{FixedIndexDefinition, RnmdbIndexManager, RnmdbIndexMethod};
@@ -76,6 +77,7 @@ pub use upgrade::{
     RnmdbRetainedSourceInspection, RnmdbUpgradeAdapter, RnmdbUpgradeDomainVerification,
     RnmdbUpgradeEnvironment,
 };
+pub use user_repository::{AuditSubjectKeyMaterial, RnmdbUserRepository};
 
 /// The reviewed upstream source revision compiled by this adapter.
 pub const REVIEWED_RNMDB_COMMIT: &str = "f07f1da2c1a193ad3732ee779d228ac8ec3dbffd";

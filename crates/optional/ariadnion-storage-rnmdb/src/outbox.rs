@@ -228,7 +228,7 @@ fn require_active_transaction(session: &LocalSession) -> Result<(), StorageError
     Ok(())
 }
 
-fn enqueue_message(
+pub(crate) fn enqueue_message(
     session: &mut LocalSession,
     tenant: &TenantId,
     message: &NewOutboxMessage,
@@ -297,29 +297,52 @@ fn claim_messages(
 ) -> Result<Vec<OutboxLease>, StorageError> {
     let query = claim_sql(tenant, request, now)?;
     let candidates = decode_claim_candidates(execute(session, &query)?, tenant, request)?;
+    let claim = ClaimContext {
+        tenant,
+        request,
+        now,
+        expires_at,
+        lease_key,
+    };
     let mut leases = Vec::with_capacity(candidates.len());
     for candidate in candidates {
-        leases.push(claim_candidate(
-            session, tenant, request, candidate, now, expires_at, lease_key,
-        )?);
+        leases.push(claim_candidate(session, candidate, claim)?);
     }
     Ok(leases)
 }
 
-fn claim_candidate(
-    session: &mut LocalSession,
-    tenant: &TenantId,
-    request: &OutboxLeaseRequest,
-    candidate: ClaimCandidate,
+#[derive(Clone, Copy)]
+struct ClaimContext<'a> {
+    tenant: &'a TenantId,
+    request: &'a OutboxLeaseRequest,
     now: SystemTime,
     expires_at: SystemTime,
-    lease_key: &OutboxLeaseKeyMaterial,
+    lease_key: &'a OutboxLeaseKeyMaterial,
+}
+
+fn claim_candidate(
+    session: &mut LocalSession,
+    candidate: ClaimCandidate,
+    claim: ClaimContext<'_>,
 ) -> Result<OutboxLease, StorageError> {
-    let token = derive_lease_token(tenant, request, &candidate, expires_at, lease_key)?;
-    let update = claim_update_sql(tenant, request, &candidate, &token, now, expires_at)?;
+    let token = derive_lease_token(
+        claim.tenant,
+        claim.request,
+        &candidate,
+        claim.expires_at,
+        claim.lease_key,
+    )?;
+    let update = claim_update_sql(
+        claim.tenant,
+        claim.request,
+        &candidate,
+        &token,
+        claim.now,
+        claim.expires_at,
+    )?;
     require_single_change(execute(session, &update)?)?;
     let message = OutboxMessage::from_persisted(
-        tenant.clone(),
+        claim.tenant.clone(),
         candidate.event_id,
         candidate.topic,
         candidate.payload,
@@ -329,8 +352,8 @@ fn claim_candidate(
     Ok(OutboxLease::new(
         message,
         token,
-        request.worker_id().clone(),
-        expires_at,
+        claim.request.worker_id().clone(),
+        claim.expires_at,
     ))
 }
 

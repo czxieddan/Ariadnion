@@ -20,6 +20,7 @@ ariadnion-storage-query = { path = "../ariadnion-storage-query" }
 ariadnion-storage-restore = { path = "../ariadnion-storage-restore" }
 ariadnion-storage-upgrade = { path = "../ariadnion-storage-upgrade" }
 ariadnion-user-domain = { path = "../ariadnion-user-domain" }
+ariadnion-user-service = { path = "../ariadnion-user-service" }
 hmac = "0.12.1"
 rnmdb-common = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "f07f1da2c1a193ad3732ee779d228ac8ec3dbffd", package = "rnmdb-common" }
 rnmdb-types = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "f07f1da2c1a193ad3732ee779d228ac8ec3dbffd", package = "rnmdb-types" }
