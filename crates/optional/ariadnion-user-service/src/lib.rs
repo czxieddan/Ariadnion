@@ -9,4 +9,7 @@ mod service;
 pub use error::{
     UserRepositoryError, UserRepositoryErrorCode, UserServiceError, UserServiceErrorCode,
 };
-pub use service::{CommittedUserTransition, UserCommitReceipt, UserRepositoryPort, UserService};
+pub use service::{
+    CommittedUserTransition, PreparedUserTransition, UserCommitReceipt, UserRepositoryPort,
+    UserService, UserTransitionError,
+};
