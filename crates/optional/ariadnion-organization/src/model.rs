@@ -1,5 +1,7 @@
 //! Immutable organization aggregate state, evidence, and audit event models.
 
+use std::collections::HashSet;
+
 use ariadnion_core::{PrincipalContext, PrincipalId, TenantId};
 use ariadnion_user_domain::{UserId, UtcTimestamp};
 
@@ -148,6 +150,178 @@ impl Membership {
     }
 }
 
+/// The complete lossless state of one persisted membership.
+///
+/// The variants keep team assignments representable only for active
+/// memberships. Rehydration still validates all identities and ownership
+/// relationships against the enclosing organization snapshot.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum MembershipSnapshot {
+    /// An active membership, optionally bounded by an expiry instant.
+    Active {
+        /// Stable membership identity.
+        membership_id: MembershipId,
+        /// User represented by this membership.
+        user_id: UserId,
+        /// Governance role held by the membership.
+        kind: MembershipKind,
+        /// Audited source that created the membership.
+        origin: MembershipOrigin,
+        /// Optional UTC expiry for non-owner memberships.
+        expires_at: Option<UtcTimestamp>,
+        /// Registered teams assigned to this active membership.
+        team_ids: Vec<TeamId>,
+    },
+    /// A suspended membership with no active team assignments.
+    Suspended {
+        /// Stable membership identity.
+        membership_id: MembershipId,
+        /// User represented by this membership.
+        user_id: UserId,
+        /// Governance role held by the membership.
+        kind: MembershipKind,
+        /// Audited source that created the membership.
+        origin: MembershipOrigin,
+        /// Optional UTC expiry retained while suspended.
+        expires_at: Option<UtcTimestamp>,
+    },
+    /// A terminal membership with no active team assignments.
+    Left {
+        /// Stable membership identity.
+        membership_id: MembershipId,
+        /// User represented by this membership.
+        user_id: UserId,
+        /// Governance role held by the membership.
+        kind: MembershipKind,
+        /// Audited source that created the membership.
+        origin: MembershipOrigin,
+        /// Optional UTC expiry retained after departure.
+        expires_at: Option<UtcTimestamp>,
+    },
+}
+
+impl MembershipSnapshot {
+    /// Returns the stable membership identity.
+    #[must_use]
+    pub fn id(&self) -> &MembershipId {
+        match self {
+            Self::Active { membership_id, .. }
+            | Self::Suspended { membership_id, .. }
+            | Self::Left { membership_id, .. } => membership_id,
+        }
+    }
+
+    /// Returns the represented user identity.
+    #[must_use]
+    pub fn user_id(&self) -> &UserId {
+        match self {
+            Self::Active { user_id, .. }
+            | Self::Suspended { user_id, .. }
+            | Self::Left { user_id, .. } => user_id,
+        }
+    }
+
+    /// Returns the governance role held by this membership.
+    #[must_use]
+    pub const fn kind(&self) -> MembershipKind {
+        match self {
+            Self::Active { kind, .. } | Self::Suspended { kind, .. } | Self::Left { kind, .. } => {
+                *kind
+            }
+        }
+    }
+
+    /// Returns the lifecycle state encoded by the snapshot variant.
+    #[must_use]
+    pub const fn state(&self) -> MembershipState {
+        match self {
+            Self::Active { .. } => MembershipState::Active,
+            Self::Suspended { .. } => MembershipState::Suspended,
+            Self::Left { .. } => MembershipState::Left,
+        }
+    }
+
+    /// Returns the audited source that created this membership.
+    #[must_use]
+    pub const fn origin(&self) -> MembershipOrigin {
+        match self {
+            Self::Active { origin, .. }
+            | Self::Suspended { origin, .. }
+            | Self::Left { origin, .. } => *origin,
+        }
+    }
+
+    /// Returns the optional UTC expiry retained by the snapshot.
+    #[must_use]
+    pub const fn expires_at(&self) -> Option<UtcTimestamp> {
+        match self {
+            Self::Active { expires_at, .. }
+            | Self::Suspended { expires_at, .. }
+            | Self::Left { expires_at, .. } => *expires_at,
+        }
+    }
+
+    /// Returns lossless team assignments in deterministic insertion order.
+    #[must_use]
+    pub fn team_ids(&self) -> &[TeamId] {
+        match self {
+            Self::Active { team_ids, .. } => team_ids,
+            Self::Suspended { .. } | Self::Left { .. } => &[],
+        }
+    }
+
+    fn into_membership(self) -> Membership {
+        match self {
+            Self::Active {
+                membership_id,
+                user_id,
+                kind,
+                origin,
+                expires_at,
+                team_ids,
+            } => Membership {
+                id: membership_id,
+                user_id,
+                kind,
+                state: MembershipState::Active,
+                origin,
+                expires_at,
+                team_ids,
+            },
+            Self::Suspended {
+                membership_id,
+                user_id,
+                kind,
+                origin,
+                expires_at,
+            } => Membership {
+                id: membership_id,
+                user_id,
+                kind,
+                state: MembershipState::Suspended,
+                origin,
+                expires_at,
+                team_ids: Vec::new(),
+            },
+            Self::Left {
+                membership_id,
+                user_id,
+                kind,
+                origin,
+                expires_at,
+            } => Membership {
+                id: membership_id,
+                user_id,
+                kind,
+                state: MembershipState::Left,
+                origin,
+                expires_at,
+                team_ids: Vec::new(),
+            },
+        }
+    }
+}
+
 /// An immutable organization team identity registered in the aggregate.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Team {
@@ -159,6 +333,73 @@ impl Team {
     #[must_use]
     pub const fn id(&self) -> &TeamId {
         &self.id
+    }
+}
+
+/// The complete persisted state of one registered organization team.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TeamSnapshot {
+    id: TeamId,
+}
+
+impl TeamSnapshot {
+    /// Creates a candidate team snapshot from a validated identity.
+    #[must_use]
+    pub const fn new(id: TeamId) -> Self {
+        Self { id }
+    }
+
+    /// Returns the stable team identity.
+    #[must_use]
+    pub const fn id(&self) -> &TeamId {
+        &self.id
+    }
+
+    fn into_team(self) -> Team {
+        Team { id: self.id }
+    }
+}
+
+/// The complete lossless state required to rehydrate an organization.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OrganizationSnapshot {
+    state: OrganizationState,
+    memberships: Vec<MembershipSnapshot>,
+    teams: Vec<TeamSnapshot>,
+}
+
+impl OrganizationSnapshot {
+    /// Creates a candidate snapshot. The enclosing organization constructor
+    /// performs all collection, ownership, and version validation.
+    #[must_use]
+    pub fn new(
+        state: OrganizationState,
+        memberships: Vec<MembershipSnapshot>,
+        teams: Vec<TeamSnapshot>,
+    ) -> Self {
+        Self {
+            state,
+            memberships,
+            teams,
+        }
+    }
+
+    /// Returns the persisted organization state.
+    #[must_use]
+    pub const fn state(&self) -> OrganizationState {
+        self.state
+    }
+
+    /// Returns memberships in deterministic insertion order.
+    #[must_use]
+    pub fn memberships(&self) -> &[MembershipSnapshot] {
+        &self.memberships
+    }
+
+    /// Returns teams in deterministic insertion order.
+    #[must_use]
+    pub fn teams(&self) -> &[TeamSnapshot] {
+        &self.teams
     }
 }
 
@@ -174,6 +415,43 @@ pub struct Organization {
 }
 
 impl Organization {
+    /// Reconstructs an organization from one complete persisted snapshot.
+    ///
+    /// The constructor revalidates the typed tenant and aggregate identities,
+    /// optimistic version floor, bounded collections, uniqueness, active-owner
+    /// invariant, and membership/team/expiry relationships. It does not read a
+    /// clock or accept untyped persisted values.
+    ///
+    /// # Errors
+    /// Returns [`OrganizationErrorCode::InvalidArgument`] for malformed state,
+    /// [`OrganizationErrorCode::DuplicateIdentity`] for repeated identities,
+    /// or [`OrganizationErrorCode::CapacityExceeded`] for an over-bound
+    /// collection.
+    pub fn from_snapshot(
+        id: OrganizationId,
+        tenant_id: TenantId,
+        version: OrganizationVersion,
+        snapshot: OrganizationSnapshot,
+    ) -> Result<Self, OrganizationError> {
+        validate_snapshot(&id, &tenant_id, version, &snapshot)?;
+        let OrganizationSnapshot {
+            state,
+            memberships,
+            teams,
+        } = snapshot;
+        Ok(Self {
+            id,
+            tenant_id,
+            version,
+            state,
+            memberships: memberships
+                .into_iter()
+                .map(MembershipSnapshot::into_membership)
+                .collect(),
+            teams: teams.into_iter().map(TeamSnapshot::into_team).collect(),
+        })
+    }
+
     /// Returns the stable organization identity.
     #[must_use]
     pub const fn id(&self) -> &OrganizationId {
@@ -196,6 +474,21 @@ impl Organization {
     #[must_use]
     pub const fn state(&self) -> OrganizationState {
         self.state
+    }
+
+    /// Returns the complete state required for lossless persistence.
+    #[must_use]
+    pub fn snapshot_state(&self) -> OrganizationSnapshot {
+        OrganizationSnapshot {
+            state: self.state,
+            memberships: self.memberships.iter().map(snapshot_membership).collect(),
+            teams: self
+                .teams
+                .iter()
+                .cloned()
+                .map(|team| TeamSnapshot { id: team.id })
+                .collect(),
+        }
     }
 
     /// Returns all immutable memberships in deterministic insertion order.
@@ -223,6 +516,242 @@ impl Organization {
     pub fn team(&self, id: &TeamId) -> Option<&Team> {
         self.teams.iter().find(|team| team.id == *id)
     }
+}
+
+fn snapshot_membership(membership: &Membership) -> MembershipSnapshot {
+    let base = (
+        membership.id.clone(),
+        membership.user_id.clone(),
+        membership.kind,
+        membership.origin,
+        membership.expires_at,
+    );
+    match membership.state {
+        MembershipState::Active => MembershipSnapshot::Active {
+            membership_id: base.0,
+            user_id: base.1,
+            kind: base.2,
+            origin: base.3,
+            expires_at: base.4,
+            team_ids: membership.team_ids.clone(),
+        },
+        MembershipState::Suspended => MembershipSnapshot::Suspended {
+            membership_id: base.0,
+            user_id: base.1,
+            kind: base.2,
+            origin: base.3,
+            expires_at: base.4,
+        },
+        MembershipState::Left => MembershipSnapshot::Left {
+            membership_id: base.0,
+            user_id: base.1,
+            kind: base.2,
+            origin: base.3,
+            expires_at: base.4,
+        },
+    }
+}
+
+fn validate_snapshot(
+    id: &OrganizationId,
+    tenant_id: &TenantId,
+    version: OrganizationVersion,
+    snapshot: &OrganizationSnapshot,
+) -> Result<(), OrganizationError> {
+    validate_snapshot_identity(id, tenant_id, version)?;
+    validate_snapshot_capacity(snapshot)?;
+    let team_ids = unique_team_ids(snapshot)?;
+    validate_memberships(snapshot, &team_ids)?;
+    validate_owner_invariant(snapshot)?;
+    validate_version_floor(version, snapshot)
+}
+
+fn validate_snapshot_identity(
+    id: &OrganizationId,
+    tenant_id: &TenantId,
+    version: OrganizationVersion,
+) -> Result<(), OrganizationError> {
+    let invalid = id.as_str().is_empty() || tenant_id.as_str().is_empty() || version.get() == 0;
+    if invalid {
+        return Err(error(OrganizationErrorCode::InvalidArgument));
+    }
+    Ok(())
+}
+
+fn validate_snapshot_capacity(snapshot: &OrganizationSnapshot) -> Result<(), OrganizationError> {
+    if snapshot.memberships.len() > MAX_MEMBERSHIPS || snapshot.teams.len() > MAX_TEAMS {
+        return Err(error(OrganizationErrorCode::CapacityExceeded));
+    }
+    Ok(())
+}
+
+fn unique_team_ids(snapshot: &OrganizationSnapshot) -> Result<HashSet<&TeamId>, OrganizationError> {
+    let mut ids = HashSet::with_capacity(snapshot.teams.len());
+    for team in &snapshot.teams {
+        if !ids.insert(team.id()) {
+            return Err(error(OrganizationErrorCode::DuplicateIdentity));
+        }
+    }
+    Ok(ids)
+}
+
+fn validate_memberships(
+    snapshot: &OrganizationSnapshot,
+    team_ids: &HashSet<&TeamId>,
+) -> Result<(), OrganizationError> {
+    validate_membership_identity_uniqueness(snapshot)?;
+    for membership in &snapshot.memberships {
+        validate_membership(membership, team_ids)?;
+    }
+    Ok(())
+}
+
+fn validate_membership_identity_uniqueness(
+    snapshot: &OrganizationSnapshot,
+) -> Result<(), OrganizationError> {
+    let mut membership_ids = HashSet::with_capacity(snapshot.memberships.len());
+    let mut user_ids = HashSet::with_capacity(snapshot.memberships.len());
+    for membership in &snapshot.memberships {
+        if !membership_ids.insert(membership.id()) || !user_ids.insert(membership.user_id()) {
+            return Err(error(OrganizationErrorCode::DuplicateIdentity));
+        }
+    }
+    Ok(())
+}
+
+fn validate_membership(
+    membership: &MembershipSnapshot,
+    team_ids: &HashSet<&TeamId>,
+) -> Result<(), OrganizationError> {
+    validate_membership_expiry(membership)?;
+    validate_membership_assignments(membership, team_ids)
+}
+
+fn validate_membership_expiry(membership: &MembershipSnapshot) -> Result<(), OrganizationError> {
+    let owner_with_expiry =
+        membership.kind() == MembershipKind::Owner && membership.expires_at().is_some();
+    if owner_with_expiry {
+        return Err(error(OrganizationErrorCode::InvalidArgument));
+    }
+    Ok(())
+}
+
+fn validate_membership_assignments(
+    membership: &MembershipSnapshot,
+    team_ids: &HashSet<&TeamId>,
+) -> Result<(), OrganizationError> {
+    let assignments = membership.team_ids();
+    validate_assignment_capacity(assignments)?;
+    validate_assignment_state(membership, assignments)?;
+    validate_assignment_ids(assignments, team_ids)
+}
+
+fn validate_assignment_ids(
+    assignments: &[TeamId],
+    team_ids: &HashSet<&TeamId>,
+) -> Result<(), OrganizationError> {
+    let mut assigned_ids = HashSet::with_capacity(assignments.len());
+    for team_id in assignments {
+        if !team_ids.contains(team_id) || !assigned_ids.insert(team_id) {
+            return Err(error(OrganizationErrorCode::InvalidArgument));
+        }
+    }
+    Ok(())
+}
+
+fn validate_assignment_capacity(assignments: &[TeamId]) -> Result<(), OrganizationError> {
+    if assignments.len() > MAX_TEAM_ASSIGNMENTS {
+        return Err(error(OrganizationErrorCode::CapacityExceeded));
+    }
+    Ok(())
+}
+
+fn validate_assignment_state(
+    membership: &MembershipSnapshot,
+    assignments: &[TeamId],
+) -> Result<(), OrganizationError> {
+    let inactive_with_assignments =
+        membership.state() != MembershipState::Active && !assignments.is_empty();
+    if inactive_with_assignments {
+        return Err(error(OrganizationErrorCode::InvalidArgument));
+    }
+    Ok(())
+}
+
+fn validate_owner_invariant(snapshot: &OrganizationSnapshot) -> Result<(), OrganizationError> {
+    let founder_count = snapshot
+        .memberships
+        .iter()
+        .filter(|membership| membership.origin() == MembershipOrigin::Founder)
+        .count();
+    let active_owner_count = snapshot
+        .memberships
+        .iter()
+        .filter(|membership| {
+            membership.kind() == MembershipKind::Owner
+                && membership.state() == MembershipState::Active
+        })
+        .count();
+    if founder_count != 1 || active_owner_count == 0 {
+        return Err(error(OrganizationErrorCode::InvalidArgument));
+    }
+    Ok(())
+}
+
+fn validate_version_floor(
+    version: OrganizationVersion,
+    snapshot: &OrganizationSnapshot,
+) -> Result<(), OrganizationError> {
+    let minimum = minimum_snapshot_version(snapshot)?;
+    if version.get() < minimum {
+        return Err(error(OrganizationErrorCode::InvalidArgument));
+    }
+    Ok(())
+}
+
+fn minimum_snapshot_version(snapshot: &OrganizationSnapshot) -> Result<u64, OrganizationError> {
+    let mut minimum = 1_u64;
+    minimum = add_version_cost(minimum, snapshot.memberships.len() - 1)?;
+    minimum = add_version_cost(minimum, snapshot.teams.len())?;
+    minimum = add_version_cost(minimum, membership_version_cost(snapshot)?)?;
+    add_state_version_cost(minimum, snapshot.state)
+}
+
+fn membership_version_cost(snapshot: &OrganizationSnapshot) -> Result<usize, OrganizationError> {
+    let mut cost = 0_usize;
+    for membership in &snapshot.memberships {
+        cost = add_membership_version_cost(cost, membership)?;
+    }
+    Ok(cost)
+}
+
+fn add_membership_version_cost(
+    cost: usize,
+    membership: &MembershipSnapshot,
+) -> Result<usize, OrganizationError> {
+    let mut next = cost
+        .checked_add(membership.team_ids().len())
+        .ok_or_else(|| error(OrganizationErrorCode::InvalidArgument))?;
+    if membership.state() != MembershipState::Active {
+        next = next
+            .checked_add(1)
+            .ok_or_else(|| error(OrganizationErrorCode::InvalidArgument))?;
+    }
+    Ok(next)
+}
+
+fn add_state_version_cost(value: u64, state: OrganizationState) -> Result<u64, OrganizationError> {
+    if state == OrganizationState::Frozen {
+        return add_version_cost(value, 1);
+    }
+    Ok(value)
+}
+
+fn add_version_cost(value: u64, cost: usize) -> Result<u64, OrganizationError> {
+    let cost = u64::try_from(cost).map_err(|_| error(OrganizationErrorCode::InvalidArgument))?;
+    value
+        .checked_add(cost)
+        .ok_or_else(|| error(OrganizationErrorCode::InvalidArgument))
 }
 
 /// A trusted authentication adapter's principal-to-user identity binding.
