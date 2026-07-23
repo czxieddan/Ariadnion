@@ -138,6 +138,18 @@ impl SessionVersion {
     pub const fn get(self) -> u64 {
         self.0.get()
     }
+
+    /// Returns the next monotonic leaf-session version.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionErrorCode::VersionExhausted`] at `u64::MAX`.
+    pub fn next(self) -> Result<Self, SessionError> {
+        self.0
+            .checked_add(1)
+            .map(Self)
+            .ok_or_else(|| error(SessionErrorCode::VersionExhausted))
+    }
 }
 
 fn valid_identifier(value: &str) -> bool {

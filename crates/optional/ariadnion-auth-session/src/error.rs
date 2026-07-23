@@ -25,7 +25,7 @@ pub enum SessionErrorCode {
     SessionMismatch = 7,
     /// The presented token digest did not match the active leaf.
     TokenMismatch = 8,
-    /// The command arrived before the trusted issuance time.
+    /// The command arrived before the trusted session chronology.
     NotYetValid = 9,
     /// The exclusive absolute or idle expiry boundary was reached.
     Expired = 10,

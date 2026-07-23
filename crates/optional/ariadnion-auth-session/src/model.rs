@@ -1,5 +1,7 @@
 //! Immutable browser session-family model values.
 
+mod snapshot;
+
 use std::fmt::{self, Debug, Formatter};
 
 use ariadnion_core::{PrincipalId, TenantId};
@@ -8,6 +10,8 @@ use sha2::{Digest, Sha256};
 use subtle::{Choice, ConstantTimeEq};
 
 use crate::{SessionFamilyId, SessionFamilyVersion, SessionId, SessionVersion};
+
+pub use snapshot::{SessionFamilySnapshot, SessionSnapshot};
 
 /// Maximum supported absolute browser session-family lifetime in seconds.
 pub const MAX_ABSOLUTE_LIFETIME_SECONDS: i64 = 30 * 24 * 60 * 60;
@@ -335,17 +339,17 @@ impl Session {
         }
     }
 
-    pub(crate) fn with_state(&self, state: SessionState) -> Self {
-        Self {
+    pub(crate) fn with_state(&self, state: SessionState) -> Result<Self, crate::SessionError> {
+        Ok(Self {
             id: self.id.clone(),
             token_digest: self.token_digest,
             issued_at: self.issued_at,
             last_seen_at: self.last_seen_at,
             idle_expires_at: self.idle_expires_at,
-            version: self.version,
+            version: self.version.next()?,
             state,
             predecessor_id: self.predecessor_id.clone(),
-        }
+        })
     }
 }
 

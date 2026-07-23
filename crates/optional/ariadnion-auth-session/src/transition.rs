@@ -349,7 +349,7 @@ fn rotate_active_leaf(
     rotation: SessionRotation,
 ) -> Result<SessionTransition, SessionError> {
     let version = current.version().next()?;
-    let predecessor = current.current().with_state(SessionState::Rotated);
+    let predecessor = current.current().with_state(SessionState::Rotated)?;
     let successor = Session::active_leaf(
         rotation.successor_session_id,
         rotation.successor_token,
@@ -403,8 +403,8 @@ fn apply_revoke(
     validate_subject(current, &subject)?;
     validate_active_family(current)?;
     let version = current.version().next()?;
-    let current_leaf = current.current().with_state(SessionState::Revoked);
-    let rotated = rotated_with_state(current, SessionState::Revoked);
+    let current_leaf = current.current().with_state(SessionState::Revoked)?;
+    let rotated = rotated_with_state(current, SessionState::Revoked)?;
     let family = current.advance(version, SessionFamilyState::Revoked, current_leaf, rotated);
     let event = event_from(&family, actor, occurred_at, SessionEventKind::Revoked);
     Ok(SessionTransition { family, event })
@@ -424,8 +424,8 @@ fn apply_expire(
         return Err(error(SessionErrorCode::NotYetExpired));
     }
     let version = current.version().next()?;
-    let current_leaf = current.current().with_state(SessionState::Expired);
-    let rotated = rotated_with_state(current, SessionState::Expired);
+    let current_leaf = current.current().with_state(SessionState::Expired)?;
+    let rotated = rotated_with_state(current, SessionState::Expired)?;
     let family = current.advance(version, SessionFamilyState::Expired, current_leaf, rotated);
     let event = event_from(&family, actor, occurred_at, SessionEventKind::Expired);
     Ok(SessionTransition { family, event })
@@ -437,8 +437,8 @@ fn revoke_for_reuse(
     occurred_at: UtcTimestamp,
 ) -> Result<SessionTransition, SessionError> {
     let version = current.version().next()?;
-    let current_leaf = current.current().with_state(SessionState::Revoked);
-    let rotated = rotated_with_state(current, SessionState::Revoked);
+    let current_leaf = current.current().with_state(SessionState::Revoked)?;
+    let rotated = rotated_with_state(current, SessionState::Revoked)?;
     let family = current.advance(version, SessionFamilyState::Revoked, current_leaf, rotated);
     let event = event_from(&family, actor, occurred_at, SessionEventKind::ReuseRevoked);
     Ok(SessionTransition { family, event })
@@ -512,7 +512,9 @@ fn validate_command_time(
     current: &SessionFamily,
     occurred_at: UtcTimestamp,
 ) -> Result<(), SessionError> {
-    if occurred_at.unix_seconds() < current.issued_at().unix_seconds() {
+    if occurred_at.unix_seconds() < current.issued_at().unix_seconds()
+        || occurred_at.unix_seconds() < current.current().last_seen_at().unix_seconds()
+    {
         return Err(error(SessionErrorCode::NotYetValid));
     }
     Ok(())
@@ -643,7 +645,10 @@ fn rotated_session_matches(
     bool::from(found)
 }
 
-fn rotated_with_state(current: &SessionFamily, state: SessionState) -> Vec<Session> {
+fn rotated_with_state(
+    current: &SessionFamily,
+    state: SessionState,
+) -> Result<Vec<Session>, SessionError> {
     current
         .rotated()
         .iter()
