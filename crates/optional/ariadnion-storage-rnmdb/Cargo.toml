@@ -17,6 +17,7 @@ ariadnion-auth-api-key = { path = "../ariadnion-auth-api-key" }
 ariadnion-core = { path = "../../ariadnion-core" }
 ariadnion-invitation = { path = "../ariadnion-invitation" }
 ariadnion-organization = { path = "../ariadnion-organization" }
+ariadnion-rbac = { path = "../ariadnion-rbac" }
 ariadnion-storage-backup = { path = "../ariadnion-storage-backup" }
 ariadnion-storage-domain = { path = "../ariadnion-storage-domain" }
 ariadnion-storage-maintenance = { path = "../ariadnion-storage-maintenance" }

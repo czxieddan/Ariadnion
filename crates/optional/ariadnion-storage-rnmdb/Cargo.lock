@@ -127,6 +127,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ariadnion-rbac"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+ "ariadnion-organization",
+ "ariadnion-user-domain",
+]
+
+[[package]]
 name = "ariadnion-storage-backup"
 version = "0.1.0"
 dependencies = [
@@ -186,6 +195,7 @@ dependencies = [
  "ariadnion-core",
  "ariadnion-invitation",
  "ariadnion-organization",
+ "ariadnion-rbac",
  "ariadnion-storage-backup",
  "ariadnion-storage-domain",
  "ariadnion-storage-maintenance",

@@ -41,6 +41,12 @@ use ariadnion_organization::migrations::{
     IDENTITY_ORGANIZATION_MIGRATION_REQUIRES_BACKUP, IDENTITY_ORGANIZATION_MIGRATION_STATEMENTS,
     IDENTITY_ORGANIZATION_MIGRATION_TO_VERSION,
 };
+use ariadnion_rbac::migrations::{
+    IDENTITY_RBAC_MIGRATION_CANONICAL_V1_SHA256, IDENTITY_RBAC_MIGRATION_DOMAIN,
+    IDENTITY_RBAC_MIGRATION_FROM_VERSION, IDENTITY_RBAC_MIGRATION_ID,
+    IDENTITY_RBAC_MIGRATION_REQUIRES_BACKUP, IDENTITY_RBAC_MIGRATION_STATEMENTS,
+    IDENTITY_RBAC_MIGRATION_TO_VERSION,
+};
 use ariadnion_storage_domain::{
     MigrationCatalog, MigrationChecksum, MigrationDescriptor, MigrationDomain, MigrationId,
     MigrationPlan, SchemaVersion, StorageError, StorageErrorCode,
@@ -332,6 +338,7 @@ fn compile_identity_definitions(
         compile_identity_password_definition()?,
         compile_identity_session_definition()?,
         compile_identity_api_key_definition()?,
+        compile_identity_rbac_definition()?,
     ] {
         insert_definition(definitions, definition)?;
     }
@@ -536,6 +543,19 @@ fn compile_identity_api_key_definition() -> Result<RnmdbMigrationDefinition, Sto
         statements: IDENTITY_API_KEYS_MIGRATION_STATEMENTS,
         expected_checksum: IDENTITY_API_KEYS_MIGRATION_CANONICAL_V1_SHA256,
         requires_backup: IDENTITY_API_KEYS_MIGRATION_REQUIRES_BACKUP,
+    };
+    compile_migration_definition(input, CanonicalAstV1)
+}
+
+fn compile_identity_rbac_definition() -> Result<RnmdbMigrationDefinition, StorageError> {
+    let input = CanonicalMigrationDefinitionInput {
+        id: IDENTITY_RBAC_MIGRATION_ID,
+        domain: IDENTITY_RBAC_MIGRATION_DOMAIN,
+        from: IDENTITY_RBAC_MIGRATION_FROM_VERSION,
+        to: IDENTITY_RBAC_MIGRATION_TO_VERSION,
+        statements: IDENTITY_RBAC_MIGRATION_STATEMENTS,
+        expected_checksum: IDENTITY_RBAC_MIGRATION_CANONICAL_V1_SHA256,
+        requires_backup: IDENTITY_RBAC_MIGRATION_REQUIRES_BACKUP,
     };
     compile_migration_definition(input, CanonicalAstV1)
 }

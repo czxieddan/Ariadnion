@@ -9,6 +9,7 @@ use ariadnion_auth_session::migrations::IDENTITY_SESSIONS_MIGRATION_ID;
 use ariadnion_core::RequestContext;
 use ariadnion_invitation::migrations::IDENTITY_INVITATION_MIGRATION_ID;
 use ariadnion_organization::migrations::IDENTITY_ORGANIZATION_MIGRATION_ID;
+use ariadnion_rbac::migrations::IDENTITY_RBAC_MIGRATION_ID;
 use ariadnion_storage_domain::{MigrationDescriptor, StorageError, StorageErrorCode};
 use ariadnion_user_domain::migrations::IDENTITY_USERS_MIGRATION_ID;
 use rnmdb_cli::{CommandOutput, LocalSession};
@@ -196,6 +197,14 @@ pub fn identity_session_migration() -> Result<MigrationDescriptor, StorageError>
 /// version-ten to version-eleven transition explicitly through the registry.
 pub fn identity_api_key_migration() -> Result<MigrationDescriptor, StorageError> {
     compiled_migration_definitions()?.descriptor(IDENTITY_API_KEYS_MIGRATION_ID)
+}
+
+/// Returns the durable RBAC policy migration after canonical digest verification.
+///
+/// The migration remains outside module startup. Callers must request the
+/// version-eleven to version-twelve transition explicitly through the registry.
+pub fn identity_rbac_migration() -> Result<MigrationDescriptor, StorageError> {
+    compiled_migration_definitions()?.descriptor(IDENTITY_RBAC_MIGRATION_ID)
 }
 
 fn migration_insert(
