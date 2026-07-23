@@ -4,8 +4,7 @@ use crate::error::{OrganizationError, OrganizationErrorCode, error};
 use crate::ids::OrganizationVersion;
 
 use super::{
-    MAX_TEAM_ASSIGNMENTS, MembershipKind, MembershipSnapshot, MembershipState,
-    OrganizationSnapshot, OrganizationState,
+    MembershipKind, MembershipSnapshot, MembershipState, OrganizationSnapshot, OrganizationState,
 };
 
 pub(super) fn validate_version_reachability(
@@ -20,7 +19,7 @@ pub(super) fn validate_version_reachability(
     if offset == 0 || offset % 2 == 0 {
         return Ok(());
     }
-    if minimum_odd_cycle(snapshot).is_some_and(|cycle| offset >= cycle) {
+    if minimum_odd_history_surcharge(snapshot).is_some_and(|cost| offset >= cost) {
         return Ok(());
     }
     Err(invalid_argument())
@@ -82,19 +81,55 @@ fn add_version_cost(value: u64, cost: usize) -> Result<u64, OrganizationError> {
     value.checked_add(cost).ok_or_else(invalid_argument)
 }
 
-// Organization state always supplies a two-step round trip. Odd offsets need
-// one reversible odd cycle, after which additional state round trips suffice.
-fn minimum_odd_cycle(snapshot: &OrganizationSnapshot) -> Option<u64> {
-    let mut minimum = ownership_odd_cycle(snapshot);
+// Organization state supplies every two-step round trip. An odd offset needs
+// one odd historical surcharge before further state round trips are added.
+fn minimum_odd_history_surcharge(snapshot: &OrganizationSnapshot) -> Option<u64> {
+    let mut minimum = ownership_odd_surcharge(snapshot);
+    let owner_count = snapshot_owner_count(snapshot);
     for membership in &snapshot.memberships {
-        if let Some(candidate) = membership_odd_cycle(snapshot, membership) {
+        if let Some(candidate) = membership_odd_surcharge(snapshot, membership, owner_count) {
             minimum = Some(minimum.map_or(candidate, |current| current.min(candidate)));
         }
     }
     minimum
 }
 
-fn ownership_odd_cycle(snapshot: &OrganizationSnapshot) -> Option<u64> {
+fn ownership_odd_surcharge(snapshot: &OrganizationSnapshot) -> Option<u64> {
+    if supports_one_step_ownership_surcharge(snapshot) {
+        return Some(1);
+    }
+    ownership_triangle_surcharge(snapshot)
+}
+
+fn supports_one_step_ownership_surcharge(snapshot: &OrganizationSnapshot) -> bool {
+    let eligible_count = snapshot
+        .memberships
+        .iter()
+        .filter(|membership| membership.expires_at().is_none())
+        .count();
+    if eligible_count < 3 {
+        return false;
+    }
+    let founder_is_owner = snapshot
+        .memberships
+        .first()
+        .is_some_and(|membership| membership.kind() == MembershipKind::Owner);
+    if !founder_is_owner {
+        return true;
+    }
+    let mut participants = snapshot
+        .memberships
+        .iter()
+        .skip(1)
+        .filter(|membership| membership.expires_at().is_none());
+    let has_owner = participants
+        .clone()
+        .any(|membership| membership.kind() == MembershipKind::Owner);
+    let has_member = participants.any(|membership| membership.kind() == MembershipKind::Member);
+    has_owner && has_member
+}
+
+fn ownership_triangle_surcharge(snapshot: &OrganizationSnapshot) -> Option<u64> {
     let mut participants = snapshot
         .memberships
         .iter()
@@ -109,53 +144,33 @@ fn ownership_odd_cycle(snapshot: &OrganizationSnapshot) -> Option<u64> {
     (has_owner && has_member).then_some(3)
 }
 
-fn membership_odd_cycle(
+fn membership_odd_surcharge(
     snapshot: &OrganizationSnapshot,
     membership: &MembershipSnapshot,
+    owner_count: usize,
 ) -> Option<u64> {
-    match membership.state() {
-        MembershipState::Active => active_membership_odd_cycle(snapshot, membership),
-        // An inactive membership was active before its terminal transition. A
-        // registered team permits assign-suspend-activate as a three-step loop.
-        MembershipState::Suspended | MembershipState::Left => {
-            (!snapshot.teams.is_empty()).then_some(3)
-        }
-    }
-}
-
-fn active_membership_odd_cycle(
-    snapshot: &OrganizationSnapshot,
-    membership: &MembershipSnapshot,
-) -> Option<u64> {
-    if !membership_can_suspend(snapshot, membership) {
+    if !membership_can_suspend(membership, owner_count) {
         return None;
     }
-    let assignments = membership.team_ids().len();
-    if assignments % 2 == 1 {
-        return u64::try_from(assignments.checked_add(2)?).ok();
+    match membership.state() {
+        // The detour can run before the final assignment set is constructed.
+        MembershipState::Active => (!snapshot.teams.is_empty()).then_some(3),
+        // One transient assignment is cleared by the final suspension.
+        MembershipState::Suspended => (!snapshot.teams.is_empty()).then_some(1),
+        // Suspending before leaving costs one more step than leaving directly.
+        MembershipState::Left => Some(1),
     }
-    let has_spare_team = assignments < MAX_TEAM_ASSIGNMENTS && snapshot.teams.len() > assignments;
-    if has_spare_team {
-        return u64::try_from(assignments.checked_add(3)?).ok();
-    }
-    None
 }
 
-fn membership_can_suspend(
-    snapshot: &OrganizationSnapshot,
-    membership: &MembershipSnapshot,
-) -> bool {
-    membership.kind() != MembershipKind::Owner || snapshot_active_owner_count(snapshot) > 1
+fn membership_can_suspend(membership: &MembershipSnapshot, owner_count: usize) -> bool {
+    membership.kind() != MembershipKind::Owner || owner_count > 1
 }
 
-fn snapshot_active_owner_count(snapshot: &OrganizationSnapshot) -> usize {
+fn snapshot_owner_count(snapshot: &OrganizationSnapshot) -> usize {
     snapshot
         .memberships
         .iter()
-        .filter(|membership| {
-            membership.kind() == MembershipKind::Owner
-                && membership.state() == MembershipState::Active
-        })
+        .filter(|membership| membership.kind() == MembershipKind::Owner)
         .count()
 }
 

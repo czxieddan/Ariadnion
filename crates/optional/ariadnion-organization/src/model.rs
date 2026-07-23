@@ -48,7 +48,7 @@ pub enum MembershipState {
 /// The audited origin of one organization membership.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum MembershipOrigin {
-    /// The membership founded the organization.
+    /// The membership founded the organization and never carries an expiry.
     Founder,
     /// The membership was created from an accepted invitation.
     Invitation,
@@ -125,7 +125,7 @@ impl Membership {
         self.origin
     }
 
-    /// Returns the optional non-owner expiry boundary.
+    /// Returns the optional non-owner, non-founder expiry boundary.
     #[must_use]
     pub const fn expires_at(&self) -> Option<UtcTimestamp> {
         self.expires_at
@@ -169,7 +169,7 @@ pub enum MembershipSnapshot {
         kind: MembershipKind,
         /// Audited source that created the membership.
         origin: MembershipOrigin,
-        /// Optional UTC expiry for non-owner memberships.
+        /// Optional UTC expiry for non-owner, non-founder memberships.
         expires_at: Option<UtcTimestamp>,
         /// Registered teams assigned to this active membership.
         team_ids: Vec<TeamId>,
@@ -631,9 +631,10 @@ fn validate_membership(
 }
 
 fn validate_membership_expiry(membership: &MembershipSnapshot) -> Result<(), OrganizationError> {
-    let owner_with_expiry =
-        membership.kind() == MembershipKind::Owner && membership.expires_at().is_some();
-    if owner_with_expiry {
+    let expiry_is_forbidden = membership.expires_at().is_some()
+        && (membership.kind() == MembershipKind::Owner
+            || membership.origin() == MembershipOrigin::Founder);
+    if expiry_is_forbidden {
         return Err(error(OrganizationErrorCode::InvalidArgument));
     }
     Ok(())
