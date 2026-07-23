@@ -149,15 +149,16 @@ impl RoleAssignmentSnapshot {
         }
     }
 
-    fn into_assignment(self) -> RoleAssignment {
-        RoleAssignment::new(
+    fn into_assignment(self) -> Result<RoleAssignment, AuthorizationError> {
+        self.scope.validate()?;
+        Ok(RoleAssignment::new(
             self.id,
             self.principal_id,
             self.membership_id,
             self.role_id,
             self.scope,
             self.expires_at,
-        )
+        ))
     }
 }
 
@@ -217,9 +218,9 @@ impl AuthorizationPolicy {
     /// Reconstructs a policy from one complete typed persistence snapshot.
     ///
     /// The boundary revalidates collection and rule bounds, stable identity
-    /// uniqueness, tenant consistency, and every assignment role reference.
-    /// Input order is preserved exactly and no authorization decision can enter
-    /// the reconstructed policy.
+    /// uniqueness, tenant consistency, hierarchical scope invariants, and every
+    /// assignment role reference. Input order is preserved exactly and no
+    /// authorization decision can enter the reconstructed policy.
     ///
     /// # Errors
     ///
@@ -238,7 +239,7 @@ impl AuthorizationPolicy {
             .assignments
             .into_iter()
             .map(RoleAssignmentSnapshot::into_assignment)
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
         Self::new(snapshot.version, roles, assignments)
     }
 

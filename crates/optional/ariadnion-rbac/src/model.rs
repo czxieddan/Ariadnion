@@ -17,9 +17,21 @@ use crate::binding::{AuthorizationSubject, RoleAssignment};
 use crate::error::{AuthorizationError, AuthorizationErrorCode, error};
 use crate::ids::{DecisionId, PermissionId, PolicyVersion, ResourceId, ResourceKind, RoleId};
 
-const MAX_ROLES: usize = 256;
-const MAX_RULES_PER_ROLE: usize = 256;
-const MAX_ASSIGNMENTS: usize = 4_096;
+/// Maximum roles accepted in one durable authorization policy.
+///
+/// Persistence adapters must use this authoritative value when issuing a
+/// `LIMIT` cap-plus-one query before allocating role rows.
+pub const MAX_ROLES: usize = 256;
+/// Maximum permission rules accepted for one durable role.
+///
+/// Persistence adapters must use this authoritative value when issuing a
+/// `LIMIT` cap-plus-one query before allocating rule rows.
+pub const MAX_RULES_PER_ROLE: usize = 256;
+/// Maximum role assignments accepted in one durable authorization policy.
+///
+/// Persistence adapters must use this authoritative value when issuing a
+/// `LIMIT` cap-plus-one query before allocating assignment rows.
+pub const MAX_ASSIGNMENTS: usize = 4_096;
 
 /// The effect of one permission rule.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -187,16 +199,30 @@ impl AuthorizationScope {
         resource_kind: ResourceKind,
         resource_id: ResourceId,
     ) -> Result<Self, AuthorizationError> {
-        if parent_resource_id.as_ref() == Some(&resource_id) {
-            return Err(error(AuthorizationErrorCode::InvalidArgument));
-        }
-        Ok(Self::Resource {
+        let scope = Self::Resource {
             tenant_id,
             organization_id,
             parent_resource_id,
             resource_kind,
             resource_id,
-        })
+        };
+        scope.validate()?;
+        Ok(scope)
+    }
+
+    pub(crate) fn validate(&self) -> Result<(), AuthorizationError> {
+        let Self::Resource {
+            parent_resource_id,
+            resource_id,
+            ..
+        } = self
+        else {
+            return Ok(());
+        };
+        if parent_resource_id.as_ref() == Some(resource_id) {
+            return Err(error(AuthorizationErrorCode::InvalidArgument));
+        }
+        Ok(())
     }
 
     /// Returns the explicit tenant boundary.

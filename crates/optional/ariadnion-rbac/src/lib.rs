@@ -23,7 +23,7 @@ pub use ids::{
 pub use model::{
     AuthorizationAssignmentSnapshot, AuthorizationDecision, AuthorizationDecisionReason,
     AuthorizationIntent, AuthorizationPolicy, AuthorizationPolicySnapshot, AuthorizationRequest,
-    AuthorizationRoleSnapshot, AuthorizationScope, AuthorizationTarget, MatchedRoleSummary,
-    PermissionEffect, PermissionRule, ResourceState, RoleAssignmentSnapshot, RoleDefinition,
-    RoleDefinitionSnapshot,
+    AuthorizationRoleSnapshot, AuthorizationScope, AuthorizationTarget, MAX_ASSIGNMENTS, MAX_ROLES,
+    MAX_RULES_PER_ROLE, MatchedRoleSummary, PermissionEffect, PermissionRule, ResourceState,
+    RoleAssignmentSnapshot, RoleDefinition, RoleDefinitionSnapshot,
 };
