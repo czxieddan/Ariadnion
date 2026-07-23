@@ -754,7 +754,10 @@ fn validate_overlap_before_expiry(
 }
 
 fn validate_retired_secrets(snapshot: &ApiKeySnapshot) -> Result<(), ApiKeyError> {
-    if snapshot.retired_secrets.len() > MAX_RETIRED_SECRETS {
+    let retired_count = snapshot.retired_secrets.len();
+    let rotating_at_capacity =
+        snapshot.state == ApiKeyState::Rotating && retired_count >= MAX_RETIRED_SECRETS;
+    if retired_count > MAX_RETIRED_SECRETS || rotating_at_capacity {
         return Err(error(ApiKeyErrorCode::InvalidArgument));
     }
     let mut seen = HashSet::with_capacity(snapshot.retired_secrets.len());
