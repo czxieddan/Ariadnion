@@ -300,6 +300,12 @@ pub trait TransactionPort: Send {
     fn options(&self) -> TransactionOptions;
 
     /// Commits all changes after checking cancellation and deadline state.
+    ///
+    /// A [`StorageErrorCode::CommitIndeterminate`] result means the commit
+    /// boundary did not provide a trustworthy durable outcome. Callers must
+    /// reconcile with the operation's idempotency identity and must not blindly
+    /// replay the mutation. Cancellation, deadline, resource, and ordinary
+    /// unavailable errors reported before the commit boundary are definitive.
     fn commit(self: Box<Self>, context: &RequestContext) -> Result<CommitReceipt, StorageError>;
 
     /// Rolls back all uncommitted changes. Repeated consumption is impossible.
