@@ -11,6 +11,12 @@ use ariadnion_audit_domain::migrations::{
     IDENTITY_AUDIT_MIGRATION_REQUIRES_BACKUP, IDENTITY_AUDIT_MIGRATION_STATEMENTS,
     IDENTITY_AUDIT_MIGRATION_TO_VERSION,
 };
+use ariadnion_organization::migrations::{
+    IDENTITY_ORGANIZATION_MIGRATION_CANONICAL_V1_SHA256, IDENTITY_ORGANIZATION_MIGRATION_DOMAIN,
+    IDENTITY_ORGANIZATION_MIGRATION_FROM_VERSION, IDENTITY_ORGANIZATION_MIGRATION_ID,
+    IDENTITY_ORGANIZATION_MIGRATION_REQUIRES_BACKUP, IDENTITY_ORGANIZATION_MIGRATION_STATEMENTS,
+    IDENTITY_ORGANIZATION_MIGRATION_TO_VERSION,
+};
 use ariadnion_storage_domain::{
     MigrationCatalog, MigrationChecksum, MigrationDescriptor, MigrationDomain, MigrationId,
     MigrationPlan, SchemaVersion, StorageError, StorageErrorCode,
@@ -197,6 +203,14 @@ impl RnmdbMigrationDefinitions {
         let identity_audit = compile_identity_audit_definition()?;
         let audit_id = identity_audit.descriptor().id().clone();
         if definitions.insert(audit_id, identity_audit).is_some() {
+            return Err(integrity_failure());
+        }
+        let identity_organization = compile_identity_organization_definition()?;
+        let organization_id = identity_organization.descriptor().id().clone();
+        if definitions
+            .insert(organization_id, identity_organization)
+            .is_some()
+        {
             return Err(integrity_failure());
         }
         Ok(Self {
@@ -414,6 +428,19 @@ fn compile_identity_audit_definition() -> Result<RnmdbMigrationDefinition, Stora
         statements: IDENTITY_AUDIT_MIGRATION_STATEMENTS,
         expected_checksum: IDENTITY_AUDIT_MIGRATION_CANONICAL_V1_SHA256,
         requires_backup: IDENTITY_AUDIT_MIGRATION_REQUIRES_BACKUP,
+    };
+    compile_migration_definition(input, CanonicalAstV1)
+}
+
+fn compile_identity_organization_definition() -> Result<RnmdbMigrationDefinition, StorageError> {
+    let input = CanonicalMigrationDefinitionInput {
+        id: IDENTITY_ORGANIZATION_MIGRATION_ID,
+        domain: IDENTITY_ORGANIZATION_MIGRATION_DOMAIN,
+        from: IDENTITY_ORGANIZATION_MIGRATION_FROM_VERSION,
+        to: IDENTITY_ORGANIZATION_MIGRATION_TO_VERSION,
+        statements: IDENTITY_ORGANIZATION_MIGRATION_STATEMENTS,
+        expected_checksum: IDENTITY_ORGANIZATION_MIGRATION_CANONICAL_V1_SHA256,
+        requires_backup: IDENTITY_ORGANIZATION_MIGRATION_REQUIRES_BACKUP,
     };
     compile_migration_definition(input, CanonicalAstV1)
 }
