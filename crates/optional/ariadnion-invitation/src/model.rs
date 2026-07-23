@@ -6,7 +6,8 @@ use ariadnion_core::{PrincipalId, TenantId};
 use ariadnion_organization::OrganizationId;
 use ariadnion_user_domain::{UserId, UtcTimestamp};
 
-use crate::{InvitationId, InvitationVersion};
+use crate::error::error;
+use crate::{InvitationError, InvitationErrorCode, InvitationId, InvitationVersion};
 
 /// Maximum supported invitation lifetime in seconds.
 pub const MAX_INVITATION_LIFETIME_SECONDS: i64 = 30 * 24 * 60 * 60;
@@ -129,6 +130,113 @@ impl InvitationValidityWindow {
     }
 }
 
+/// Complete typed state required to rehydrate one invitation without secrets.
+///
+/// The tenant and organization identities are retained together in the issue
+/// binding, so callers cannot construct a snapshot with duplicated identity
+/// fields that disagree. Digests are one-way proofs; plaintext invitation
+/// tokens are never accepted by this type.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InvitationSnapshotState {
+    binding: InvitationIssueBinding,
+    proofs: InvitationProofDigests,
+    validity: InvitationValidityWindow,
+    version: InvitationVersion,
+    state: InvitationState,
+    consumed_by: Option<UserId>,
+}
+
+impl InvitationSnapshotState {
+    /// Creates a complete candidate snapshot for one invitation aggregate.
+    ///
+    /// The enclosing [`Invitation::from_snapshot`] constructor validates
+    /// lifecycle/version reachability, expiry bounds, and consumer presence.
+    #[must_use]
+    pub const fn new(
+        binding: InvitationIssueBinding,
+        proofs: InvitationProofDigests,
+        validity: InvitationValidityWindow,
+        version: InvitationVersion,
+        state: InvitationState,
+        consumed_by: Option<UserId>,
+    ) -> Self {
+        Self {
+            binding,
+            proofs,
+            validity,
+            version,
+            state,
+            consumed_by,
+        }
+    }
+
+    /// Returns the invitation identity.
+    #[must_use]
+    pub const fn id(&self) -> &InvitationId {
+        &self.binding.id
+    }
+
+    /// Returns the tenant identity bound to the invitation.
+    #[must_use]
+    pub const fn tenant_id(&self) -> &TenantId {
+        &self.binding.tenant_id
+    }
+
+    /// Returns the organization identity receiving the invitation.
+    #[must_use]
+    pub const fn organization_id(&self) -> &OrganizationId {
+        &self.binding.organization_id
+    }
+
+    /// Returns the principal that issued the invitation.
+    #[must_use]
+    pub const fn issuer(&self) -> &PrincipalId {
+        &self.binding.issuer
+    }
+
+    /// Returns the one-way intended-recipient digest.
+    #[must_use]
+    pub const fn subject_digest(&self) -> InvitationSubjectDigest {
+        self.proofs.subject_digest
+    }
+
+    /// Returns the one-way invitation-token digest.
+    #[must_use]
+    pub const fn token_digest(&self) -> InvitationTokenDigest {
+        self.proofs.token_digest
+    }
+
+    /// Returns the trusted issuance time.
+    #[must_use]
+    pub const fn issued_at(&self) -> UtcTimestamp {
+        self.validity.issued_at
+    }
+
+    /// Returns the exclusive UTC expiry boundary.
+    #[must_use]
+    pub const fn expires_at(&self) -> UtcTimestamp {
+        self.validity.expires_at
+    }
+
+    /// Returns the optimistic aggregate version.
+    #[must_use]
+    pub const fn version(&self) -> InvitationVersion {
+        self.version
+    }
+
+    /// Returns the persisted lifecycle state.
+    #[must_use]
+    pub const fn state(&self) -> InvitationState {
+        self.state
+    }
+
+    /// Returns the consuming user, which is present only for `Consumed`.
+    #[must_use]
+    pub const fn consumed_by(&self) -> Option<&UserId> {
+        self.consumed_by.as_ref()
+    }
+}
+
 /// Immutable input required to issue one organization invitation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InvitationIssueRequest {
@@ -180,6 +288,51 @@ pub struct Invitation {
 }
 
 impl Invitation {
+    /// Reconstructs an invitation from a complete persisted snapshot.
+    ///
+    /// The constructor accepts only typed identities and redacted digests. It
+    /// revalidates the exclusive expiry window and the reachable lifecycle
+    /// version combinations before constructing the aggregate.
+    ///
+    /// # Errors
+    /// Returns [`InvitationErrorCode::InvalidArgument`] when persisted state is
+    /// unreachable, has an invalid expiry window, or has an inconsistent
+    /// consumer and lifecycle state.
+    pub fn from_snapshot(snapshot: InvitationSnapshotState) -> Result<Self, InvitationError> {
+        validate_snapshot(&snapshot)?;
+        let InvitationSnapshotState {
+            binding,
+            proofs,
+            validity,
+            version,
+            state,
+            consumed_by,
+        } = snapshot;
+        let InvitationIssueBinding {
+            id,
+            tenant_id,
+            organization_id,
+            issuer,
+        } = binding;
+        let InvitationProofDigests {
+            subject_digest,
+            token_digest,
+        } = proofs;
+        Ok(Self {
+            id,
+            tenant_id,
+            organization_id,
+            issuer,
+            subject_digest,
+            token_digest,
+            issued_at: validity.issued_at,
+            expires_at: validity.expires_at,
+            version,
+            state,
+            consumed_by,
+        })
+    }
+
     pub(crate) fn issued(request: InvitationIssueRequest) -> Self {
         Self {
             id: request.id,
@@ -273,5 +426,66 @@ impl Invitation {
     #[must_use]
     pub const fn consumed_by(&self) -> Option<&UserId> {
         self.consumed_by.as_ref()
+    }
+
+    /// Returns the complete state required for lossless persistence.
+    #[must_use]
+    pub fn snapshot_state(&self) -> InvitationSnapshotState {
+        InvitationSnapshotState::new(
+            InvitationIssueBinding::new(
+                self.id.clone(),
+                self.tenant_id.clone(),
+                self.organization_id.clone(),
+                self.issuer.clone(),
+            ),
+            InvitationProofDigests::new(self.subject_digest, self.token_digest),
+            InvitationValidityWindow::new(self.issued_at, self.expires_at),
+            self.version,
+            self.state,
+            self.consumed_by.clone(),
+        )
+    }
+}
+
+fn validate_snapshot(snapshot: &InvitationSnapshotState) -> Result<(), InvitationError> {
+    validate_snapshot_lifetime(snapshot.validity)?;
+    validate_snapshot_lifecycle(
+        snapshot.version,
+        snapshot.state,
+        snapshot.consumed_by.is_some(),
+    )
+}
+
+fn validate_snapshot_lifetime(validity: InvitationValidityWindow) -> Result<(), InvitationError> {
+    let lifetime = validity
+        .expires_at
+        .unix_seconds()
+        .checked_sub(validity.issued_at.unix_seconds())
+        .ok_or_else(|| error(InvitationErrorCode::InvalidArgument))?;
+    if !(1..=MAX_INVITATION_LIFETIME_SECONDS).contains(&lifetime) {
+        return Err(error(InvitationErrorCode::InvalidArgument));
+    }
+    Ok(())
+}
+
+fn validate_snapshot_lifecycle(
+    version: InvitationVersion,
+    state: InvitationState,
+    has_consumer: bool,
+) -> Result<(), InvitationError> {
+    let reachable = matches!(
+        (version.get(), state, has_consumer),
+        (1, InvitationState::Issued, false)
+            | (2, InvitationState::Consumed, true)
+            | (
+                2,
+                InvitationState::Revoked | InvitationState::Expired,
+                false
+            )
+    );
+    if reachable {
+        Ok(())
+    } else {
+        Err(error(InvitationErrorCode::InvalidArgument))
     }
 }
