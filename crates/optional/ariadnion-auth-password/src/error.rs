@@ -3,7 +3,7 @@
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 
-const ERROR_CODES: [&str; 27] = [
+const ERROR_CODES: [&str; 29] = [
     "PASSWORD_INVALID_LIMITS",
     "PASSWORD_EMPTY",
     "PASSWORD_TOO_SHORT",
@@ -31,6 +31,8 @@ const ERROR_CODES: [&str; 27] = [
     "PASSWORD_RESET_REVOKED",
     "PASSWORD_RESET_EXPIRED",
     "PASSWORD_RESET_NOT_YET_EXPIRED",
+    "PASSWORD_INVALID_CREDENTIAL_ARGUMENT",
+    "PASSWORD_CREDENTIAL_VERSION_EXHAUSTED",
 ];
 
 /// A stable machine-readable password failure code.
@@ -92,6 +94,10 @@ pub enum PasswordErrorCode {
     ResetExpired = 25,
     /// Expiry was requested before the password-reset expiry boundary.
     ResetNotYetExpired = 26,
+    /// A credential identity, version, policy version, or hash record is invalid.
+    InvalidCredentialArgument = 27,
+    /// The password-credential version cannot advance beyond `u64::MAX`.
+    CredentialVersionExhausted = 28,
 }
 
 impl PasswordErrorCode {

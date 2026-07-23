@@ -50,6 +50,24 @@ impl Argon2idParameters {
         })
     }
 
+    /// Returns the memory cost in kibibytes.
+    #[must_use]
+    pub const fn memory_kib(self) -> u32 {
+        self.memory_kib
+    }
+
+    /// Returns the iteration count.
+    #[must_use]
+    pub const fn iterations(self) -> u32 {
+        self.iterations
+    }
+
+    /// Returns the lane count.
+    #[must_use]
+    pub const fn lanes(self) -> u32 {
+        self.lanes
+    }
+
     const fn fits_within(self, maximum: Self) -> bool {
         self.memory_kib <= maximum.memory_kib
             && self.iterations <= maximum.iterations
@@ -80,6 +98,7 @@ impl PasswordSalt {
 }
 
 /// An owned, structurally validated Argon2id PHC record.
+#[derive(Clone, Eq, PartialEq)]
 pub struct PasswordHashRecord(Box<str>);
 
 impl PasswordHashRecord {
@@ -105,6 +124,28 @@ impl PasswordHashRecord {
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    /// Returns the fixed password-hash algorithm identifier.
+    #[must_use]
+    pub const fn algorithm(&self) -> &'static str {
+        "argon2id"
+    }
+
+    /// Returns the Argon2 version encoded by every accepted record.
+    #[must_use]
+    pub const fn algorithm_version(&self) -> u32 {
+        19
+    }
+
+    /// Revalidates and returns the resource parameters encoded in the record.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PasswordErrorCode::InvalidHashRecord`] if the owned record no
+    /// longer satisfies its construction invariant.
+    pub fn parameters(&self) -> Result<Argon2idParameters, PasswordError> {
+        parse_record(self.as_str()).map(|record| record.parameters)
     }
 }
 

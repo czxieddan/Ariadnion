@@ -1,6 +1,5 @@
 //! Tenant-bound one-time password-recovery contracts.
 
-use std::fmt::{self, Debug, Formatter};
 use std::num::NonZeroU64;
 
 use ariadnion_core::{PrincipalId, TenantId};
@@ -42,12 +41,6 @@ impl PasswordResetId {
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
-    }
-}
-
-impl Debug for PasswordResetId {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter.write_str("PasswordResetId(<opaque>)")
     }
 }
 
@@ -113,6 +106,12 @@ impl PasswordResetTokenDigest {
         Ok(Self(domain_separated_digest(RESET_TOKEN_DOMAIN, token)))
     }
 
+    /// Reconstructs a digest from exact persisted SHA-256 bytes.
+    #[must_use]
+    pub const fn from_bytes(bytes: [u8; 32]) -> Self {
+        Self(bytes)
+    }
+
     /// Returns the exact digest bytes for persistence or constant-time comparison.
     #[must_use]
     pub const fn bytes(self) -> [u8; 32] {
@@ -121,12 +120,6 @@ impl PasswordResetTokenDigest {
 
     fn matches(self, presented: Self) -> bool {
         bool::from(self.0.ct_eq(&presented.0))
-    }
-}
-
-impl Debug for PasswordResetTokenDigest {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter.write_str("PasswordResetTokenDigest(<sha256>)")
     }
 }
 
@@ -144,16 +137,16 @@ impl PasswordHashRecordDigest {
         ))
     }
 
+    /// Reconstructs a commitment from exact persisted SHA-256 bytes.
+    #[must_use]
+    pub const fn from_bytes(bytes: [u8; 32]) -> Self {
+        Self(bytes)
+    }
+
     /// Returns the exact digest bytes for persistence or constant-time comparison.
     #[must_use]
     pub const fn bytes(self) -> [u8; 32] {
         self.0
-    }
-}
-
-impl Debug for PasswordHashRecordDigest {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter.write_str("PasswordHashRecordDigest(<sha256>)")
     }
 }
 
@@ -209,6 +202,31 @@ impl PasswordResetSubject {
 pub struct PasswordResetValidityWindow {
     issued_at: UtcTimestamp,
     expires_at: UtcTimestamp,
+}
+
+/// Every durable field required to reconstruct one password-reset aggregate.
+///
+/// The token and replacement-hash fields are one-way digests. The lifecycle
+/// tuple is retained so expiry, one-time use, and optimistic replay checks
+/// remain deterministic after a restart.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PasswordResetSnapshot {
+    /// Stable reset identity.
+    pub reset_id: PasswordResetId,
+    /// Tenant and user identities bound to the reset.
+    pub subject: PasswordResetSubject,
+    /// Domain-separated digest of the raw reset token.
+    pub token_digest: PasswordResetTokenDigest,
+    /// Trusted issuance and exclusive expiry boundaries.
+    pub validity: PasswordResetValidityWindow,
+    /// Optimistic lifecycle version.
+    pub version: PasswordResetVersion,
+    /// Fixed password-recovery purpose.
+    pub purpose: PasswordResetPurpose,
+    /// Current one-time lifecycle state.
+    pub state: PasswordResetState,
+    /// Commitment to the replacement PHC record after consumption.
+    pub password_hash_digest: Option<PasswordHashRecordDigest>,
 }
 
 impl PasswordResetValidityWindow {
@@ -282,6 +300,31 @@ pub struct PasswordReset {
 }
 
 impl PasswordReset {
+    /// Reconstructs a reset from one complete typed persistence snapshot.
+    ///
+    /// The boundary rejects invalid validity windows and lifecycle/version
+    /// combinations before constructing the aggregate. It accepts only
+    /// digests and never receives a raw reset token or password.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PasswordErrorCode::InvalidResetArgument`] when persisted
+    /// state is not reachable through the reset transition API.
+    pub fn from_snapshot(snapshot: PasswordResetSnapshot) -> Result<Self, PasswordError> {
+        validate_snapshot(&snapshot)?;
+        Ok(Self {
+            id: snapshot.reset_id,
+            subject: snapshot.subject,
+            token_digest: snapshot.token_digest,
+            issued_at: snapshot.validity.issued_at,
+            expires_at: snapshot.validity.expires_at,
+            version: snapshot.version,
+            purpose: snapshot.purpose,
+            state: snapshot.state,
+            password_hash_digest: snapshot.password_hash_digest,
+        })
+    }
+
     /// Returns the immutable reset identity.
     #[must_use]
     pub const fn id(&self) -> &PasswordResetId {
@@ -340,6 +383,21 @@ impl PasswordReset {
     #[must_use]
     pub const fn password_hash_digest(&self) -> Option<PasswordHashRecordDigest> {
         self.password_hash_digest
+    }
+
+    /// Returns every durable field needed for lossless reconstruction.
+    #[must_use]
+    pub fn snapshot_state(&self) -> PasswordResetSnapshot {
+        PasswordResetSnapshot {
+            reset_id: self.id.clone(),
+            subject: self.subject.clone(),
+            token_digest: self.token_digest,
+            validity: PasswordResetValidityWindow::new(self.issued_at, self.expires_at),
+            version: self.version,
+            purpose: self.purpose,
+            state: self.state,
+            password_hash_digest: self.password_hash_digest,
+        }
     }
 
     fn issued(request: PasswordResetIssueRequest) -> Self {
@@ -678,6 +736,40 @@ fn validate_reset_lifetime(validity: PasswordResetValidityWindow) -> Result<(), 
         return Err(reset_error(PasswordErrorCode::InvalidResetLifetime));
     }
     Ok(())
+}
+
+fn validate_snapshot(snapshot: &PasswordResetSnapshot) -> Result<(), PasswordError> {
+    validate_snapshot_lifetime(snapshot.validity)?;
+    if !valid_snapshot_lifecycle(
+        snapshot.version,
+        snapshot.state,
+        snapshot.password_hash_digest.is_some(),
+    ) {
+        return Err(reset_error(PasswordErrorCode::InvalidResetArgument));
+    }
+    Ok(())
+}
+
+fn validate_snapshot_lifetime(validity: PasswordResetValidityWindow) -> Result<(), PasswordError> {
+    validate_reset_lifetime(validity)
+        .map_err(|_| reset_error(PasswordErrorCode::InvalidResetArgument))
+}
+
+fn valid_snapshot_lifecycle(
+    version: PasswordResetVersion,
+    state: PasswordResetState,
+    has_password_hash_digest: bool,
+) -> bool {
+    matches!(
+        (version.get(), state, has_password_hash_digest),
+        (1, PasswordResetState::Issued, false)
+            | (2, PasswordResetState::Consumed, true)
+            | (
+                2,
+                PasswordResetState::Revoked | PasswordResetState::Expired,
+                false
+            )
+    )
 }
 
 fn validate_reset_evidence(
