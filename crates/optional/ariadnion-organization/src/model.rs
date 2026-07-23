@@ -1,5 +1,7 @@
 //! Immutable organization aggregate state, evidence, and audit event models.
 
+mod reachability;
+
 use std::collections::HashSet;
 
 use ariadnion_core::{PrincipalContext, PrincipalId, TenantId};
@@ -418,9 +420,9 @@ impl Organization {
     /// Reconstructs an organization from one complete persisted snapshot.
     ///
     /// The constructor revalidates the typed tenant and aggregate identities,
-    /// optimistic version floor, bounded collections, uniqueness, active-owner
-    /// invariant, and membership/team/expiry relationships. It does not read a
-    /// clock or accept untyped persisted values.
+    /// attainable optimistic-version history, bounded collections, uniqueness,
+    /// active-owner invariant, and membership/team/expiry relationships. It
+    /// does not read a clock or accept untyped persisted values.
     ///
     /// # Errors
     /// Returns [`OrganizationErrorCode::InvalidArgument`] for malformed state,
@@ -562,8 +564,9 @@ fn validate_snapshot(
     validate_snapshot_capacity(snapshot)?;
     let team_ids = unique_team_ids(snapshot)?;
     validate_memberships(snapshot, &team_ids)?;
+    validate_founder_order(snapshot)?;
     validate_owner_invariant(snapshot)?;
-    validate_version_floor(version, snapshot)
+    reachability::validate_version_reachability(version, snapshot)
 }
 
 fn validate_snapshot_identity(
@@ -698,60 +701,15 @@ fn validate_owner_invariant(snapshot: &OrganizationSnapshot) -> Result<(), Organ
     Ok(())
 }
 
-fn validate_version_floor(
-    version: OrganizationVersion,
-    snapshot: &OrganizationSnapshot,
-) -> Result<(), OrganizationError> {
-    let minimum = minimum_snapshot_version(snapshot)?;
-    if version.get() < minimum {
+fn validate_founder_order(snapshot: &OrganizationSnapshot) -> Result<(), OrganizationError> {
+    let founder_is_first = snapshot
+        .memberships
+        .first()
+        .is_some_and(|membership| membership.origin() == MembershipOrigin::Founder);
+    if !founder_is_first {
         return Err(error(OrganizationErrorCode::InvalidArgument));
     }
     Ok(())
-}
-
-fn minimum_snapshot_version(snapshot: &OrganizationSnapshot) -> Result<u64, OrganizationError> {
-    let mut minimum = 1_u64;
-    minimum = add_version_cost(minimum, snapshot.memberships.len() - 1)?;
-    minimum = add_version_cost(minimum, snapshot.teams.len())?;
-    minimum = add_version_cost(minimum, membership_version_cost(snapshot)?)?;
-    add_state_version_cost(minimum, snapshot.state)
-}
-
-fn membership_version_cost(snapshot: &OrganizationSnapshot) -> Result<usize, OrganizationError> {
-    let mut cost = 0_usize;
-    for membership in &snapshot.memberships {
-        cost = add_membership_version_cost(cost, membership)?;
-    }
-    Ok(cost)
-}
-
-fn add_membership_version_cost(
-    cost: usize,
-    membership: &MembershipSnapshot,
-) -> Result<usize, OrganizationError> {
-    let mut next = cost
-        .checked_add(membership.team_ids().len())
-        .ok_or_else(|| error(OrganizationErrorCode::InvalidArgument))?;
-    if membership.state() != MembershipState::Active {
-        next = next
-            .checked_add(1)
-            .ok_or_else(|| error(OrganizationErrorCode::InvalidArgument))?;
-    }
-    Ok(next)
-}
-
-fn add_state_version_cost(value: u64, state: OrganizationState) -> Result<u64, OrganizationError> {
-    if state == OrganizationState::Frozen {
-        return add_version_cost(value, 1);
-    }
-    Ok(value)
-}
-
-fn add_version_cost(value: u64, cost: usize) -> Result<u64, OrganizationError> {
-    let cost = u64::try_from(cost).map_err(|_| error(OrganizationErrorCode::InvalidArgument))?;
-    value
-        .checked_add(cost)
-        .ok_or_else(|| error(OrganizationErrorCode::InvalidArgument))
 }
 
 /// A trusted authentication adapter's principal-to-user identity binding.
