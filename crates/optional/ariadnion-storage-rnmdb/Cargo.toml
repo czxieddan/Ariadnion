@@ -11,6 +11,7 @@ publish = false
 [dependencies]
 ariadnion-audit-domain = { path = "../ariadnion-audit-domain" }
 ariadnion-audit-store = { path = "../ariadnion-audit-store" }
+ariadnion-auth-password = { path = "../ariadnion-auth-password" }
 ariadnion-core = { path = "../../ariadnion-core" }
 ariadnion-invitation = { path = "../ariadnion-invitation" }
 ariadnion-organization = { path = "../ariadnion-organization" }

@@ -11,6 +11,12 @@ use ariadnion_audit_domain::migrations::{
     IDENTITY_AUDIT_MIGRATION_REQUIRES_BACKUP, IDENTITY_AUDIT_MIGRATION_STATEMENTS,
     IDENTITY_AUDIT_MIGRATION_TO_VERSION,
 };
+use ariadnion_auth_password::migrations::{
+    IDENTITY_PASSWORD_MIGRATION_CANONICAL_V1_SHA256, IDENTITY_PASSWORD_MIGRATION_DOMAIN,
+    IDENTITY_PASSWORD_MIGRATION_FROM_VERSION, IDENTITY_PASSWORD_MIGRATION_ID,
+    IDENTITY_PASSWORD_MIGRATION_REQUIRES_BACKUP, IDENTITY_PASSWORD_MIGRATION_STATEMENTS,
+    IDENTITY_PASSWORD_MIGRATION_TO_VERSION,
+};
 use ariadnion_invitation::migrations::{
     IDENTITY_INVITATION_MIGRATION_CANONICAL_V1_SHA256, IDENTITY_INVITATION_MIGRATION_DOMAIN,
     IDENTITY_INVITATION_MIGRATION_FROM_VERSION, IDENTITY_INVITATION_MIGRATION_ID,
@@ -311,6 +317,7 @@ fn compile_identity_definitions(
         compile_identity_audit_definition()?,
         compile_identity_organization_definition()?,
         compile_identity_invitation_definition()?,
+        compile_identity_password_definition()?,
     ] {
         insert_definition(definitions, definition)?;
     }
@@ -476,6 +483,19 @@ fn compile_identity_invitation_definition() -> Result<RnmdbMigrationDefinition, 
         statements: IDENTITY_INVITATION_MIGRATION_STATEMENTS,
         expected_checksum: IDENTITY_INVITATION_MIGRATION_CANONICAL_V1_SHA256,
         requires_backup: IDENTITY_INVITATION_MIGRATION_REQUIRES_BACKUP,
+    };
+    compile_migration_definition(input, CanonicalAstV1)
+}
+
+fn compile_identity_password_definition() -> Result<RnmdbMigrationDefinition, StorageError> {
+    let input = CanonicalMigrationDefinitionInput {
+        id: IDENTITY_PASSWORD_MIGRATION_ID,
+        domain: IDENTITY_PASSWORD_MIGRATION_DOMAIN,
+        from: IDENTITY_PASSWORD_MIGRATION_FROM_VERSION,
+        to: IDENTITY_PASSWORD_MIGRATION_TO_VERSION,
+        statements: IDENTITY_PASSWORD_MIGRATION_STATEMENTS,
+        expected_checksum: IDENTITY_PASSWORD_MIGRATION_CANONICAL_V1_SHA256,
+        requires_backup: IDENTITY_PASSWORD_MIGRATION_REQUIRES_BACKUP,
     };
     compile_migration_definition(input, CanonicalAstV1)
 }

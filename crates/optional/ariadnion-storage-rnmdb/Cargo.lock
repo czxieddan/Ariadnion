@@ -49,6 +49,7 @@ dependencies = [
  "blake2",
  "cpufeatures 0.2.17",
  "password-hash",
+ "zeroize",
 ]
 
 [[package]]
@@ -67,6 +68,18 @@ dependencies = [
  "ariadnion-audit-domain",
  "ariadnion-core",
  "ariadnion-user-domain",
+]
+
+[[package]]
+name = "ariadnion-auth-password"
+version = "0.1.0"
+dependencies = [
+ "argon2",
+ "ariadnion-core",
+ "ariadnion-user-domain",
+ "sha2 0.10.9",
+ "subtle",
+ "zeroize",
 ]
 
 [[package]]
@@ -147,6 +160,7 @@ version = "0.1.0"
 dependencies = [
  "ariadnion-audit-domain",
  "ariadnion-audit-store",
+ "ariadnion-auth-password",
  "ariadnion-core",
  "ariadnion-invitation",
  "ariadnion-organization",
