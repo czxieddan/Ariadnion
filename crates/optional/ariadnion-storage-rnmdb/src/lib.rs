@@ -43,10 +43,10 @@ pub use maintenance::{
     VerificationSummary,
 };
 pub use migration::{
-    MigrationApplyStatus, RnmdbMigrationRunner, identity_audit_migration,
-    identity_invitation_migration, identity_organization_migration, identity_password_migration,
-    identity_session_migration, identity_users_migration, platform_initial_migration,
-    platform_outbox_migration, platform_secret_references_migration,
+    MigrationApplyStatus, RnmdbMigrationRunner, identity_api_key_migration,
+    identity_audit_migration, identity_invitation_migration, identity_organization_migration,
+    identity_password_migration, identity_session_migration, identity_users_migration,
+    platform_initial_migration, platform_outbox_migration, platform_secret_references_migration,
 };
 pub use migration_definition::canonical_migration_checksum;
 pub use migration_executor::{RnmdbMigrationExecutor, RnmdbMigrationPageKeys};

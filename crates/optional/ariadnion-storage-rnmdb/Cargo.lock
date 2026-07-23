@@ -71,6 +71,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ariadnion-auth-api-key"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+ "ariadnion-user-domain",
+ "sha2 0.10.9",
+ "subtle",
+]
+
+[[package]]
 name = "ariadnion-auth-password"
 version = "0.1.0"
 dependencies = [
@@ -170,6 +180,7 @@ version = "0.1.0"
 dependencies = [
  "ariadnion-audit-domain",
  "ariadnion-audit-store",
+ "ariadnion-auth-api-key",
  "ariadnion-auth-password",
  "ariadnion-auth-session",
  "ariadnion-core",

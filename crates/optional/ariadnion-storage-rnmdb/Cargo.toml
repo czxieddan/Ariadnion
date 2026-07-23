@@ -13,6 +13,7 @@ ariadnion-audit-domain = { path = "../ariadnion-audit-domain" }
 ariadnion-audit-store = { path = "../ariadnion-audit-store" }
 ariadnion-auth-password = { path = "../ariadnion-auth-password" }
 ariadnion-auth-session = { path = "../ariadnion-auth-session" }
+ariadnion-auth-api-key = { path = "../ariadnion-auth-api-key" }
 ariadnion-core = { path = "../../ariadnion-core" }
 ariadnion-invitation = { path = "../ariadnion-invitation" }
 ariadnion-organization = { path = "../ariadnion-organization" }

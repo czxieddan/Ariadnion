@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use ariadnion_audit_domain::migrations::IDENTITY_AUDIT_MIGRATION_ID;
+use ariadnion_auth_api_key::migrations::IDENTITY_API_KEYS_MIGRATION_ID;
 use ariadnion_auth_password::migrations::IDENTITY_PASSWORD_MIGRATION_ID;
 use ariadnion_auth_session::migrations::IDENTITY_SESSIONS_MIGRATION_ID;
 use ariadnion_core::RequestContext;
@@ -187,6 +188,14 @@ pub fn identity_password_migration() -> Result<MigrationDescriptor, StorageError
 /// version-nine to version-ten transition explicitly through the registry.
 pub fn identity_session_migration() -> Result<MigrationDescriptor, StorageError> {
     compiled_migration_definitions()?.descriptor(IDENTITY_SESSIONS_MIGRATION_ID)
+}
+
+/// Returns the durable scoped API-key migration after canonical digest verification.
+///
+/// The migration remains outside module startup. Callers must request the
+/// version-ten to version-eleven transition explicitly through the registry.
+pub fn identity_api_key_migration() -> Result<MigrationDescriptor, StorageError> {
+    compiled_migration_definitions()?.descriptor(IDENTITY_API_KEYS_MIGRATION_ID)
 }
 
 fn migration_insert(

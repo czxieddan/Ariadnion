@@ -11,6 +11,12 @@ use ariadnion_audit_domain::migrations::{
     IDENTITY_AUDIT_MIGRATION_REQUIRES_BACKUP, IDENTITY_AUDIT_MIGRATION_STATEMENTS,
     IDENTITY_AUDIT_MIGRATION_TO_VERSION,
 };
+use ariadnion_auth_api_key::migrations::{
+    IDENTITY_API_KEYS_MIGRATION_CANONICAL_V1_SHA256, IDENTITY_API_KEYS_MIGRATION_DOMAIN,
+    IDENTITY_API_KEYS_MIGRATION_FROM_VERSION, IDENTITY_API_KEYS_MIGRATION_ID,
+    IDENTITY_API_KEYS_MIGRATION_REQUIRES_BACKUP, IDENTITY_API_KEYS_MIGRATION_STATEMENTS,
+    IDENTITY_API_KEYS_MIGRATION_TO_VERSION,
+};
 use ariadnion_auth_password::migrations::{
     IDENTITY_PASSWORD_MIGRATION_CANONICAL_V1_SHA256, IDENTITY_PASSWORD_MIGRATION_DOMAIN,
     IDENTITY_PASSWORD_MIGRATION_FROM_VERSION, IDENTITY_PASSWORD_MIGRATION_ID,
@@ -325,6 +331,7 @@ fn compile_identity_definitions(
         compile_identity_invitation_definition()?,
         compile_identity_password_definition()?,
         compile_identity_session_definition()?,
+        compile_identity_api_key_definition()?,
     ] {
         insert_definition(definitions, definition)?;
     }
@@ -516,6 +523,19 @@ fn compile_identity_session_definition() -> Result<RnmdbMigrationDefinition, Sto
         statements: IDENTITY_SESSIONS_MIGRATION_STATEMENTS,
         expected_checksum: IDENTITY_SESSIONS_MIGRATION_CANONICAL_V1_SHA256,
         requires_backup: IDENTITY_SESSIONS_MIGRATION_REQUIRES_BACKUP,
+    };
+    compile_migration_definition(input, CanonicalAstV1)
+}
+
+fn compile_identity_api_key_definition() -> Result<RnmdbMigrationDefinition, StorageError> {
+    let input = CanonicalMigrationDefinitionInput {
+        id: IDENTITY_API_KEYS_MIGRATION_ID,
+        domain: IDENTITY_API_KEYS_MIGRATION_DOMAIN,
+        from: IDENTITY_API_KEYS_MIGRATION_FROM_VERSION,
+        to: IDENTITY_API_KEYS_MIGRATION_TO_VERSION,
+        statements: IDENTITY_API_KEYS_MIGRATION_STATEMENTS,
+        expected_checksum: IDENTITY_API_KEYS_MIGRATION_CANONICAL_V1_SHA256,
+        requires_backup: IDENTITY_API_KEYS_MIGRATION_REQUIRES_BACKUP,
     };
     compile_migration_definition(input, CanonicalAstV1)
 }
