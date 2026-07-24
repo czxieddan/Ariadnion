@@ -1107,11 +1107,22 @@ fn validate_persisted_transfer(
 /// The new immutable aggregate and its exactly corresponding audit event.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OrganizationTransition {
+    pub(crate) previous_snapshot: Option<OrganizationSnapshot>,
     pub(crate) organization: Organization,
     pub(crate) event: OrganizationEvent,
 }
 
 impl OrganizationTransition {
+    /// Returns the exact durable state that this transition evolved from.
+    ///
+    /// Creation returns `None`. Every later transition retains a complete
+    /// snapshot so a repository can reject a same-version but divergent
+    /// durable aggregate before applying its compare-and-swap mutation.
+    #[must_use]
+    pub const fn previous_snapshot(&self) -> Option<&OrganizationSnapshot> {
+        self.previous_snapshot.as_ref()
+    }
+
     /// Returns the new immutable organization aggregate.
     #[must_use]
     pub const fn organization(&self) -> &Organization {

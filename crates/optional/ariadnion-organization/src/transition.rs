@@ -200,6 +200,7 @@ pub fn create_organization(
         },
     };
     Ok(OrganizationTransition {
+        previous_snapshot: None,
         organization,
         event,
     })
@@ -225,6 +226,156 @@ pub fn transition(
         occurred_at: command.occurred_at,
     };
     dispatch(current, &audit, command.action)
+}
+
+/// Replays one contiguous persisted event through organization domain rules.
+///
+/// This function is intended for integrity verification after storage has
+/// decoded one complete typed event. It performs no I/O and accepts only an
+/// event for the same tenant and organization at exactly the next version.
+/// The event facts must describe the exact state change produced from
+/// `current`; independently valid but divergent facts are rejected.
+///
+/// # Errors
+/// Returns [`OrganizationErrorCode::InvalidArgument`] for an identity,
+/// version, actor-independent ownership, or event-fact mismatch. Other stable
+/// domain errors are preserved when the event cannot legally evolve the
+/// supplied aggregate.
+pub fn replay_persisted_event(
+    current: &Organization,
+    event: &OrganizationEvent,
+) -> Result<Organization, OrganizationError> {
+    validate_replay_binding(current, event)?;
+    let audit = AuditContext {
+        actor: event.actor.clone(),
+        occurred_at: event.occurred_at,
+    };
+    let transition = match replay_membership_event(current, &audit, &event.kind)? {
+        Some(transition) => transition,
+        None => replay_other_event(current, &audit, &event.kind)?,
+    };
+    require_exact_replay_event(transition, event)
+}
+
+fn validate_replay_binding(
+    current: &Organization,
+    event: &OrganizationEvent,
+) -> Result<(), OrganizationError> {
+    let next_version = current.version.next()?;
+    let valid = event.tenant_id == current.tenant_id
+        && event.organization_id == current.id
+        && event.version == next_version;
+    if !valid {
+        return Err(error(OrganizationErrorCode::InvalidArgument));
+    }
+    Ok(())
+}
+
+fn replay_membership_event(
+    current: &Organization,
+    audit: &AuditContext,
+    kind: &OrganizationEventKind,
+) -> Result<Option<OrganizationTransition>, OrganizationError> {
+    let transition = match kind {
+        OrganizationEventKind::MembershipAdded {
+            membership_id,
+            user_id,
+            kind,
+            origin,
+            expires_at,
+        } => add_membership(
+            current,
+            audit,
+            NewMembership {
+                membership_id: membership_id.clone(),
+                user_id: user_id.clone(),
+                kind: *kind,
+                origin: *origin,
+                expires_at: *expires_at,
+            },
+        )?,
+        OrganizationEventKind::MembershipSuspended { membership_id, .. } => {
+            suspend_membership(current, audit, membership_id)?
+        }
+        OrganizationEventKind::MembershipActivated { membership_id } => {
+            activate_membership(current, audit, membership_id)?
+        }
+        OrganizationEventKind::MembershipLeft { membership_id, .. } => {
+            leave_membership(current, audit, membership_id)?
+        }
+        _ => return Ok(None),
+    };
+    Ok(Some(transition))
+}
+
+fn replay_other_event(
+    current: &Organization,
+    audit: &AuditContext,
+    kind: &OrganizationEventKind,
+) -> Result<OrganizationTransition, OrganizationError> {
+    match kind {
+        OrganizationEventKind::StateChanged { state } => change_state(current, audit, *state),
+        OrganizationEventKind::TeamCreated { team_id } => {
+            create_team(current, audit, team_id.clone())
+        }
+        OrganizationEventKind::TeamAssigned {
+            membership_id,
+            team_id,
+        } => assign_team(current, audit, membership_id, team_id),
+        OrganizationEventKind::OwnershipTransferred {
+            previous_owner_id,
+            new_owner_id,
+            ..
+        } => replay_ownership_transfer(current, audit, previous_owner_id, new_owner_id, kind),
+        OrganizationEventKind::Created { .. } => Err(error(OrganizationErrorCode::InvalidArgument)),
+        _ => Err(error(OrganizationErrorCode::InvalidArgument)),
+    }
+}
+
+fn replay_ownership_transfer(
+    current: &Organization,
+    audit: &AuditContext,
+    previous_owner_id: &MembershipId,
+    new_owner_id: &MembershipId,
+    kind: &OrganizationEventKind,
+) -> Result<OrganizationTransition, OrganizationError> {
+    let previous_index = membership_index(current, previous_owner_id)?;
+    let new_index = membership_index(current, new_owner_id)?;
+    validate_replayed_owners(current, audit, previous_index, new_index)?;
+    let mut next = current.clone();
+    demote_owner(&mut next, previous_index)?;
+    promote_recipient(&mut next, new_index)?;
+    finish_evolution(current, next, audit, kind.clone())
+}
+
+fn validate_replayed_owners(
+    current: &Organization,
+    audit: &AuditContext,
+    previous_index: usize,
+    new_index: usize,
+) -> Result<(), OrganizationError> {
+    if previous_index == new_index {
+        return Err(error(OrganizationErrorCode::InvalidArgument));
+    }
+    let previous = membership_at(current, previous_index)?;
+    let new = membership_at(current, new_index)?;
+    let valid_previous =
+        previous.kind == MembershipKind::Owner && previous.state == MembershipState::Active;
+    let valid_new = new.kind == MembershipKind::Member && new.is_eligible_at(audit.occurred_at);
+    if !valid_previous || !valid_new {
+        return Err(error(OrganizationErrorCode::InvalidArgument));
+    }
+    Ok(())
+}
+
+fn require_exact_replay_event(
+    transition: OrganizationTransition,
+    expected: &OrganizationEvent,
+) -> Result<Organization, OrganizationError> {
+    if transition.event != *expected {
+        return Err(error(OrganizationErrorCode::InvalidArgument));
+    }
+    Ok(transition.organization)
 }
 
 fn initial_organization(command: &CreateOrganizationCommand) -> Organization {
@@ -825,6 +976,7 @@ fn finish_evolution(
         kind,
     };
     Ok(OrganizationTransition {
+        previous_snapshot: Some(current.snapshot_state()),
         organization: next,
         event,
     })
