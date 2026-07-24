@@ -67,3 +67,35 @@ pub const IDENTITY_ORGANIZATIONS_MIGRATION_STATEMENTS: &[&str] =
 /// Plural alias matching the aggregate table naming convention.
 pub const IDENTITY_ORGANIZATIONS_MIGRATION_CANONICAL_V1_SHA256: [u8; 32] =
     IDENTITY_ORGANIZATION_MIGRATION_CANONICAL_V1_SHA256;
+
+/// Stable identifier of the organization event-replay migration.
+pub const IDENTITY_ORGANIZATION_EVENT_REPLAY_MIGRATION_ID: &str =
+    "identity.0009.organization-event-replay";
+
+/// Stable domain recorded for the organization event-replay migration.
+pub const IDENTITY_ORGANIZATION_EVENT_REPLAY_MIGRATION_DOMAIN: &str = "identity";
+
+/// Global schema version required before the event-replay migration.
+pub const IDENTITY_ORGANIZATION_EVENT_REPLAY_MIGRATION_FROM_VERSION: u64 = 12;
+
+/// Global schema version produced by the event-replay migration.
+pub const IDENTITY_ORGANIZATION_EVENT_REPLAY_MIGRATION_TO_VERSION: u64 = 13;
+
+/// Whether the migration runner requires a separate backup prerequisite.
+///
+/// This additive migration runs only against a new target while the source is
+/// retained, so the migration itself does not require another backup.
+pub const IDENTITY_ORGANIZATION_EVENT_REPLAY_MIGRATION_REQUIRES_BACKUP: bool = false;
+
+/// Ordered additive columns required for lossless organization event replay.
+pub const IDENTITY_ORGANIZATION_EVENT_REPLAY_MIGRATION_STATEMENTS: &[&str] = &[
+    "ALTER TABLE identity_organization_events ADD COLUMN membership_user_id TEXT;",
+    "ALTER TABLE identity_organization_events ADD COLUMN membership_origin TEXT;",
+    "ALTER TABLE identity_organization_events ADD COLUMN membership_expires_at INT64;",
+];
+
+/// Canonical-AST-v1 SHA-256 of the ordered event-replay statements.
+pub const IDENTITY_ORGANIZATION_EVENT_REPLAY_MIGRATION_CANONICAL_V1_SHA256: [u8; 32] = [
+    0x06, 0x96, 0xb7, 0x89, 0x61, 0xc5, 0xbe, 0xfb, 0x35, 0x04, 0x5f, 0x4f, 0x8b, 0x5c, 0xda, 0x12,
+    0x36, 0x86, 0x93, 0x14, 0xdc, 0x8a, 0x90, 0x4e, 0x84, 0xd4, 0x96, 0x48, 0xb1, 0x25, 0x28, 0xfa,
+];
