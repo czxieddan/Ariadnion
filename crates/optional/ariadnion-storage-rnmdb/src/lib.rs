@@ -19,6 +19,7 @@ mod migration;
 mod migration_definition;
 mod migration_executor;
 mod module;
+mod organization_repository;
 mod outbox;
 mod query;
 mod restore;
@@ -53,6 +54,9 @@ pub use migration::{
 pub use migration_definition::canonical_migration_checksum;
 pub use migration_executor::{RnmdbMigrationExecutor, RnmdbMigrationPageKeys};
 pub use module::{StorageRnmdbModule, StorageRnmdbModuleOptions};
+pub use organization_repository::{
+    MAX_ORGANIZATION_EVENT_HISTORY_ROWS, RnmdbOrganizationRepository,
+};
 pub use outbox::{OutboxLeaseKeyMaterial, RnmdbOutboxRepository};
 pub use query::{
     FixedRnmdbReadQuery, QueryPlanDiagnostic, QueryPlanFormat, RnmdbFixedQueryExecutor,

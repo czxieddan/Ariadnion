@@ -40,7 +40,7 @@ impl AuditSubjectKeyMaterial {
         Self { bytes }
     }
 
-    pub(super) const fn as_bytes(&self) -> &[u8; 32] {
+    pub(crate) const fn as_bytes(&self) -> &[u8; 32] {
         &self.bytes
     }
 }
