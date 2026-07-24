@@ -245,6 +245,22 @@ pub fn replay_persisted_event(
     current: &Organization,
     event: &OrganizationEvent,
 ) -> Result<Organization, OrganizationError> {
+    replay_persisted_transition(current, event).map(|transition| transition.organization)
+}
+
+/// Replays one contiguous persisted event into its complete transition pair.
+///
+/// This is the authoritative reconstruction boundary for repositories that
+/// must derive deterministic evidence for later committed events. The result
+/// retains the exact previous snapshot and is returned only when the supplied
+/// event equals the event produced by the domain rules.
+///
+/// # Errors
+/// Returns the same stable failures as [`replay_persisted_event`].
+pub fn replay_persisted_transition(
+    current: &Organization,
+    event: &OrganizationEvent,
+) -> Result<OrganizationTransition, OrganizationError> {
     validate_replay_binding(current, event)?;
     let audit = AuditContext {
         actor: event.actor.clone(),
@@ -254,7 +270,7 @@ pub fn replay_persisted_event(
         Some(transition) => transition,
         None => replay_other_event(current, &audit, &event.kind)?,
     };
-    require_exact_replay_event(transition, event)
+    require_exact_replay_transition(transition, event)
 }
 
 fn validate_replay_binding(
@@ -368,14 +384,14 @@ fn validate_replayed_owners(
     Ok(())
 }
 
-fn require_exact_replay_event(
+fn require_exact_replay_transition(
     transition: OrganizationTransition,
     expected: &OrganizationEvent,
-) -> Result<Organization, OrganizationError> {
+) -> Result<OrganizationTransition, OrganizationError> {
     if transition.event != *expected {
         return Err(error(OrganizationErrorCode::InvalidArgument));
     }
-    Ok(transition.organization)
+    Ok(transition)
 }
 
 fn initial_organization(command: &CreateOrganizationCommand) -> Organization {

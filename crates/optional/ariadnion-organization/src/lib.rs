@@ -25,5 +25,6 @@ pub use repository::{
 };
 pub use transition::{
     CreateOrganizationCommand, MembershipAction, OrganizationAction, OrganizationCommand,
-    TeamAction, create_organization, replay_persisted_event, transition,
+    TeamAction, create_organization, replay_persisted_event, replay_persisted_transition,
+    transition,
 };
