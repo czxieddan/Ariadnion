@@ -12,9 +12,10 @@ mod transition;
 pub use error::{OrganizationError, OrganizationErrorCode};
 pub use ids::{MembershipId, OrganizationId, OrganizationVersion, OwnershipTransferId, TeamId};
 pub use model::{
-    AuthenticatedUserBinding, Membership, MembershipKind, MembershipOrigin, MembershipSnapshot,
-    MembershipState, Organization, OrganizationEvent, OrganizationEventKind, OrganizationFounder,
-    OrganizationSnapshot, OrganizationState, OrganizationTransition, OwnershipTransferEvidence,
+    AuthenticatedUserBinding, MAX_MEMBERSHIPS, MAX_TEAM_ASSIGNMENTS, MAX_TEAMS, Membership,
+    MembershipKind, MembershipOrigin, MembershipSnapshot, MembershipState, Organization,
+    OrganizationEvent, OrganizationEventKind, OrganizationFounder, OrganizationSnapshot,
+    OrganizationState, OrganizationTransition, OwnershipTransferEvidence,
     OwnershipTransferEvidenceInput, RecipientReauthenticationProof, Team, TeamSnapshot,
 };
 pub use transition::{

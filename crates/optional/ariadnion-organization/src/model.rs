@@ -10,9 +10,12 @@ use ariadnion_user_domain::{UserId, UtcTimestamp};
 use crate::error::{OrganizationError, OrganizationErrorCode, error};
 use crate::ids::{MembershipId, OrganizationId, OrganizationVersion, OwnershipTransferId, TeamId};
 
-pub(crate) const MAX_MEMBERSHIPS: usize = 1_024;
-pub(crate) const MAX_TEAMS: usize = 256;
-pub(crate) const MAX_TEAM_ASSIGNMENTS: usize = 64;
+/// Maximum memberships retained by one organization aggregate.
+pub const MAX_MEMBERSHIPS: usize = 1_024;
+/// Maximum teams retained by one organization aggregate.
+pub const MAX_TEAMS: usize = 256;
+/// Maximum team assignments retained by one membership.
+pub const MAX_TEAM_ASSIGNMENTS: usize = 64;
 pub(crate) const MAX_REAUTHENTICATION_AGE_SECONDS: i64 = 300;
 const MAX_TRANSFER_LIFETIME_SECONDS: i64 = 900;
 
@@ -878,6 +881,8 @@ pub enum OrganizationEventKind {
     Created {
         /// Founder membership created by the command.
         founder_membership_id: MembershipId,
+        /// User represented by the founder membership.
+        founder_user_id: UserId,
     },
     /// The organization operational state changed.
     StateChanged {
@@ -888,8 +893,14 @@ pub enum OrganizationEventKind {
     MembershipAdded {
         /// Membership created by the command.
         membership_id: MembershipId,
+        /// User represented by the new membership.
+        user_id: UserId,
         /// Governance kind assigned to the membership.
         kind: MembershipKind,
+        /// Audited source of the new membership.
+        origin: MembershipOrigin,
+        /// Optional UTC expiry for the new membership.
+        expires_at: Option<UtcTimestamp>,
     },
     /// An active membership was suspended.
     MembershipSuspended {
@@ -947,6 +958,35 @@ pub struct OrganizationEvent {
 }
 
 impl OrganizationEvent {
+    /// Reconstructs one event from complete typed persisted facts.
+    ///
+    /// This boundary rejects event kinds that cannot occur at the supplied
+    /// version and revalidates replay-sensitive membership, assignment, and
+    /// ownership facts. Callers must decode and validate nullable storage
+    /// columns before constructing the typed event kind.
+    ///
+    /// # Errors
+    /// Returns [`OrganizationErrorCode::InvalidArgument`] when the event kind,
+    /// version, or replay-sensitive facts describe an impossible live event.
+    pub fn from_persisted(
+        tenant_id: TenantId,
+        organization_id: OrganizationId,
+        actor: PrincipalId,
+        occurred_at: UtcTimestamp,
+        version: OrganizationVersion,
+        kind: OrganizationEventKind,
+    ) -> Result<Self, OrganizationError> {
+        validate_persisted_event(version, &actor, occurred_at, &kind)?;
+        Ok(Self {
+            tenant_id,
+            organization_id,
+            actor,
+            occurred_at,
+            version,
+            kind,
+        })
+    }
+
     /// Returns the explicit tenant mapping captured by this event.
     #[must_use]
     pub const fn tenant_id(&self) -> &TenantId {
@@ -982,6 +1022,86 @@ impl OrganizationEvent {
     pub const fn kind(&self) -> &OrganizationEventKind {
         &self.kind
     }
+}
+
+fn validate_persisted_event(
+    version: OrganizationVersion,
+    actor: &PrincipalId,
+    occurred_at: UtcTimestamp,
+    kind: &OrganizationEventKind,
+) -> Result<(), OrganizationError> {
+    validate_persisted_event_version(version, kind)?;
+    match kind {
+        OrganizationEventKind::MembershipAdded {
+            kind,
+            origin,
+            expires_at,
+            ..
+        } => validate_membership_creation_facts(*kind, *origin, *expires_at, occurred_at),
+        OrganizationEventKind::MembershipSuspended {
+            removed_team_assignments,
+            ..
+        }
+        | OrganizationEventKind::MembershipLeft {
+            removed_team_assignments,
+            ..
+        } => validate_removed_assignment_count(*removed_team_assignments),
+        OrganizationEventKind::OwnershipTransferred {
+            previous_owner_id,
+            new_owner_id,
+            approver,
+            ..
+        } => validate_persisted_transfer(actor, previous_owner_id, new_owner_id, approver),
+        _ => Ok(()),
+    }
+}
+
+fn validate_persisted_event_version(
+    version: OrganizationVersion,
+    kind: &OrganizationEventKind,
+) -> Result<(), OrganizationError> {
+    let is_creation = matches!(kind, OrganizationEventKind::Created { .. });
+    if is_creation != (version == OrganizationVersion::initial()) {
+        return Err(error(OrganizationErrorCode::InvalidArgument));
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_membership_creation_facts(
+    kind: MembershipKind,
+    origin: MembershipOrigin,
+    expires_at: Option<UtcTimestamp>,
+    occurred_at: UtcTimestamp,
+) -> Result<(), OrganizationError> {
+    if origin == MembershipOrigin::Founder {
+        return Err(error(OrganizationErrorCode::InvalidArgument));
+    }
+    if kind == MembershipKind::Owner && expires_at.is_some() {
+        return Err(error(OrganizationErrorCode::InvalidArgument));
+    }
+    if expires_at.is_some_and(|expiry| expiry <= occurred_at) {
+        return Err(error(OrganizationErrorCode::InvalidArgument));
+    }
+    Ok(())
+}
+
+fn validate_removed_assignment_count(count: usize) -> Result<(), OrganizationError> {
+    if count > MAX_TEAM_ASSIGNMENTS {
+        return Err(error(OrganizationErrorCode::InvalidArgument));
+    }
+    Ok(())
+}
+
+fn validate_persisted_transfer(
+    actor: &PrincipalId,
+    previous_owner_id: &MembershipId,
+    new_owner_id: &MembershipId,
+    approver: &PrincipalId,
+) -> Result<(), OrganizationError> {
+    if previous_owner_id == new_owner_id || actor == approver {
+        return Err(error(OrganizationErrorCode::InvalidArgument));
+    }
+    Ok(())
 }
 
 /// The new immutable aggregate and its exactly corresponding audit event.

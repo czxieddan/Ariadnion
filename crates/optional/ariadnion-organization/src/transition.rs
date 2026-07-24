@@ -9,7 +9,7 @@ use crate::model::{
     MAX_MEMBERSHIPS, MAX_REAUTHENTICATION_AGE_SECONDS, MAX_TEAM_ASSIGNMENTS, MAX_TEAMS, Membership,
     MembershipKind, MembershipOrigin, MembershipState, Organization, OrganizationEvent,
     OrganizationEventKind, OrganizationFounder, OrganizationState, OrganizationTransition,
-    OwnershipTransferEvidence, Team,
+    OwnershipTransferEvidence, Team, validate_membership_creation_facts,
 };
 
 /// A version-bound request to create one organization and founder owner.
@@ -185,7 +185,8 @@ pub fn create_organization(
     if command.expected_version != OrganizationVersion::initial() {
         return Err(error(OrganizationErrorCode::VersionConflict));
     }
-    let founder_id = command.founder.membership_id().clone();
+    let founder_membership_id = command.founder.membership_id().clone();
+    let founder_user_id = command.founder.user_id().clone();
     let organization = initial_organization(&command);
     let event = OrganizationEvent {
         tenant_id: command.tenant_id,
@@ -194,7 +195,8 @@ pub fn create_organization(
         occurred_at: command.occurred_at,
         version: OrganizationVersion::initial(),
         kind: OrganizationEventKind::Created {
-            founder_membership_id: founder_id,
+            founder_membership_id,
+            founder_user_id,
         },
     };
     Ok(OrganizationTransition {
@@ -339,6 +341,9 @@ fn add_membership(
     validate_new_membership(current, audit.occurred_at, &input)?;
     let kind = input.kind;
     let membership_id = input.membership_id.clone();
+    let user_id = input.user_id.clone();
+    let origin = input.origin;
+    let expires_at = input.expires_at;
     let membership = Membership {
         id: input.membership_id,
         user_id: input.user_id,
@@ -356,7 +361,10 @@ fn add_membership(
         audit,
         OrganizationEventKind::MembershipAdded {
             membership_id,
+            user_id,
             kind,
+            origin,
+            expires_at,
         },
     )
 }
@@ -368,7 +376,7 @@ fn validate_new_membership(
 ) -> Result<(), OrganizationError> {
     ensure_membership_capacity(current)?;
     ensure_membership_identity_available(current, input)?;
-    validate_membership_metadata(occurred_at, input)?;
+    validate_membership_creation_facts(input.kind, input.origin, input.expires_at, occurred_at)?;
     Ok(())
 }
 
@@ -393,22 +401,6 @@ fn ensure_membership_identity_available(
         .any(|membership| membership.user_id == input.user_id);
     if duplicate_id || duplicate_user {
         return Err(error(OrganizationErrorCode::DuplicateIdentity));
-    }
-    Ok(())
-}
-
-fn validate_membership_metadata(
-    occurred_at: UtcTimestamp,
-    input: &NewMembership,
-) -> Result<(), OrganizationError> {
-    if input.origin == MembershipOrigin::Founder {
-        return Err(error(OrganizationErrorCode::InvalidArgument));
-    }
-    if input.kind == MembershipKind::Owner && input.expires_at.is_some() {
-        return Err(error(OrganizationErrorCode::InvalidArgument));
-    }
-    if input.expires_at.is_some_and(|expiry| expiry <= occurred_at) {
-        return Err(error(OrganizationErrorCode::InvalidArgument));
     }
     Ok(())
 }
