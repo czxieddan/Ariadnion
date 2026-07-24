@@ -7,6 +7,7 @@ mod error;
 mod ids;
 pub mod migrations;
 mod model;
+mod repository;
 mod transition;
 
 pub use error::{OrganizationError, OrganizationErrorCode};
@@ -17,6 +18,10 @@ pub use model::{
     OrganizationEvent, OrganizationEventKind, OrganizationFounder, OrganizationSnapshot,
     OrganizationState, OrganizationTransition, OwnershipTransferEvidence,
     OwnershipTransferEvidenceInput, RecipientReauthenticationProof, Team, TeamSnapshot,
+};
+pub use repository::{
+    OrganizationCommitReceipt, OrganizationRepositoryError, OrganizationRepositoryErrorCode,
+    OrganizationRepositoryPort,
 };
 pub use transition::{
     CreateOrganizationCommand, MembershipAction, OrganizationAction, OrganizationCommand,
