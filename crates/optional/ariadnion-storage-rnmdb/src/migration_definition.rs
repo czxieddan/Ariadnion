@@ -36,6 +36,13 @@ use ariadnion_invitation::migrations::{
     IDENTITY_INVITATION_MIGRATION_TO_VERSION,
 };
 use ariadnion_organization::migrations::{
+    IDENTITY_ORGANIZATION_EVENT_REPLAY_MIGRATION_CANONICAL_V1_SHA256,
+    IDENTITY_ORGANIZATION_EVENT_REPLAY_MIGRATION_DOMAIN,
+    IDENTITY_ORGANIZATION_EVENT_REPLAY_MIGRATION_FROM_VERSION,
+    IDENTITY_ORGANIZATION_EVENT_REPLAY_MIGRATION_ID,
+    IDENTITY_ORGANIZATION_EVENT_REPLAY_MIGRATION_REQUIRES_BACKUP,
+    IDENTITY_ORGANIZATION_EVENT_REPLAY_MIGRATION_STATEMENTS,
+    IDENTITY_ORGANIZATION_EVENT_REPLAY_MIGRATION_TO_VERSION,
     IDENTITY_ORGANIZATION_MIGRATION_CANONICAL_V1_SHA256, IDENTITY_ORGANIZATION_MIGRATION_DOMAIN,
     IDENTITY_ORGANIZATION_MIGRATION_FROM_VERSION, IDENTITY_ORGANIZATION_MIGRATION_ID,
     IDENTITY_ORGANIZATION_MIGRATION_REQUIRES_BACKUP, IDENTITY_ORGANIZATION_MIGRATION_STATEMENTS,
@@ -330,15 +337,33 @@ fn compile_bootstrap_definitions() -> Result<CompiledBootstrapDefinitions, Stora
 fn compile_identity_definitions(
     definitions: &mut BTreeMap<MigrationId, RnmdbMigrationDefinition>,
 ) -> Result<(), StorageError> {
+    compile_identity_base_definitions(definitions)?;
+    compile_identity_security_definitions(definitions)
+}
+
+fn compile_identity_base_definitions(
+    definitions: &mut BTreeMap<MigrationId, RnmdbMigrationDefinition>,
+) -> Result<(), StorageError> {
     for definition in [
         compile_identity_users_definition()?,
         compile_identity_audit_definition()?,
         compile_identity_organization_definition()?,
         compile_identity_invitation_definition()?,
         compile_identity_password_definition()?,
+    ] {
+        insert_definition(definitions, definition)?;
+    }
+    Ok(())
+}
+
+fn compile_identity_security_definitions(
+    definitions: &mut BTreeMap<MigrationId, RnmdbMigrationDefinition>,
+) -> Result<(), StorageError> {
+    for definition in [
         compile_identity_session_definition()?,
         compile_identity_api_key_definition()?,
         compile_identity_rbac_definition()?,
+        compile_identity_organization_event_replay_definition()?,
     ] {
         insert_definition(definitions, definition)?;
     }
@@ -556,6 +581,20 @@ fn compile_identity_rbac_definition() -> Result<RnmdbMigrationDefinition, Storag
         statements: IDENTITY_RBAC_MIGRATION_STATEMENTS,
         expected_checksum: IDENTITY_RBAC_MIGRATION_CANONICAL_V1_SHA256,
         requires_backup: IDENTITY_RBAC_MIGRATION_REQUIRES_BACKUP,
+    };
+    compile_migration_definition(input, CanonicalAstV1)
+}
+
+fn compile_identity_organization_event_replay_definition()
+-> Result<RnmdbMigrationDefinition, StorageError> {
+    let input = CanonicalMigrationDefinitionInput {
+        id: IDENTITY_ORGANIZATION_EVENT_REPLAY_MIGRATION_ID,
+        domain: IDENTITY_ORGANIZATION_EVENT_REPLAY_MIGRATION_DOMAIN,
+        from: IDENTITY_ORGANIZATION_EVENT_REPLAY_MIGRATION_FROM_VERSION,
+        to: IDENTITY_ORGANIZATION_EVENT_REPLAY_MIGRATION_TO_VERSION,
+        statements: IDENTITY_ORGANIZATION_EVENT_REPLAY_MIGRATION_STATEMENTS,
+        expected_checksum: IDENTITY_ORGANIZATION_EVENT_REPLAY_MIGRATION_CANONICAL_V1_SHA256,
+        requires_backup: IDENTITY_ORGANIZATION_EVENT_REPLAY_MIGRATION_REQUIRES_BACKUP,
     };
     compile_migration_definition(input, CanonicalAstV1)
 }
