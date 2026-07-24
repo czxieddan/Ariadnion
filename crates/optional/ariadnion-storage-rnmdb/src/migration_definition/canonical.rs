@@ -281,6 +281,7 @@ fn has_supported_statement_prefix(tokens: &[Token]) -> bool {
     match token_kind(tokens, 0) {
         Some(TokenKind::Create) => has_supported_create_prefix(tokens),
         Some(TokenKind::Grant) => true,
+        Some(TokenKind::Alter) => token_kind(tokens, 1) == Some(&TokenKind::Table),
         _ => false,
     }
 }
@@ -348,6 +349,11 @@ fn encode_statement(statement: &Statement) -> Result<Vec<u8>, StorageError> {
             table,
             role,
         } => encode_grant_table(*privilege, table, role),
+        Statement::AlterTableAddColumn {
+            table,
+            column,
+            if_not_exists,
+        } => encode_alter_table_add_column(table, column, *if_not_exists),
         _ => Err(integrity_failure()),
     }
 }
@@ -430,6 +436,18 @@ fn encode_grant_table(
     encoder.variant(2, table_privilege_tag(privilege)?)?;
     encoder.nested(3, encode_object_name(table)?)?;
     encoder.text(4, role.as_str())?;
+    Ok(encoder.finish())
+}
+
+fn encode_alter_table_add_column(
+    table: &ObjectName,
+    column: &ColumnDef,
+    if_not_exists: bool,
+) -> Result<Vec<u8>, StorageError> {
+    let mut encoder = statement_encoder(6)?;
+    encoder.nested(2, encode_object_name(table)?)?;
+    encoder.nested(3, encode_column(column)?)?;
+    encoder.boolean(4, if_not_exists)?;
     Ok(encoder.finish())
 }
 
