@@ -7,42 +7,50 @@ use ariadnion_user_domain::UtcTimestamp;
 
 use crate::{AuthorizationPolicy, AuthorizationPolicyTransition, PolicyVersion};
 
-const REPOSITORY_ERROR_CODES: [&str; 8] = [
-    "RBAC_POLICY_REPOSITORY_NOT_FOUND",
-    "RBAC_POLICY_REPOSITORY_CONFLICT",
-    "RBAC_POLICY_REPOSITORY_CANCELLED",
-    "RBAC_POLICY_REPOSITORY_DEADLINE_EXCEEDED",
-    "RBAC_POLICY_REPOSITORY_RESOURCE_EXHAUSTED",
-    "RBAC_POLICY_REPOSITORY_UNAVAILABLE",
-    "RBAC_POLICY_REPOSITORY_COMMIT_INDETERMINATE",
-    "RBAC_POLICY_REPOSITORY_INTEGRITY_FAILURE",
-];
-
 /// Persistence operations required by tenant-bound authorization workflows.
 ///
 /// # Security invariants
 ///
-/// Every method requires an authenticated [`RequestContext`]. Before any
-/// storage access, implementations require its principal tenant to equal the
-/// explicit `tenant_id`. Writes and reconciliation additionally require that
-/// tenant to equal the transition, resulting policy, and event tenants, and
-/// require the authenticated principal identity to equal the event actor. An
-/// anonymous context or any binding mismatch returns
-/// [`AuthorizationPolicyRepositoryErrorCode::IntegrityFailure`]. Repository
-/// errors retain no tenant, policy content, event, decision, audit data, or
-/// request context.
+/// Before I/O, every method requires an authenticated [`RequestContext`] whose
+/// principal tenant equals the explicit `tenant_id`. Writes and reconciliation
+/// also require that tenant to equal the transition, target policy, and event
+/// tenants, the context principal to equal the event actor, and the supplied
+/// expected version to equal the transition's expected previous version.
+/// Anonymous, cross-context, argument, or transition binding mismatches return
+/// [`AuthorizationPolicyRepositoryErrorCode::IntegrityFailure`]. A decoded row
+/// whose tenant ownership diverges at any point is also an integrity failure.
+/// [`AuthorizationPolicyRepositoryErrorCode::NotFound`] is reserved for an
+/// authenticated `load` whose exact tenant-scoped policy row is absent.
 ///
 /// Loads authenticate the complete policy snapshot and contiguous event
 /// history. Writes bind every role, rule, assignment, event, audit append, and
 /// outbox record to the explicit tenant. Authorization decisions are transient
 /// results and must never be loaded or persisted through this port.
+///
+/// # Commit evidence
+///
+/// An adapter derives one commit-evidence identity from a length-delimited
+/// canonical encoding of the original [`RequestContext::request_id`], explicit
+/// tenant, expected previous version, event actor, event time, event version,
+/// event kind, and target snapshot digest. The snapshot digest is SHA-256 over
+/// the domain separator `ariadnion.rbac.policy-snapshot.v1` followed by every
+/// field of the complete snapshot. The encoding includes sequence lengths,
+/// scalar lengths, enum discriminants, and option-presence markers, and
+/// preserves role, rule, and assignment order. Concatenation without lengths
+/// or omission of a snapshot field is not canonical evidence.
+///
+/// The target snapshot and normalized rows, policy event with the original
+/// request ID, audit evidence, and outbox identity and payload commit in one
+/// transaction. The audit and outbox records carry the same evidence identity
+/// and snapshot digest. The request ID remains persistence evidence and is not
+/// added to the pure domain event.
 pub trait AuthorizationPolicyRepositoryPort: Send + Sync {
     /// Loads the exact authorization policy inside its tenant boundary.
     ///
-    /// An absent policy and any crossed durable binding return the same
-    /// redacted [`AuthorizationPolicyRepositoryErrorCode::NotFound`] result.
-    /// Malformed snapshots, non-contiguous events, or divergent tenant facts
-    /// fail closed with an integrity error.
+    /// After the pre-I/O context checks, an absent exact tenant row returns
+    /// [`AuthorizationPolicyRepositoryErrorCode::NotFound`]. A decoded tenant
+    /// mismatch, malformed snapshot, or divergent event history returns
+    /// [`AuthorizationPolicyRepositoryErrorCode::IntegrityFailure`].
     fn load(
         &self,
         tenant_id: &TenantId,
@@ -51,16 +59,13 @@ pub trait AuthorizationPolicyRepositoryPort: Send + Sync {
 
     /// Atomically compares the previous version and persists one transition.
     ///
-    /// The complete policy snapshot, normalized role and assignment rows,
-    /// exact policy event, audit-chain append, and outbox message commit
-    /// together or not at all. Initial publication requires the durable tenant
-    /// key to be absent and uses the initial expected version. Replacement
-    /// compares both the version and exact previous snapshot before writing.
-    /// The supplied expected version must equal the transition's expected
-    /// previous version. All context, tenant, and actor bindings described by
-    /// this trait are checked before I/O; a mismatch is an integrity failure.
-    /// A changed precondition returns
+    /// Initial publication atomically requires tenant-key absence. Replacement
+    /// atomically compares the version and exact previous snapshot. A changed
+    /// durable precondition returns
     /// [`AuthorizationPolicyRepositoryErrorCode::Conflict`] with zero effects.
+    /// Caller or transition binding mismatches are integrity failures before
+    /// I/O, not conflicts. All target, event, audit, outbox, request-ID, and
+    /// digest evidence described by this trait commits atomically.
     ///
     /// Success is returned only after durable commit. An untrusted commit
     /// outcome returns
@@ -77,13 +82,15 @@ pub trait AuthorizationPolicyRepositoryPort: Send + Sync {
 
     /// Reconciles one indeterminate commit from exact durable evidence.
     ///
-    /// Implementations only read and authenticate the target snapshot, exact
-    /// policy event, audit-chain membership, and outbox record. Reconciliation
-    /// never writes, replays, or synthesizes a transition. A later policy is
-    /// accepted only when contiguous authenticated events prove that the
-    /// requested transition committed first. Missing, behind, malformed,
-    /// duplicate, divergent, or pre-I/O context/transition binding evidence is
-    /// an integrity failure.
+    /// Reconciliation is read-only and recomputes the evidence identity from
+    /// the original request context, expected version, transition event, and
+    /// complete target snapshot. It exactly verifies the policy-event request
+    /// ID, audit evidence, outbox identity and payload, and snapshot digest.
+    /// Missing, malformed, duplicate, or divergent evidence is an integrity
+    /// failure. If indeterminate transition A is followed by different policy
+    /// B with identical event actor, time, and kind, reconciling A returns
+    /// [`AuthorizationPolicyRepositoryErrorCode::IntegrityFailure`], never a
+    /// receipt for B. Upcoming RNMDB adapter tests enforce this collision case.
     fn reconcile_commit(
         &self,
         tenant_id: &TenantId,
@@ -120,7 +127,16 @@ impl AuthorizationPolicyRepositoryErrorCode {
     /// Returns the stable external machine code.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        REPOSITORY_ERROR_CODES[self as usize]
+        match self {
+            Self::NotFound => "RBAC_POLICY_REPOSITORY_NOT_FOUND",
+            Self::Conflict => "RBAC_POLICY_REPOSITORY_CONFLICT",
+            Self::Cancelled => "RBAC_POLICY_REPOSITORY_CANCELLED",
+            Self::DeadlineExceeded => "RBAC_POLICY_REPOSITORY_DEADLINE_EXCEEDED",
+            Self::ResourceExhausted => "RBAC_POLICY_REPOSITORY_RESOURCE_EXHAUSTED",
+            Self::Unavailable => "RBAC_POLICY_REPOSITORY_UNAVAILABLE",
+            Self::CommitIndeterminate => "RBAC_POLICY_REPOSITORY_COMMIT_INDETERMINATE",
+            Self::IntegrityFailure => "RBAC_POLICY_REPOSITORY_INTEGRITY_FAILURE",
+        }
     }
 }
 
