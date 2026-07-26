@@ -36,20 +36,23 @@ const REPOSITORY_ERROR_CODES: [&str; 8] = [
 /// Loads authenticate the complete family snapshot and contiguous event
 /// history, including every rotated leaf required for token-reuse detection.
 /// Before either write method performs I/O, the explicit tenant must equal the
-/// transition family, every leaf, and event tenant. The family, every leaf,
-/// and event must also carry one identical user binding. Any mismatch is an
-/// integrity failure. A matching request whose durable family version or
-/// another atomic precondition changed is a conflict.
+/// transition family, every leaf, and event tenant. For authenticated family
+/// loads and writes, the explicit user must also equal the family, every leaf,
+/// and event user. Any mismatch is an integrity failure. A matching request
+/// whose durable family version or another atomic precondition changed is a
+/// conflict.
 pub trait SessionRepositoryPort: Send + Sync {
     /// Loads one exact browser session family inside its tenant and user boundary.
     ///
-    /// Absent and cross-tenant keys return the same redacted
+    /// The explicit user is part of the storage key and must match every leaf
+    /// in the decoded family. Absent and crossed-boundary keys return the same redacted
     /// [`SessionRepositoryErrorCode::NotFound`] result. Malformed subject
     /// bindings, missing leaves, or divergent history fail closed as integrity
     /// failures.
     fn load(
         &self,
         tenant_id: &TenantId,
+        user_id: &UserId,
         family_id: &SessionFamilyId,
         context: &RequestContext,
     ) -> Result<SessionFamily, SessionRepositoryError>;
@@ -95,6 +98,7 @@ pub trait SessionRepositoryPort: Send + Sync {
     fn compare_and_commit(
         &self,
         tenant_id: &TenantId,
+        user_id: &UserId,
         expected_previous_version: SessionFamilyVersion,
         transition: &SessionTransition,
         context: &RequestContext,
@@ -111,6 +115,7 @@ pub trait SessionRepositoryPort: Send + Sync {
     fn reconcile_commit(
         &self,
         tenant_id: &TenantId,
+        user_id: &UserId,
         expected_previous_version: SessionFamilyVersion,
         transition: &SessionTransition,
         context: &RequestContext,
