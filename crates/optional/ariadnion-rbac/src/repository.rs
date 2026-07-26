@@ -22,10 +22,15 @@ const REPOSITORY_ERROR_CODES: [&str; 8] = [
 ///
 /// # Security invariants
 ///
-/// Every method requires an authenticated [`RequestContext`] whose principal
-/// tenant exactly matches `tenant_id`; implementations reject anonymous or
-/// crossed contexts before storage access. Repository errors retain no tenant,
-/// policy content, event, decision, audit data, or request context.
+/// Every method requires an authenticated [`RequestContext`]. Before any
+/// storage access, implementations require its principal tenant to equal the
+/// explicit `tenant_id`. Writes and reconciliation additionally require that
+/// tenant to equal the transition, resulting policy, and event tenants, and
+/// require the authenticated principal identity to equal the event actor. An
+/// anonymous context or any binding mismatch returns
+/// [`AuthorizationPolicyRepositoryErrorCode::IntegrityFailure`]. Repository
+/// errors retain no tenant, policy content, event, decision, audit data, or
+/// request context.
 ///
 /// Loads authenticate the complete policy snapshot and contiguous event
 /// history. Writes bind every role, rule, assignment, event, audit append, and
@@ -51,6 +56,9 @@ pub trait AuthorizationPolicyRepositoryPort: Send + Sync {
     /// together or not at all. Initial publication requires the durable tenant
     /// key to be absent and uses the initial expected version. Replacement
     /// compares both the version and exact previous snapshot before writing.
+    /// The supplied expected version must equal the transition's expected
+    /// previous version. All context, tenant, and actor bindings described by
+    /// this trait are checked before I/O; a mismatch is an integrity failure.
     /// A changed precondition returns
     /// [`AuthorizationPolicyRepositoryErrorCode::Conflict`] with zero effects.
     ///
@@ -74,7 +82,8 @@ pub trait AuthorizationPolicyRepositoryPort: Send + Sync {
     /// never writes, replays, or synthesizes a transition. A later policy is
     /// accepted only when contiguous authenticated events prove that the
     /// requested transition committed first. Missing, behind, malformed,
-    /// duplicate, or divergent evidence is an integrity failure.
+    /// duplicate, divergent, or pre-I/O context/transition binding evidence is
+    /// an integrity failure.
     fn reconcile_commit(
         &self,
         tenant_id: &TenantId,

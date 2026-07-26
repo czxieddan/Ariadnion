@@ -50,9 +50,7 @@ fn precondition_failure(
 
 fn tenant_mismatch(policy: &AuthorizationPolicy, request: &AuthorizationRequest) -> bool {
     let principal_tenant = request.subject().principal().tenant_id();
-    policy
-        .tenant_id()
-        .is_some_and(|tenant| tenant != principal_tenant)
+    policy.tenant_id() != principal_tenant
         || request.scope().tenant_id() != principal_tenant
         || request
             .subject()

@@ -219,7 +219,9 @@ pub fn replace_authorization_policy(
     if current.version() != change.expected_version {
         return Err(error(AuthorizationErrorCode::VersionConflict));
     }
-    validate_policy_tenant(&change.tenant_id, current)?;
+    if current.tenant_id() != &change.tenant_id {
+        return Err(error(AuthorizationErrorCode::TenantMismatch));
+    }
     let next_version = current.version().next()?;
     build_transition(
         Some(current.snapshot_state()),
@@ -235,8 +237,12 @@ fn build_transition(
     version: PolicyVersion,
     kind: AuthorizationPolicyEventKind,
 ) -> Result<AuthorizationPolicyTransition, AuthorizationError> {
-    let policy = AuthorizationPolicy::new(version, change.roles, change.assignments)?;
-    validate_policy_tenant(&change.tenant_id, &policy)?;
+    let policy = AuthorizationPolicy::new(
+        change.tenant_id.clone(),
+        version,
+        change.roles,
+        change.assignments,
+    )?;
     let event = AuthorizationPolicyEvent {
         tenant_id: change.tenant_id.clone(),
         actor: change.actor,
@@ -251,17 +257,4 @@ fn build_transition(
         policy,
         event,
     })
-}
-
-fn validate_policy_tenant(
-    tenant_id: &TenantId,
-    policy: &AuthorizationPolicy,
-) -> Result<(), AuthorizationError> {
-    if policy
-        .tenant_id()
-        .is_some_and(|policy_tenant| policy_tenant != tenant_id)
-    {
-        return Err(error(AuthorizationErrorCode::TenantMismatch));
-    }
-    Ok(())
 }

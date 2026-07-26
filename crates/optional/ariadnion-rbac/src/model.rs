@@ -455,7 +455,7 @@ impl AuthorizationRequest {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AuthorizationPolicy {
     version: PolicyVersion,
-    tenant_id: Option<TenantId>,
+    tenant_id: TenantId,
     roles: Vec<RoleDefinition>,
     assignments: Vec<RoleAssignment>,
 }
@@ -463,17 +463,21 @@ pub struct AuthorizationPolicy {
 impl AuthorizationPolicy {
     /// Validates and creates an immutable policy snapshot.
     ///
+    /// The explicit tenant is retained even when the policy has no roles or
+    /// assignments. Every role and assignment scope must match that tenant.
+    ///
     /// # Errors
     /// Returns a stable error for collection overflow, duplicate identities,
     /// unknown roles, or any tenant boundary mismatch.
     pub fn new(
+        tenant_id: TenantId,
         version: PolicyVersion,
         roles: Vec<RoleDefinition>,
         assignments: Vec<RoleAssignment>,
     ) -> Result<Self, AuthorizationError> {
         validate_policy_limits(&roles, &assignments)?;
         validate_unique_policy_ids(&roles, &assignments)?;
-        let tenant_id = policy_tenant(&roles, &assignments)?;
+        validate_policy_tenant(&tenant_id, &roles, &assignments)?;
         validate_assignments(&roles, &assignments)?;
         Ok(Self {
             version,
@@ -489,10 +493,10 @@ impl AuthorizationPolicy {
         self.version
     }
 
-    /// Returns the single policy tenant when the snapshot contains data.
+    /// Returns the tenant owning this policy, including an empty policy.
     #[must_use]
-    pub const fn tenant_id(&self) -> Option<&TenantId> {
-        self.tenant_id.as_ref()
+    pub const fn tenant_id(&self) -> &TenantId {
+        &self.tenant_id
     }
 
     /// Returns roles in deterministic declaration order.
@@ -739,27 +743,21 @@ fn validate_unique_policy_ids(
     Ok(())
 }
 
-fn policy_tenant(
+fn validate_policy_tenant(
+    tenant_id: &TenantId,
     roles: &[RoleDefinition],
     assignments: &[RoleAssignment],
-) -> Result<Option<TenantId>, AuthorizationError> {
-    let candidate = roles
-        .first()
-        .map(RoleDefinition::tenant_id)
-        .or_else(|| assignments.first().map(|value| value.scope().tenant_id()));
-    let Some(candidate) = candidate else {
-        return Ok(None);
-    };
-    if roles.iter().any(|role| role.tenant_id() != candidate) {
+) -> Result<(), AuthorizationError> {
+    if roles.iter().any(|role| role.tenant_id() != tenant_id) {
         return Err(error(AuthorizationErrorCode::TenantMismatch));
     }
     if assignments
         .iter()
-        .any(|assignment| assignment.scope().tenant_id() != candidate)
+        .any(|assignment| assignment.scope().tenant_id() != tenant_id)
     {
         return Err(error(AuthorizationErrorCode::TenantMismatch));
     }
-    Ok(Some(candidate.clone()))
+    Ok(())
 }
 
 fn validate_assignments(

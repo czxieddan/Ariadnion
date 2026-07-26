@@ -169,24 +169,35 @@ impl RoleAssignmentSnapshot {
 /// cannot be reconstructed as reusable durable grants.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AuthorizationPolicySnapshot {
+    tenant_id: TenantId,
     version: PolicyVersion,
     roles: Vec<RoleDefinitionSnapshot>,
     assignments: Vec<RoleAssignmentSnapshot>,
 }
 
 impl AuthorizationPolicySnapshot {
-    /// Creates a candidate policy snapshot for validated reconstruction.
+    /// Creates a tenant-bound candidate snapshot for validated reconstruction.
+    ///
+    /// The tenant remains present when both durable collections are empty.
     #[must_use]
     pub fn new(
+        tenant_id: TenantId,
         version: PolicyVersion,
         roles: Vec<RoleDefinitionSnapshot>,
         assignments: Vec<RoleAssignmentSnapshot>,
     ) -> Self {
         Self {
+            tenant_id,
             version,
             roles,
             assignments,
         }
+    }
+
+    /// Returns the tenant owning the persisted policy, including empty state.
+    #[must_use]
+    pub const fn tenant_id(&self) -> &TenantId {
+        &self.tenant_id
     }
 
     /// Returns the immutable persisted policy version.
@@ -240,13 +251,14 @@ impl AuthorizationPolicy {
             .into_iter()
             .map(RoleAssignmentSnapshot::into_assignment)
             .collect::<Result<Vec<_>, _>>()?;
-        Self::new(snapshot.version, roles, assignments)
+        Self::new(snapshot.tenant_id, snapshot.version, roles, assignments)
     }
 
     /// Returns every durable policy field in deterministic declaration order.
     #[must_use]
     pub fn snapshot(&self) -> AuthorizationPolicySnapshot {
         AuthorizationPolicySnapshot {
+            tenant_id: self.tenant_id().clone(),
             version: self.version(),
             roles: self
                 .roles()
