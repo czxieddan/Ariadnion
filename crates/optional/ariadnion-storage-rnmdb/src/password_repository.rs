@@ -70,8 +70,7 @@ impl PasswordRepositoryPort for RnmdbPasswordRepository {
     ) -> Result<PasswordCredential, PasswordRepositoryError> {
         validate_authenticated_tenant(context, tenant_id).map_err(map_storage_error)?;
         self.session
-            .with_storage_session(context, |session| {
-                bind_password_session_scope(session, tenant_id, user_id, context)?;
+            .with_identity_storage_session(context, tenant_id, |session| {
                 decode::load_credential(session, tenant_id, user_id)
             })
             .map_err(map_storage_error)
@@ -86,8 +85,7 @@ impl PasswordRepositoryPort for RnmdbPasswordRepository {
     ) -> Result<PasswordReset, PasswordRepositoryError> {
         validate_authenticated_tenant(context, tenant_id).map_err(map_storage_error)?;
         self.session
-            .with_storage_session(context, |session| {
-                bind_password_session_scope(session, tenant_id, user_id, context)?;
+            .with_identity_storage_session(context, tenant_id, |session| {
                 decode::load_reset(session, tenant_id, user_id, reset_id)
             })
             .map_err(map_storage_error)
@@ -102,8 +100,7 @@ impl PasswordRepositoryPort for RnmdbPasswordRepository {
     ) -> Result<PasswordReset, PasswordRepositoryError> {
         validate_authenticated_tenant(context, tenant_id).map_err(map_storage_error)?;
         self.session
-            .with_storage_session(context, |session| {
-                bind_password_session_scope(session, tenant_id, user_id, context)?;
+            .with_identity_storage_session(context, tenant_id, |session| {
                 decode::load_reset_by_token(session, tenant_id, user_id, token_digest)
             })
             .map_err(map_storage_error)
@@ -126,9 +123,8 @@ impl PasswordRepositoryPort for RnmdbPasswordRepository {
         };
         validate_commit_request(&request).map_err(map_storage_error)?;
         self.session
-            .with_identity_session(context, |session| {
+            .with_identity_transaction_session(context, tenant_id, |session| {
                 run_identity_transaction(session, context, |session| {
-                    bind_password_session_scope(session, tenant_id, user_id, context)?;
                     commit_transition(session, &request, &self.audit_subject_key)
                 })
             })
@@ -152,8 +148,7 @@ impl PasswordRepositoryPort for RnmdbPasswordRepository {
         };
         validate_commit_request(&request).map_err(map_storage_error)?;
         self.session
-            .with_storage_session(context, |session| {
-                bind_password_session_scope(session, tenant_id, user_id, context)?;
+            .with_identity_storage_session(context, tenant_id, |session| {
                 reconcile_exact(session, &request, &self.audit_subject_key)
             })
             .map_err(map_storage_error)
@@ -445,18 +440,6 @@ fn immutable_reset_matches(previous: &PasswordReset, target: &PasswordReset) -> 
         target.expires_at(),
         target.purpose(),
     )
-}
-
-fn bind_password_session_scope<'a>(
-    _session: &mut LocalSession,
-    tenant: &TenantId,
-    _user: &UserId,
-    context: &'a RequestContext,
-) -> Result<&'a PrincipalContext, StorageError> {
-    // RNMDB does not yet expose the reviewed dynamic session context required
-    // for password-row RLS. This callsite enforces the application identity
-    // boundary without issuing unsupported SQL or claiming a database policy.
-    validate_authenticated_tenant(context, tenant)
 }
 
 pub(super) fn authenticated_principal(

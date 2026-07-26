@@ -71,7 +71,7 @@ impl SessionRepositoryPort for RnmdbSessionRepository {
     ) -> Result<SessionFamily, SessionRepositoryError> {
         validate_authenticated_tenant(context, tenant_id).map_err(map_storage_error)?;
         self.session
-            .with_storage_session(context, |session| {
+            .with_identity_storage_session(context, tenant_id, |session| {
                 decode::load_family(session, tenant_id, user_id, family_id)
             })
             .map_err(map_storage_error)
@@ -85,7 +85,7 @@ impl SessionRepositoryPort for RnmdbSessionRepository {
     ) -> Result<SessionFamily, SessionRepositoryError> {
         validate_routed_tenant(context, tenant_id).map_err(map_storage_error)?;
         self.session
-            .with_storage_session(context, |session| {
+            .with_identity_storage_session(context, tenant_id, |session| {
                 decode::load_family_by_token(session, tenant_id, token_digest)
             })
             .map_err(map_storage_error)
@@ -108,7 +108,7 @@ impl SessionRepositoryPort for RnmdbSessionRepository {
         };
         validate_commit_request(&request).map_err(map_storage_error)?;
         self.session
-            .with_identity_session(context, |session| {
+            .with_identity_transaction_session(context, tenant_id, |session| {
                 run_identity_transaction(session, context, |session| {
                     commit_transition(session, &request, &self.audit_subject_key)
                 })
@@ -133,7 +133,7 @@ impl SessionRepositoryPort for RnmdbSessionRepository {
         };
         validate_commit_request(&request).map_err(map_storage_error)?;
         self.session
-            .with_storage_session(context, |session| {
+            .with_identity_storage_session(context, tenant_id, |session| {
                 reconcile_read_only(session, &request, &self.audit_subject_key)
             })
             .map_err(map_storage_error)

@@ -7,7 +7,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard};
 use std::time::SystemTime;
 
-use ariadnion_core::{ErrorCode, RequestContext};
+use ariadnion_core::{ErrorCode, RequestContext, TenantId};
+use ariadnion_rbac::migrations::IDENTITY_RUNTIME_ROLE;
 use ariadnion_storage_domain::{
     StorageError, StorageErrorCode, StorageInstanceId, TransactionScope,
 };
@@ -268,9 +269,44 @@ impl RnmdbSessionOwner {
         operation(&mut session)
     }
 
-    pub(crate) fn with_identity_session<T>(
+    pub(crate) fn with_identity_storage_session<T>(
         &self,
         context: &RequestContext,
+        tenant_id: &TenantId,
+        operation: impl FnOnce(&mut LocalSession) -> Result<T, StorageError>,
+    ) -> Result<T, StorageError> {
+        check_context(context)?;
+        self.ensure_usable()?;
+        let mut session = lock_session(&self.session);
+        check_context(context)?;
+        self.ensure_usable()?;
+        let result = run_identity_tenant_scope(&mut session, tenant_id, operation);
+        self.finish_identity_storage_scope(&session, result)
+    }
+
+    /// Runs one tenant-scoped storage operation with an injected cleanup failure.
+    #[cfg(feature = "test-hooks")]
+    #[doc(hidden)]
+    pub fn with_identity_storage_session_injected_cleanup_failure<T>(
+        &self,
+        context: &RequestContext,
+        tenant_id: &TenantId,
+        operation: impl FnOnce(&mut LocalSession) -> Result<T, StorageError>,
+    ) -> Result<T, StorageError> {
+        check_context(context)?;
+        self.ensure_usable()?;
+        let mut session = lock_session(&self.session);
+        check_context(context)?;
+        self.ensure_usable()?;
+        let result =
+            run_identity_tenant_scope_injected_cleanup_failure(&mut session, tenant_id, operation);
+        self.finish_identity_storage_scope(&session, result)
+    }
+
+    pub(crate) fn with_identity_transaction_session<T>(
+        &self,
+        context: &RequestContext,
+        tenant_id: &TenantId,
         operation: impl FnOnce(
             &mut LocalSession,
         ) -> crate::identity_transaction::IdentityTransactionResult<T>,
@@ -283,17 +319,13 @@ impl RnmdbSessionOwner {
         if session.in_transaction() {
             return Err(StorageError::new(StorageErrorCode::Conflict));
         }
-        let result = operation(&mut session);
-        if session.in_transaction() {
-            self.mark_tainted();
-            return Err(integrity_failure());
-        }
-        result.map_err(|error| {
-            if error.taints_session() {
-                self.mark_tainted();
-            }
-            error.into_storage_error()
-        })
+        let mut operation_tainted = false;
+        let result = run_identity_tenant_scope(&mut session, tenant_id, |session| {
+            let result = operation(session);
+            operation_tainted = transaction_result_taints(&result);
+            result
+        });
+        self.finish_identity_tenant_scope(&session, result, operation_tainted)
     }
 
     /// Configures one managed column while holding the configuration lock.
@@ -349,6 +381,104 @@ impl RnmdbSessionOwner {
     fn mark_tainted(&self) {
         self.tainted.store(true, Ordering::Release);
     }
+
+    fn finish_identity_storage_scope<T>(
+        &self,
+        session: &LocalSession,
+        result: Result<T, TenantScopeFailure<StorageError>>,
+    ) -> Result<T, StorageError> {
+        if session.in_transaction() {
+            self.mark_tainted();
+            return Err(integrity_failure());
+        }
+        result.map_err(|failure| failure.operation_error().unwrap_or_else(integrity_failure))
+    }
+
+    fn finish_identity_tenant_scope<T>(
+        &self,
+        session: &LocalSession,
+        result: Result<
+            T,
+            TenantScopeFailure<crate::identity_transaction::IdentityTransactionFailure>,
+        >,
+        operation_tainted: bool,
+    ) -> Result<T, StorageError> {
+        if operation_tainted {
+            self.mark_tainted();
+        }
+        if session.in_transaction() {
+            self.mark_tainted();
+            return Err(integrity_failure());
+        }
+        match result {
+            Ok(value) => Ok(value),
+            Err(failure) => self.project_identity_tenant_failure(failure),
+        }
+    }
+
+    fn project_identity_tenant_failure<T>(
+        &self,
+        failure: TenantScopeFailure<crate::identity_transaction::IdentityTransactionFailure>,
+    ) -> Result<T, StorageError> {
+        let Some(failure) = failure.operation_error() else {
+            return Err(integrity_failure());
+        };
+        Err(failure.into_storage_error())
+    }
+}
+
+enum TenantScopeFailure<E> {
+    Scope,
+    Operation(E),
+}
+
+impl<E> TenantScopeFailure<E> {
+    fn operation_error(self) -> Option<E> {
+        match self {
+            Self::Scope => None,
+            Self::Operation(error) => Some(error),
+        }
+    }
+}
+
+fn run_identity_tenant_scope<T, E>(
+    session: &mut LocalSession,
+    tenant_id: &TenantId,
+    operation: impl FnOnce(&mut LocalSession) -> Result<T, E>,
+) -> Result<T, TenantScopeFailure<E>> {
+    match session.with_tenant_context(IDENTITY_RUNTIME_ROLE, tenant_id.as_str(), |session| {
+        Ok(operation(session))
+    }) {
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(error)) => Err(TenantScopeFailure::Operation(error)),
+        Err(_) => Err(TenantScopeFailure::Scope),
+    }
+}
+
+#[cfg(feature = "test-hooks")]
+fn run_identity_tenant_scope_injected_cleanup_failure<T, E>(
+    session: &mut LocalSession,
+    tenant_id: &TenantId,
+    operation: impl FnOnce(&mut LocalSession) -> Result<T, E>,
+) -> Result<T, TenantScopeFailure<E>> {
+    match session.with_tenant_context_injected_cleanup_failure(
+        IDENTITY_RUNTIME_ROLE,
+        tenant_id.as_str(),
+        |session| Ok(operation(session)),
+    ) {
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(error)) => Err(TenantScopeFailure::Operation(error)),
+        Err(_) => Err(TenantScopeFailure::Scope),
+    }
+}
+
+fn transaction_result_taints<T>(
+    result: &crate::identity_transaction::IdentityTransactionResult<T>,
+) -> bool {
+    result
+        .as_ref()
+        .err()
+        .is_some_and(|failure| failure.taints_session())
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]

@@ -72,7 +72,7 @@ impl ApiKeyRepositoryPort for RnmdbApiKeyRepository {
     ) -> Result<ApiKey, ApiKeyRepositoryError> {
         validate_authenticated_tenant(context, tenant_id).map_err(map_storage_error)?;
         self.session
-            .with_storage_session(context, |session| {
+            .with_identity_storage_session(context, tenant_id, |session| {
                 decode::load_key(session, tenant_id, user_id, api_key_id)
             })
             .map_err(map_storage_error)
@@ -86,7 +86,7 @@ impl ApiKeyRepositoryPort for RnmdbApiKeyRepository {
     ) -> Result<ApiKey, ApiKeyRepositoryError> {
         validate_routed_tenant(context, tenant_id).map_err(map_storage_error)?;
         self.session
-            .with_storage_session(context, |session| {
+            .with_identity_storage_session(context, tenant_id, |session| {
                 decode::load_key_by_prefix(session, tenant_id, prefix)
             })
             .map_err(map_storage_error)
@@ -113,7 +113,7 @@ impl ApiKeyRepositoryPort for RnmdbApiKeyRepository {
         }
         validate_issuance_shape(&request).map_err(map_storage_error)?;
         self.session
-            .with_identity_session(context, |session| {
+            .with_identity_transaction_session(context, tenant_id, |session| {
                 run_identity_transaction(session, context, |session| {
                     commit_issuance(session, &request, &self.audit_subject_key)
                 })

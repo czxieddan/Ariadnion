@@ -107,9 +107,9 @@ impl UserRepositoryPort for RnmdbUserRepository {
         user_id: &UserId,
         context: &RequestContext,
     ) -> Result<User, UserRepositoryError> {
+        validate_authenticated_tenant(context, tenant_id).map_err(map_storage_error)?;
         self.session
-            .with_storage_session(context, |session| {
-                validate_authenticated_tenant(context, tenant_id)?;
+            .with_identity_storage_session(context, tenant_id, |session| {
                 decode::load_user(session, tenant_id, user_id)
             })
             .map_err(map_storage_error)
@@ -128,8 +128,9 @@ impl UserRepositoryPort for RnmdbUserRepository {
             transition,
             context,
         };
+        validate_commit_request(&request).map_err(map_storage_error)?;
         self.session
-            .with_identity_session(context, |session| {
+            .with_identity_transaction_session(context, tenant_id, |session| {
                 run_identity_transaction(session, context, |session| {
                     commit_in_transaction(session, &request, &self.audit_subject_key)
                 })
@@ -150,8 +151,9 @@ impl UserRepositoryPort for RnmdbUserRepository {
             transition,
             context,
         };
+        validate_commit_request(&request).map_err(map_storage_error)?;
         self.session
-            .with_storage_session(context, |session| {
+            .with_identity_storage_session(context, tenant_id, |session| {
                 reconcile::reconcile_commit(session, &request, &self.audit_subject_key)
             })
             .map_err(map_storage_error)

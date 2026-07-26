@@ -87,9 +87,9 @@ impl OrganizationRepositoryPort for RnmdbOrganizationRepository {
         organization_id: &OrganizationId,
         context: &RequestContext,
     ) -> Result<Organization, OrganizationRepositoryError> {
+        validate_authenticated_tenant(context, tenant_id).map_err(map_storage_error)?;
         self.session
-            .with_storage_session(context, |session| {
-                validate_authenticated_tenant(context, tenant_id)?;
+            .with_identity_storage_session(context, tenant_id, |session| {
                 decode::load_organization(session, tenant_id, organization_id)
             })
             .map_err(map_storage_error)
@@ -108,8 +108,9 @@ impl OrganizationRepositoryPort for RnmdbOrganizationRepository {
             transition,
             context,
         };
+        validate_commit_request(&request).map_err(map_storage_error)?;
         self.session
-            .with_identity_session(context, |session| {
+            .with_identity_transaction_session(context, tenant_id, |session| {
                 run_identity_transaction(session, context, |session| {
                     commit_in_transaction(session, &request, &self.audit_subject_key)
                 })
@@ -130,8 +131,9 @@ impl OrganizationRepositoryPort for RnmdbOrganizationRepository {
             transition,
             context,
         };
+        validate_commit_request(&request).map_err(map_storage_error)?;
         self.session
-            .with_storage_session(context, |session| {
+            .with_identity_storage_session(context, tenant_id, |session| {
                 reconcile_exact(session, &request, &self.audit_subject_key)
             })
             .map_err(map_storage_error)

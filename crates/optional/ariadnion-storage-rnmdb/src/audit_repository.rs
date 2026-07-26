@@ -68,11 +68,12 @@ impl RnmdbAuditRepository {
     ) -> Result<AuditChainHead, StorageError> {
         let principal = authenticated_principal(context)?;
         validate_append_identity(principal, expected_head, event)?;
-        self.session.with_identity_session(context, |session| {
-            run_identity_transaction(session, context, |session| {
-                append_in_transaction(session, principal, expected_head, event)
+        self.session
+            .with_identity_transaction_session(context, event.tenant_id(), |session| {
+                run_identity_transaction(session, context, |session| {
+                    append_in_transaction(session, principal, expected_head, event)
+                })
             })
-        })
     }
 
     /// Loads and authenticates the current durable head for one tenant.
@@ -90,9 +91,10 @@ impl RnmdbAuditRepository {
         context: &RequestContext,
     ) -> Result<AuditChainHead, StorageError> {
         validate_authenticated_tenant(context, tenant_id)?;
-        self.session.with_storage_session(context, |session| {
-            load_head_from_session(session, tenant_id)
-        })
+        self.session
+            .with_identity_storage_session(context, tenant_id, |session| {
+                load_head_from_session(session, tenant_id)
+            })
     }
 
     /// Loads one exact tenant-local audit event by identity.
@@ -112,9 +114,10 @@ impl RnmdbAuditRepository {
         context: &RequestContext,
     ) -> Result<AuditEvent, StorageError> {
         validate_authenticated_tenant(context, tenant_id)?;
-        self.session.with_storage_session(context, |session| {
-            load_durable_event_by_id(session, tenant_id, event_id, context)
-        })
+        self.session
+            .with_identity_storage_session(context, tenant_id, |session| {
+                load_durable_event_by_id(session, tenant_id, event_id, context)
+            })
     }
 
     /// Exports one exact bounded sequence page after durable chain verification.
@@ -136,9 +139,10 @@ impl RnmdbAuditRepository {
         context: &RequestContext,
     ) -> Result<Box<[AuditEvent]>, StorageError> {
         validate_authenticated_tenant(context, tenant_id)?;
-        self.session.with_storage_session(context, |session| {
-            export_from_session(session, tenant_id, cursor, context)
-        })
+        self.session
+            .with_identity_storage_session(context, tenant_id, |session| {
+                export_from_session(session, tenant_id, cursor, context)
+            })
     }
 }
 
