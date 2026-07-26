@@ -8,13 +8,14 @@ mod error;
 mod hash;
 pub mod migrations;
 mod policy;
+mod repository;
 mod reset;
 mod reset_debug;
 mod secret;
 
 pub use credential::{
-    PasswordCredential, PasswordCredentialSnapshot, PasswordCredentialSubject,
-    PasswordCredentialVersion, PasswordHashPolicyVersion,
+    PasswordCredential, PasswordCredentialReplacement, PasswordCredentialSnapshot,
+    PasswordCredentialSubject, PasswordCredentialVersion, PasswordHashPolicyVersion,
 };
 pub use error::{PasswordError, PasswordErrorCode};
 pub use hash::{
@@ -22,6 +23,11 @@ pub use hash::{
 };
 pub use policy::{
     BreachAssessment, BreachStatus, PasswordFingerprint, PasswordPolicy, admit_password,
+};
+pub use repository::{
+    PasswordCommitReceipt, PasswordCredentialReplacementCommit, PasswordRepositoryError,
+    PasswordRepositoryErrorCode, PasswordRepositoryPort, PasswordResetCommit,
+    PasswordResetIssuanceCommit, PasswordResetOnlyCommit,
 };
 pub use reset::{
     PasswordHashRecordDigest, PasswordReset, PasswordResetAction, PasswordResetCommand,

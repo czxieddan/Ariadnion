@@ -211,6 +211,64 @@ impl PasswordCredential {
     }
 }
 
+/// A complete credential replacement produced by a password-reset transition.
+///
+/// The expected version is the credential version immutably bound at reset
+/// issuance. `credential` is the exact one-step successor for the same tenant
+/// and user, with the replacement PHC record and its chosen hash-policy
+/// version. The record remains redacted by the credential's `Debug`
+/// implementation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PasswordCredentialReplacement {
+    expected_version: PasswordCredentialVersion,
+    credential: PasswordCredential,
+}
+
+impl PasswordCredentialReplacement {
+    pub(crate) fn new(
+        subject: PasswordCredentialSubject,
+        expected_version: PasswordCredentialVersion,
+        resulting_hash_policy_version: PasswordHashPolicyVersion,
+        hash_record: PasswordHashRecord,
+    ) -> Result<Self, PasswordError> {
+        let resulting_version = expected_version.next()?;
+        let credential = PasswordCredential::from_snapshot(PasswordCredentialSnapshot {
+            subject,
+            version: resulting_version,
+            hash_policy_version: resulting_hash_policy_version,
+            hash_record,
+        })?;
+        Ok(Self {
+            expected_version,
+            credential,
+        })
+    }
+
+    /// Returns the exact credential version observed at reset issuance.
+    #[must_use]
+    pub const fn expected_version(&self) -> PasswordCredentialVersion {
+        self.expected_version
+    }
+
+    /// Returns the complete replacement credential for atomic persistence.
+    #[must_use]
+    pub const fn credential(&self) -> &PasswordCredential {
+        &self.credential
+    }
+
+    /// Returns the exact one-step successor committed for the credential.
+    #[must_use]
+    pub const fn resulting_version(&self) -> PasswordCredentialVersion {
+        self.credential.version()
+    }
+
+    /// Returns the policy version that produced the replacement PHC record.
+    #[must_use]
+    pub const fn resulting_hash_policy_version(&self) -> PasswordHashPolicyVersion {
+        self.credential.hash_policy_version()
+    }
+}
+
 impl Debug for PasswordCredential {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         formatter

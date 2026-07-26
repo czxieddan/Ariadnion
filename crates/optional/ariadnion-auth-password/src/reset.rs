@@ -7,7 +7,10 @@ use ariadnion_user_domain::{UserId, UtcTimestamp};
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 
-use crate::{PasswordError, PasswordErrorCode, PasswordHashRecord};
+use crate::{
+    PasswordCredentialReplacement, PasswordCredentialSubject, PasswordCredentialVersion,
+    PasswordError, PasswordErrorCode, PasswordHashPolicyVersion, PasswordHashRecord,
+};
 
 const MAX_RESET_ID_BYTES: usize = 128;
 const MIN_RESET_TOKEN_BYTES: usize = 32;
@@ -217,6 +220,8 @@ pub struct PasswordResetSnapshot {
     pub subject: PasswordResetSubject,
     /// Domain-separated digest of the raw reset token.
     pub token_digest: PasswordResetTokenDigest,
+    /// Exact credential version observed before this reset was issued.
+    pub issued_credential_version: PasswordCredentialVersion,
     /// Trusted issuance and exclusive expiry boundaries.
     pub validity: PasswordResetValidityWindow,
     /// Optimistic lifecycle version.
@@ -263,10 +268,16 @@ pub struct PasswordResetIssueRequest {
     actor: PrincipalId,
     token_digest: PasswordResetTokenDigest,
     validity: PasswordResetValidityWindow,
+    issued_credential_version: PasswordCredentialVersion,
 }
 
 impl PasswordResetIssueRequest {
     /// Creates an issue request whose purpose is stamped internally as password recovery.
+    ///
+    /// The credential version must come from the same authoritative read that
+    /// authorized issuance. It becomes an immutable reset property so a later
+    /// password change makes consumption conflict instead of overwriting the
+    /// newer credential.
     #[must_use]
     pub const fn new(
         reset_id: PasswordResetId,
@@ -274,6 +285,7 @@ impl PasswordResetIssueRequest {
         actor: PrincipalId,
         token_digest: PasswordResetTokenDigest,
         validity: PasswordResetValidityWindow,
+        issued_credential_version: PasswordCredentialVersion,
     ) -> Self {
         Self {
             reset_id,
@@ -281,6 +293,7 @@ impl PasswordResetIssueRequest {
             actor,
             token_digest,
             validity,
+            issued_credential_version,
         }
     }
 }
@@ -291,6 +304,7 @@ pub struct PasswordReset {
     id: PasswordResetId,
     subject: PasswordResetSubject,
     token_digest: PasswordResetTokenDigest,
+    issued_credential_version: PasswordCredentialVersion,
     issued_at: UtcTimestamp,
     expires_at: UtcTimestamp,
     version: PasswordResetVersion,
@@ -316,6 +330,7 @@ impl PasswordReset {
             id: snapshot.reset_id,
             subject: snapshot.subject,
             token_digest: snapshot.token_digest,
+            issued_credential_version: snapshot.issued_credential_version,
             issued_at: snapshot.validity.issued_at,
             expires_at: snapshot.validity.expires_at,
             version: snapshot.version,
@@ -347,6 +362,16 @@ impl PasswordReset {
     #[must_use]
     pub const fn token_digest(&self) -> PasswordResetTokenDigest {
         self.token_digest
+    }
+
+    /// Returns the credential version immutably bound during reset issuance.
+    ///
+    /// A consumed reset may replace only this exact durable credential
+    /// version. Callers cannot rebind the reset to a newer version at
+    /// consumption time.
+    #[must_use]
+    pub const fn issued_credential_version(&self) -> PasswordCredentialVersion {
+        self.issued_credential_version
     }
 
     /// Returns the trusted issuance time.
@@ -392,6 +417,7 @@ impl PasswordReset {
             reset_id: self.id.clone(),
             subject: self.subject.clone(),
             token_digest: self.token_digest,
+            issued_credential_version: self.issued_credential_version,
             validity: PasswordResetValidityWindow::new(self.issued_at, self.expires_at),
             version: self.version,
             purpose: self.purpose,
@@ -405,6 +431,7 @@ impl PasswordReset {
             id: request.reset_id,
             subject: request.subject,
             token_digest: request.token_digest,
+            issued_credential_version: request.issued_credential_version,
             issued_at: request.validity.issued_at,
             expires_at: request.validity.expires_at,
             version: PasswordResetVersion::initial(),
@@ -424,6 +451,7 @@ impl PasswordReset {
             id: self.id.clone(),
             subject: self.subject.clone(),
             token_digest: self.token_digest,
+            issued_credential_version: self.issued_credential_version,
             issued_at: self.issued_at,
             expires_at: self.expires_at,
             version,
@@ -439,21 +467,26 @@ impl PasswordReset {
 pub struct PasswordResetConsumption {
     token_digest: PasswordResetTokenDigest,
     password_hash_record: PasswordHashRecord,
+    new_hash_policy_version: PasswordHashPolicyVersion,
 }
 
 impl PasswordResetConsumption {
-    /// Owns consumption evidence without deriving the PHC commitment early.
+    /// Owns consumption evidence and the policy identity for its PHC record.
     ///
     /// The replacement digest is derived only after subject and token evidence
-    /// passes inside [`transition_password_reset`].
+    /// passes inside [`transition_password_reset`]. The domain transition, not
+    /// a persistence adapter, binds this policy version into the complete
+    /// replacement credential.
     #[must_use]
     pub const fn new(
         token_digest: PasswordResetTokenDigest,
         password_hash_record: PasswordHashRecord,
+        new_hash_policy_version: PasswordHashPolicyVersion,
     ) -> Self {
         Self {
             token_digest,
             password_hash_record,
+            new_hash_policy_version,
         }
     }
 }
@@ -535,6 +568,7 @@ pub struct PasswordResetEvent {
     version: PasswordResetVersion,
     purpose: PasswordResetPurpose,
     kind: PasswordResetEventKind,
+    issued_credential_version: PasswordCredentialVersion,
     password_hash_digest: Option<PasswordHashRecordDigest>,
 }
 
@@ -587,6 +621,12 @@ impl PasswordResetEvent {
         self.kind
     }
 
+    /// Returns the credential version immutably bound when the reset was issued.
+    #[must_use]
+    pub const fn issued_credential_version(&self) -> PasswordCredentialVersion {
+        self.issued_credential_version
+    }
+
     /// Returns the replacement PHC commitment only for consumption events.
     #[must_use]
     pub const fn password_hash_digest(&self) -> Option<PasswordHashRecordDigest> {
@@ -594,12 +634,12 @@ impl PasswordResetEvent {
     }
 }
 
-/// A resulting reset snapshot, audit event, and optional credential commit intent.
+/// A resulting reset snapshot, audit event, and typed credential commit intent.
 #[derive(Debug)]
 pub struct PasswordResetTransition {
     reset: PasswordReset,
     event: PasswordResetEvent,
-    password_hash_record: Option<PasswordHashRecord>,
+    credential_replacement: Option<PasswordCredentialReplacement>,
 }
 
 impl PasswordResetTransition {
@@ -615,25 +655,26 @@ impl PasswordResetTransition {
         &self.event
     }
 
-    /// Returns the actual replacement PHC record only after successful consumption.
+    /// Returns the complete credential replacement only after consumption.
     ///
-    /// A persistence adapter must use this record in the same atomic operation
-    /// that commits the returned reset snapshot and event.
+    /// The replacement carries the issuance-bound expected credential version
+    /// and its exact one-step target. A persistence adapter must commit it in
+    /// the same atomic operation as the reset snapshot and event.
     #[must_use]
-    pub const fn password_hash_record(&self) -> Option<&PasswordHashRecord> {
-        self.password_hash_record.as_ref()
+    pub const fn credential_replacement(&self) -> Option<&PasswordCredentialReplacement> {
+        self.credential_replacement.as_ref()
     }
 
-    /// Consumes the transition into its snapshot, event, and optional PHC record.
+    /// Consumes the transition into its snapshot, event, and typed replacement.
     #[must_use]
     pub fn into_parts(
         self,
     ) -> (
         PasswordReset,
         PasswordResetEvent,
-        Option<PasswordHashRecord>,
+        Option<PasswordCredentialReplacement>,
     ) {
-        (self.reset, self.event, self.password_hash_record)
+        (self.reset, self.event, self.credential_replacement)
     }
 }
 
@@ -657,7 +698,7 @@ pub fn issue_password_reset(
     Ok(PasswordResetTransition {
         reset,
         event,
-        password_hash_record: None,
+        credential_replacement: None,
     })
 }
 
@@ -667,9 +708,10 @@ pub fn issue_password_reset(
 /// state so invalid evidence cannot be used as a state oracle. The token digest
 /// comparison is constant time. This pure transition does not itself prove
 /// durable single use and has no storage dependency. The persistence adapter
-/// must atomically compare-and-swap the expected stored reset version, replace
-/// the credential with the returned PHC record, persist the consumed snapshot,
-/// and append the event. A failure must commit none of those effects.
+/// must atomically compare-and-swap the expected stored reset version and the
+/// issuance-bound credential version, persist the complete typed replacement,
+/// consumed snapshot, and event, and append audit/outbox evidence. A failure
+/// must commit none of those effects.
 ///
 /// # Errors
 ///
@@ -699,7 +741,7 @@ pub fn transition_password_reset(
     Ok(PasswordResetTransition {
         reset,
         event,
-        password_hash_record: outcome.password_hash_record,
+        credential_replacement: outcome.credential_replacement,
     })
 }
 
@@ -707,7 +749,7 @@ struct TransitionOutcome {
     state: PasswordResetState,
     kind: PasswordResetEventKind,
     password_hash_digest: Option<PasswordHashRecordDigest>,
-    password_hash_record: Option<PasswordHashRecord>,
+    credential_replacement: Option<PasswordCredentialReplacement>,
 }
 
 fn valid_reset_id(value: &str) -> bool {
@@ -841,13 +883,22 @@ fn apply_consumption(
     let PasswordResetConsumption {
         token_digest: _,
         password_hash_record,
+        new_hash_policy_version,
     } = consumption;
     let digest = PasswordHashRecordDigest::from_record(&password_hash_record);
+    let subject =
+        PasswordCredentialSubject::new(reset.tenant_id().clone(), reset.user_id().clone());
+    let credential_replacement = PasswordCredentialReplacement::new(
+        subject,
+        reset.issued_credential_version,
+        new_hash_policy_version,
+        password_hash_record,
+    )?;
     Ok(TransitionOutcome {
         state: PasswordResetState::Consumed,
         kind: PasswordResetEventKind::Consumed,
         password_hash_digest: Some(digest),
-        password_hash_record: Some(password_hash_record),
+        credential_replacement: Some(credential_replacement),
     })
 }
 
@@ -860,7 +911,7 @@ fn apply_revocation(
         state: PasswordResetState::Revoked,
         kind: PasswordResetEventKind::Revoked,
         password_hash_digest: None,
-        password_hash_record: None,
+        credential_replacement: None,
     })
 }
 
@@ -875,7 +926,7 @@ fn apply_expiry(
         state: PasswordResetState::Expired,
         kind: PasswordResetEventKind::Expired,
         password_hash_digest: None,
-        password_hash_record: None,
+        credential_replacement: None,
     })
 }
 
@@ -903,6 +954,7 @@ fn event_from(
         version: reset.version,
         purpose: reset.purpose,
         kind,
+        issued_credential_version: reset.issued_credential_version,
         password_hash_digest: reset.password_hash_digest,
     }
 }

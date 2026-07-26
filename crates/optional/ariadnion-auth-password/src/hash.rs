@@ -5,6 +5,7 @@ use std::fmt::{self, Debug, Formatter};
 use argon2::password_hash::{PasswordHash, PasswordHasher, SaltString};
 use argon2::{Algorithm, Argon2, Params, Version};
 use subtle::ConstantTimeEq;
+use zeroize::Zeroizing;
 
 use crate::{PasswordError, PasswordErrorCode, PasswordSecret};
 
@@ -99,7 +100,7 @@ impl PasswordSalt {
 
 /// An owned, structurally validated Argon2id PHC record.
 #[derive(Clone, Eq, PartialEq)]
-pub struct PasswordHashRecord(Box<str>);
+pub struct PasswordHashRecord(Zeroizing<Box<str>>);
 
 impl PasswordHashRecord {
     /// Maximum accepted PHC record length in bytes.
@@ -117,7 +118,7 @@ impl PasswordHashRecord {
     /// long, malformed, unsupported, or outside the absolute parameter bounds.
     pub fn parse(value: &str) -> Result<Self, PasswordError> {
         validate_record(value)?;
-        Ok(Self(value.into()))
+        Ok(Self(Zeroizing::new(value.into())))
     }
 
     /// Borrows the validated PHC representation.

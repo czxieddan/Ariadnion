@@ -40,3 +40,40 @@ pub const IDENTITY_PASSWORD_MIGRATION_CANONICAL_V1_SHA256: [u8; 32] = [
     0x0f, 0x57, 0xc1, 0x3c, 0xb6, 0x79, 0xc5, 0x01, 0x43, 0x38, 0x79, 0xf8, 0xf9, 0x1a, 0xf3, 0x93,
     0x09, 0x52, 0x5b, 0x76, 0x41, 0xdc, 0x73, 0xe0, 0x6d, 0xd1, 0x6c, 0x1a, 0x9e, 0xa0, 0x90, 0x4d,
 ];
+
+/// Stable identifier of the additive password commit-evidence migration.
+pub const IDENTITY_PASSWORD_COMMIT_EVIDENCE_MIGRATION_ID: &str =
+    "identity.0010.password-commit-evidence";
+
+/// Stable domain recorded for the password commit-evidence migration.
+pub const IDENTITY_PASSWORD_COMMIT_EVIDENCE_MIGRATION_DOMAIN: &str = "identity";
+
+/// Global schema version required before the commit-evidence migration.
+pub const IDENTITY_PASSWORD_COMMIT_EVIDENCE_MIGRATION_FROM_VERSION: u64 = 13;
+
+/// Global schema version produced by the commit-evidence migration.
+pub const IDENTITY_PASSWORD_COMMIT_EVIDENCE_MIGRATION_TO_VERSION: u64 = 14;
+
+/// Whether the runner requires another backup before this additive migration.
+///
+/// The migration adds only a companion table and index to a copied target, so
+/// the retained source remains the rollback boundary.
+pub const IDENTITY_PASSWORD_COMMIT_EVIDENCE_MIGRATION_REQUIRES_BACKUP: bool = false;
+
+/// Ordered fixed statements for atomic password-reset commit evidence.
+///
+/// Every reset transition records the issuance-bound credential version and
+/// request identity. Credential result fields and the password-hash digest are
+/// nullable only for issuance, revocation, and expiry. Adapters fail closed on
+/// any other missing or unexpected tuple. The table contains no PHC record,
+/// plaintext password, or raw reset token.
+pub const IDENTITY_PASSWORD_COMMIT_EVIDENCE_MIGRATION_STATEMENTS: &[&str] = &[
+    "CREATE TABLE identity_password_reset_commit_evidence (tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, reset_id TEXT NOT NULL, version TEXT NOT NULL, request_id TEXT NOT NULL, issued_credential_version TEXT NOT NULL, resulting_credential_version TEXT, resulting_hash_policy_version TEXT, password_hash_digest_hex TEXT);",
+    "CREATE UNIQUE INDEX identity_password_reset_commit_evidence_tenant_reset_version_uq ON identity_password_reset_commit_evidence (tenant_id, reset_id, version);",
+];
+
+/// Canonical-AST-v1 SHA-256 of the ordered commit-evidence statements.
+pub const IDENTITY_PASSWORD_COMMIT_EVIDENCE_MIGRATION_CANONICAL_V1_SHA256: [u8; 32] = [
+    0xd5, 0x5c, 0xfe, 0x2e, 0xe5, 0x91, 0xc4, 0x8d, 0xa6, 0x33, 0x29, 0xaa, 0x70, 0xc6, 0xed, 0xeb,
+    0xb3, 0x53, 0x5a, 0x5e, 0x66, 0xfa, 0xc4, 0xcc, 0x5c, 0x05, 0x7b, 0x81, 0xe5, 0xea, 0x94, 0x22,
+];
