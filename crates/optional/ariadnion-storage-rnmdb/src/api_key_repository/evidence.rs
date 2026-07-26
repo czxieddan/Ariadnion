@@ -486,7 +486,8 @@ fn audit_descriptor(kind: ApiKeyEventKind) -> Result<(AuditEventKind, &'static s
         ApiKeyEventKind::RotationCompleted => {
             Ok((AuditEventKind::Rotated, "API_KEY_ROTATION_COMPLETED"))
         }
-        _ => Err(integrity_failure()),
+        ApiKeyEventKind::Revoked => Ok((AuditEventKind::Revoked, "API_KEY_REVOKED")),
+        ApiKeyEventKind::Expired => Ok((AuditEventKind::Expired, "API_KEY_EXPIRED")),
     }
 }
 

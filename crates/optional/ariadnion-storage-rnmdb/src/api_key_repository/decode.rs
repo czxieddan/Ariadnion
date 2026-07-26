@@ -454,20 +454,25 @@ fn verify_contiguous_events(events: &[PersistedEvent], key: &ApiKey) -> Result<(
             .ok_or_else(integrity_failure)?;
         validate_event_sequence_entry(event, key, index, expected)?;
     }
-    verify_adjacent_events(events)
+    verify_adjacent_events(events, key)
 }
 
-fn verify_adjacent_events(events: &[PersistedEvent]) -> Result<(), StorageError> {
-    events.windows(2).try_for_each(verify_event_pair)
+fn verify_adjacent_events(events: &[PersistedEvent], key: &ApiKey) -> Result<(), StorageError> {
+    events
+        .windows(2)
+        .try_for_each(|pair| verify_event_pair(pair, key))
 }
 
-fn verify_event_pair(pair: &[PersistedEvent]) -> Result<(), StorageError> {
+fn verify_event_pair(pair: &[PersistedEvent], key: &ApiKey) -> Result<(), StorageError> {
     let [previous, current] = pair else {
         return Err(integrity_failure());
     };
     match current.kind {
         ApiKeyEventKind::Rotated => verify_rotation_event(previous, current),
         ApiKeyEventKind::RotationCompleted => verify_completion_event(previous, current),
+        ApiKeyEventKind::Revoked | ApiKeyEventKind::Expired => {
+            verify_terminal_event(previous, current, key)
+        }
         _ => Err(integrity_failure()),
     }
 }
@@ -516,24 +521,65 @@ fn verify_completion_event(
     valid.then_some(()).ok_or_else(integrity_failure)
 }
 
+fn verify_terminal_event(
+    previous: &PersistedEvent,
+    current: &PersistedEvent,
+    key: &ApiKey,
+) -> Result<(), StorageError> {
+    let source_is_usable = matches!(previous.state, ApiKeyState::Active | ApiKeyState::Rotating);
+    let valid = source_is_usable
+        && terminal_kind_matches(current)
+        && terminal_timing_matches(current, key)
+        && current.current_secret == previous.current_secret
+        && current.previous_secret.is_none()
+        && current.rotation_started_at.is_none()
+        && current.previous_secret_expires_at.is_none();
+    valid.then_some(()).ok_or_else(integrity_failure)
+}
+
+fn terminal_kind_matches(event: &PersistedEvent) -> bool {
+    matches!(
+        (event.kind, event.state),
+        (ApiKeyEventKind::Revoked, ApiKeyState::Revoked)
+            | (ApiKeyEventKind::Expired, ApiKeyState::Expired)
+    )
+}
+
+fn terminal_timing_matches(event: &PersistedEvent, key: &ApiKey) -> bool {
+    match event.kind {
+        ApiKeyEventKind::Revoked => {
+            event.occurred_at.unix_seconds() >= key.issued_at().unix_seconds()
+        }
+        ApiKeyEventKind::Expired => key
+            .expires_at()
+            .is_some_and(|expires| event.occurred_at.unix_seconds() >= expires.unix_seconds()),
+        _ => false,
+    }
+}
+
 fn verify_retired_history(events: &[PersistedEvent], key: &ApiKey) -> Result<(), StorageError> {
     let retired = events
         .windows(2)
-        .filter_map(completed_previous_secret)
+        .filter_map(retired_previous_secret)
         .collect::<Result<Vec<_>, _>>()?;
     (retired == key.retired_secrets())
         .then_some(())
         .ok_or_else(integrity_failure)
 }
 
-fn completed_previous_secret(
+fn retired_previous_secret(
     pair: &[PersistedEvent],
 ) -> Option<Result<ApiKeySecretDigest, StorageError>> {
     let [previous, current] = pair else {
         return Some(Err(integrity_failure()));
     };
-    (current.kind == ApiKeyEventKind::RotationCompleted)
-        .then(|| previous.previous_secret.ok_or_else(integrity_failure))
+    match current.kind {
+        ApiKeyEventKind::RotationCompleted => {
+            Some(previous.previous_secret.ok_or_else(integrity_failure))
+        }
+        ApiKeyEventKind::Revoked | ApiKeyEventKind::Expired => previous.previous_secret.map(Ok),
+        _ => None,
+    }
 }
 
 fn validate_event_sequence_entry(

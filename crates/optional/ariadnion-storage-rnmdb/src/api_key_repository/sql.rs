@@ -308,6 +308,22 @@ pub(super) fn update_rotation_completion(
     require_single_update(session, sql)
 }
 
+pub(super) fn update_terminal(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    durable: &ApiKey,
+) -> Result<(), StorageError> {
+    let target = request.transition.key();
+    let mut sql = String::from(
+        "UPDATE identity_api_keys SET previous_secret_digest = NULL, rotation_started_at = NULL, previous_secret_expires_at = NULL, version = ",
+    );
+    push_text(&mut sql, &encode_version(target.version()));
+    sql.push_str(", state = ");
+    push_text(&mut sql, state_label(target.state()));
+    push_terminal_cas(&mut sql, request, durable);
+    require_single_update(session, sql)
+}
+
 fn push_rotation_cas(sql: &mut String, request: &CommitRequest<'_>, durable: &ApiKey) {
     sql.push_str(" WHERE tenant_id = ");
     push_text(sql, request.tenant_id.as_str());
@@ -356,6 +372,59 @@ fn push_completion_cas(
     push_time(sql, durable.previous_secret_expires_at())?;
     sql.push_str(" AND state = 'rotating';");
     Ok(())
+}
+
+fn push_terminal_cas(sql: &mut String, request: &CommitRequest<'_>, durable: &ApiKey) {
+    sql.push_str(" WHERE tenant_id = ");
+    push_text(sql, request.tenant_id.as_str());
+    sql.push_str(" AND user_id = ");
+    push_text(sql, request.user_id.as_str());
+    sql.push_str(" AND api_key_id = ");
+    push_text(sql, durable.id().as_str());
+    sql.push_str(" AND version = ");
+    push_text(sql, &encode_version(request.expected_previous_version));
+    sql.push_str(" AND current_secret_digest = ");
+    push_text(sql, &encode_digest(durable.current_secret().bytes()));
+    push_optional_digest_cas(sql, durable.previous_secret());
+    push_optional_time_cas(sql, "rotation_started_at", durable.rotation_started_at());
+    push_optional_time_cas(
+        sql,
+        "previous_secret_expires_at",
+        durable.previous_secret_expires_at(),
+    );
+    sql.push_str(" AND state = ");
+    push_text(sql, state_label(durable.state()));
+    sql.push(';');
+}
+
+fn push_optional_digest_cas(
+    sql: &mut String,
+    value: Option<ariadnion_auth_api_key::ApiKeySecretDigest>,
+) {
+    sql.push_str(" AND previous_secret_digest");
+    match value {
+        Some(value) => {
+            sql.push_str(" = ");
+            push_text(sql, &encode_digest(value.bytes()));
+        }
+        None => sql.push_str(" IS NULL"),
+    }
+}
+
+fn push_optional_time_cas(
+    sql: &mut String,
+    column: &str,
+    value: Option<ariadnion_user_domain::UtcTimestamp>,
+) {
+    sql.push_str(" AND ");
+    sql.push_str(column);
+    match value {
+        Some(value) => {
+            sql.push_str(" = ");
+            sql.push_str(&value.unix_seconds().to_string());
+        }
+        None => sql.push_str(" IS NULL"),
+    }
 }
 
 pub(super) fn encode_version(version: ApiKeyVersion) -> String {
