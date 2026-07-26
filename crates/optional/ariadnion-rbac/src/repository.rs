@@ -90,7 +90,7 @@ pub trait AuthorizationPolicyRepositoryPort: Send + Sync {
     /// failure. If indeterminate transition A is followed by different policy
     /// B with identical event actor, time, and kind, reconciling A returns
     /// [`AuthorizationPolicyRepositoryErrorCode::IntegrityFailure`], never a
-    /// receipt for B. Upcoming RNMDB adapter tests enforce this collision case.
+    /// receipt for B. Adapters must enforce this collision case.
     fn reconcile_commit(
         &self,
         tenant_id: &TenantId,
