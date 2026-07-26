@@ -100,6 +100,17 @@ impl PolicyVersion {
     pub const fn get(self) -> u64 {
         self.0.get()
     }
+
+    /// Returns the next monotonic policy version.
+    ///
+    /// # Errors
+    /// Returns [`AuthorizationErrorCode::VersionExhausted`] at `u64::MAX`.
+    pub fn next(self) -> Result<Self, AuthorizationError> {
+        self.0
+            .checked_add(1)
+            .map(Self)
+            .ok_or_else(|| error(AuthorizationErrorCode::VersionExhausted))
+    }
 }
 
 fn valid_id(value: &str) -> bool {

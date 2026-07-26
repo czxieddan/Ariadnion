@@ -16,6 +16,10 @@ pub enum AuthorizationErrorCode {
     TenantMismatch,
     /// An assignment refers to a role absent from the policy.
     UnknownRole,
+    /// The expected authorization policy version does not match current state.
+    VersionConflict,
+    /// The authorization policy version cannot advance without wrapping.
+    VersionExhausted,
 }
 
 impl AuthorizationErrorCode {
@@ -28,6 +32,8 @@ impl AuthorizationErrorCode {
             Self::DuplicateIdentity => "RBAC_DUPLICATE_IDENTITY",
             Self::TenantMismatch => "RBAC_TENANT_MISMATCH",
             Self::UnknownRole => "RBAC_UNKNOWN_ROLE",
+            Self::VersionConflict => "RBAC_VERSION_CONFLICT",
+            Self::VersionExhausted => "RBAC_VERSION_EXHAUSTED",
         }
     }
 }

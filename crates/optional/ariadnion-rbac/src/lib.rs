@@ -10,6 +10,8 @@ mod error;
 mod evaluate;
 mod ids;
 mod model;
+mod repository;
+mod transition;
 
 pub use binding::{
     AuthorizationSubject, MembershipAuthorizationContext, MembershipAuthorizationIdentity,
@@ -26,4 +28,12 @@ pub use model::{
     AuthorizationRoleSnapshot, AuthorizationScope, AuthorizationTarget, MAX_ASSIGNMENTS, MAX_ROLES,
     MAX_RULES_PER_ROLE, MatchedRoleSummary, PermissionEffect, PermissionRule, ResourceState,
     RoleAssignmentSnapshot, RoleDefinition, RoleDefinitionSnapshot,
+};
+pub use repository::{
+    AuthorizationPolicyCommitReceipt, AuthorizationPolicyRepositoryError,
+    AuthorizationPolicyRepositoryErrorCode, AuthorizationPolicyRepositoryPort,
+};
+pub use transition::{
+    AuthorizationPolicyChange, AuthorizationPolicyEvent, AuthorizationPolicyEventKind,
+    AuthorizationPolicyTransition, publish_authorization_policy, replace_authorization_policy,
 };
