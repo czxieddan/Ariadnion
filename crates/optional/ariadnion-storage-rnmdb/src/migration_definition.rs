@@ -59,7 +59,12 @@ use ariadnion_rbac::migrations::{
     IDENTITY_RBAC_MIGRATION_CANONICAL_V1_SHA256, IDENTITY_RBAC_MIGRATION_DOMAIN,
     IDENTITY_RBAC_MIGRATION_FROM_VERSION, IDENTITY_RBAC_MIGRATION_ID,
     IDENTITY_RBAC_MIGRATION_REQUIRES_BACKUP, IDENTITY_RBAC_MIGRATION_STATEMENTS,
-    IDENTITY_RBAC_MIGRATION_TO_VERSION,
+    IDENTITY_RBAC_MIGRATION_TO_VERSION, IDENTITY_TENANT_ENFORCEMENT_MIGRATION_CANONICAL_V1_SHA256,
+    IDENTITY_TENANT_ENFORCEMENT_MIGRATION_DOMAIN,
+    IDENTITY_TENANT_ENFORCEMENT_MIGRATION_FROM_VERSION, IDENTITY_TENANT_ENFORCEMENT_MIGRATION_ID,
+    IDENTITY_TENANT_ENFORCEMENT_MIGRATION_REQUIRES_BACKUP,
+    IDENTITY_TENANT_ENFORCEMENT_MIGRATION_STATEMENTS,
+    IDENTITY_TENANT_ENFORCEMENT_MIGRATION_TO_VERSION,
 };
 use ariadnion_storage_domain::{
     MigrationCatalog, MigrationChecksum, MigrationDescriptor, MigrationDomain, MigrationId,
@@ -366,12 +371,30 @@ fn compile_identity_base_definitions(
 fn compile_identity_security_definitions(
     definitions: &mut BTreeMap<MigrationId, RnmdbMigrationDefinition>,
 ) -> Result<(), StorageError> {
+    compile_identity_security_base_definitions(definitions)?;
+    compile_identity_security_followup_definitions(definitions)
+}
+
+fn compile_identity_security_base_definitions(
+    definitions: &mut BTreeMap<MigrationId, RnmdbMigrationDefinition>,
+) -> Result<(), StorageError> {
     for definition in [
         compile_identity_session_definition()?,
         compile_identity_api_key_definition()?,
         compile_identity_rbac_definition()?,
+    ] {
+        insert_definition(definitions, definition)?;
+    }
+    Ok(())
+}
+
+fn compile_identity_security_followup_definitions(
+    definitions: &mut BTreeMap<MigrationId, RnmdbMigrationDefinition>,
+) -> Result<(), StorageError> {
+    for definition in [
         compile_identity_organization_event_replay_definition()?,
         compile_identity_password_commit_evidence_definition()?,
+        compile_identity_tenant_enforcement_definition()?,
     ] {
         insert_definition(definitions, definition)?;
     }
@@ -603,6 +626,20 @@ fn compile_identity_rbac_definition() -> Result<RnmdbMigrationDefinition, Storag
         statements: IDENTITY_RBAC_MIGRATION_STATEMENTS,
         expected_checksum: IDENTITY_RBAC_MIGRATION_CANONICAL_V1_SHA256,
         requires_backup: IDENTITY_RBAC_MIGRATION_REQUIRES_BACKUP,
+    };
+    compile_migration_definition(input, CanonicalAstV1)
+}
+
+fn compile_identity_tenant_enforcement_definition() -> Result<RnmdbMigrationDefinition, StorageError>
+{
+    let input = CanonicalMigrationDefinitionInput {
+        id: IDENTITY_TENANT_ENFORCEMENT_MIGRATION_ID,
+        domain: IDENTITY_TENANT_ENFORCEMENT_MIGRATION_DOMAIN,
+        from: IDENTITY_TENANT_ENFORCEMENT_MIGRATION_FROM_VERSION,
+        to: IDENTITY_TENANT_ENFORCEMENT_MIGRATION_TO_VERSION,
+        statements: IDENTITY_TENANT_ENFORCEMENT_MIGRATION_STATEMENTS,
+        expected_checksum: IDENTITY_TENANT_ENFORCEMENT_MIGRATION_CANONICAL_V1_SHA256,
+        requires_backup: IDENTITY_TENANT_ENFORCEMENT_MIGRATION_REQUIRES_BACKUP,
     };
     compile_migration_definition(input, CanonicalAstV1)
 }
