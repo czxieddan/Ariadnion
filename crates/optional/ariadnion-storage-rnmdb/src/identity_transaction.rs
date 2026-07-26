@@ -29,6 +29,11 @@ impl IdentityTransactionFailure {
         }
     }
 
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn injected_commit_indeterminate() -> Self {
+        Self::tainted(commit_indeterminate())
+    }
+
     pub(crate) fn taints_session(self) -> bool {
         self.taints_session
     }

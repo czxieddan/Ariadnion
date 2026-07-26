@@ -104,6 +104,8 @@ pub struct RnmdbSessionOwner {
     transaction_scope: TransactionScope,
     session: Mutex<LocalSession>,
     tainted: AtomicBool,
+    #[cfg(feature = "test-hooks")]
+    inject_next_identity_commit_indeterminate: AtomicBool,
     configured_columns: Mutex<BTreeSet<ColumnEncryptionTarget>>,
 }
 
@@ -118,6 +120,8 @@ impl RnmdbSessionOwner {
             transaction_scope: TransactionScope::new(),
             session: Mutex::new(session),
             tainted: AtomicBool::new(false),
+            #[cfg(feature = "test-hooks")]
+            inject_next_identity_commit_indeterminate: AtomicBool::new(false),
             configured_columns: Mutex::new(BTreeSet::new()),
         })
     }
@@ -156,6 +160,36 @@ impl RnmdbSessionOwner {
         check_context(context)?;
         self.ensure_usable()?;
         Ok(session.in_transaction())
+    }
+
+    /// Arms one post-commit ambiguity for contract verification.
+    ///
+    /// The next identity transaction that returns after a successful commit is
+    /// reported as indeterminate and permanently taints this owner. A failure
+    /// before commit does not consume the injection.
+    ///
+    /// # Errors
+    ///
+    /// Returns a context or integrity error when the owner is unavailable, or
+    /// a conflict when a transaction is active or an injection is already armed.
+    #[cfg(feature = "test-hooks")]
+    #[doc(hidden)]
+    pub fn inject_next_identity_commit_indeterminate(
+        &self,
+        context: &RequestContext,
+    ) -> Result<(), StorageError> {
+        check_context(context)?;
+        self.ensure_usable()?;
+        let session = lock_session(&self.session);
+        check_context(context)?;
+        self.ensure_usable()?;
+        if session.in_transaction() {
+            return Err(StorageError::new(StorageErrorCode::Conflict));
+        }
+        self.inject_next_identity_commit_indeterminate
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map(|_| ())
+            .map_err(|_| StorageError::new(StorageErrorCode::Conflict))
     }
 
     pub(crate) fn begin_transaction(&self, context: &RequestContext) -> Result<(), StorageError> {
@@ -322,6 +356,8 @@ impl RnmdbSessionOwner {
         let mut operation_tainted = false;
         let result = run_identity_tenant_scope(&mut session, tenant_id, |session| {
             let result = operation(session);
+            #[cfg(feature = "test-hooks")]
+            let result = self.inject_commit_indeterminate_after_success(result);
             operation_tainted = transaction_result_taints(&result);
             result
         });
@@ -380,6 +416,23 @@ impl RnmdbSessionOwner {
 
     fn mark_tainted(&self) {
         self.tainted.store(true, Ordering::Release);
+    }
+
+    #[cfg(feature = "test-hooks")]
+    fn inject_commit_indeterminate_after_success<T>(
+        &self,
+        result: crate::identity_transaction::IdentityTransactionResult<T>,
+    ) -> crate::identity_transaction::IdentityTransactionResult<T> {
+        if result.is_ok()
+            && self
+                .inject_next_identity_commit_indeterminate
+                .swap(false, Ordering::AcqRel)
+        {
+            return Err(
+                crate::identity_transaction::IdentityTransactionFailure::injected_commit_indeterminate(),
+            );
+        }
+        result
     }
 
     fn finish_identity_storage_scope<T>(
