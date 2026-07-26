@@ -147,33 +147,41 @@ impl TransitionEvidence {
 }
 
 fn canonical_identity(request: &CommitRequest<'_>) -> Result<Zeroizing<Vec<u8>>, StorageError> {
-    let family = request.transition.family();
-    let event = request.transition.event();
     let mut output = Zeroizing::new(IDENTITY_DOMAIN.to_vec());
-    push_text(&mut output, request.tenant_id.as_str())?;
-    push_text(&mut output, request.user_id.as_str())?;
-    push_text(&mut output, family.id().as_str())?;
-    push_u64(&mut output, request.expected_previous_version.get())?;
-    push_u64(&mut output, family.version().get())?;
-    push_text(&mut output, event.session_id().as_str())?;
-    push_text(&mut output, event.actor().as_str())?;
-    push_text(&mut output, request.context.request_id().as_str())?;
-    push_i64(&mut output, event.occurred_at().unix_seconds())?;
-    push_text(&mut output, super::sql::event_kind_label(event.kind()))?;
-    push_field(&mut output, &snapshot_digest(family)?)?;
+    push_identity_boundary(&mut output, request)?;
+    push_transition_identity(&mut output, request)?;
+    push_field(&mut output, &snapshot_digest(request.transition.family())?)?;
     Ok(output)
+}
+
+fn push_identity_boundary(
+    output: &mut Vec<u8>,
+    request: &CommitRequest<'_>,
+) -> Result<(), StorageError> {
+    let family = request.transition.family();
+    push_text(output, request.tenant_id.as_str())?;
+    push_text(output, request.user_id.as_str())?;
+    push_text(output, family.id().as_str())
+}
+
+fn push_transition_identity(
+    output: &mut Vec<u8>,
+    request: &CommitRequest<'_>,
+) -> Result<(), StorageError> {
+    let event = request.transition.event();
+    push_u64(output, request.expected_previous_version.get())?;
+    push_u64(output, request.transition.family().version().get())?;
+    push_text(output, event.session_id().as_str())?;
+    push_text(output, event.actor().as_str())?;
+    push_text(output, request.context.request_id().as_str())?;
+    push_i64(output, event.occurred_at().unix_seconds())?;
+    push_text(output, super::sql::event_kind_label(event.kind()))
 }
 
 fn snapshot_digest(family: &SessionFamily) -> Result<[u8; 32], StorageError> {
     let snapshot = family.snapshot_state();
     let mut output = Zeroizing::new(SNAPSHOT_DOMAIN.to_vec());
-    push_text(&mut output, snapshot.subject.tenant_id().as_str())?;
-    push_text(&mut output, snapshot.subject.user_id().as_str())?;
-    push_text(&mut output, snapshot.id.as_str())?;
-    push_i64(&mut output, snapshot.issued_at.unix_seconds())?;
-    push_i64(&mut output, snapshot.absolute_expires_at.unix_seconds())?;
-    push_u64(&mut output, snapshot.version.get())?;
-    push_text(&mut output, super::sql::family_state_label(snapshot.state))?;
+    push_snapshot_header(&mut output, &snapshot)?;
     for leaf in snapshot
         .rotated
         .iter()
@@ -182,6 +190,19 @@ fn snapshot_digest(family: &SessionFamily) -> Result<[u8; 32], StorageError> {
         push_leaf(&mut output, leaf)?;
     }
     Ok(Sha256::digest(&output).into())
+}
+
+fn push_snapshot_header(
+    output: &mut Vec<u8>,
+    snapshot: &ariadnion_auth_session::SessionFamilySnapshot,
+) -> Result<(), StorageError> {
+    push_text(output, snapshot.subject.tenant_id().as_str())?;
+    push_text(output, snapshot.subject.user_id().as_str())?;
+    push_text(output, snapshot.id.as_str())?;
+    push_i64(output, snapshot.issued_at.unix_seconds())?;
+    push_i64(output, snapshot.absolute_expires_at.unix_seconds())?;
+    push_u64(output, snapshot.version.get())?;
+    push_text(output, super::sql::family_state_label(snapshot.state))
 }
 
 fn push_leaf(output: &mut Vec<u8>, leaf: &SessionSnapshot) -> Result<(), StorageError> {

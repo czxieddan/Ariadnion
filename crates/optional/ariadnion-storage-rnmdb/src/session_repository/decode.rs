@@ -23,16 +23,35 @@ pub(super) fn load_family(
     user: &UserId,
     family: &SessionFamilyId,
 ) -> Result<SessionFamily, StorageError> {
+    let decoded = decode_family(session, tenant, user, family)?;
+    verify_events(session, &decoded)?;
+    Ok(decoded)
+}
+
+fn decode_family(
+    session: &mut LocalSession,
+    tenant: &TenantId,
+    user: &UserId,
+    family: &SessionFamilyId,
+) -> Result<SessionFamily, StorageError> {
+    let fields = load_family_fields(session, tenant, user, family)?;
+    let leaves = decode_leaves(session, tenant, user, family)?;
+    let snapshot = assemble_snapshot(fields, leaves)?;
+    SessionFamily::from_snapshot(snapshot).map_err(|_| integrity_failure())
+}
+
+fn load_family_fields(
+    session: &mut LocalSession,
+    tenant: &TenantId,
+    user: &UserId,
+    family: &SessionFamilyId,
+) -> Result<FamilyFields, StorageError> {
     let family_batch = rows(sql::load_family(session, tenant, user, family)?)?;
     let fields = decode_family_row(one_row(&family_batch, family_columns())?, tenant, user)?;
     if fields.family_id != *family {
         return Err(integrity_failure());
     }
-    let leaves = decode_leaves(session, tenant, user, family)?;
-    let snapshot = assemble_snapshot(fields, leaves)?;
-    let decoded = SessionFamily::from_snapshot(snapshot).map_err(|_| integrity_failure())?;
-    verify_events(session, &decoded)?;
-    Ok(decoded)
+    Ok(fields)
 }
 
 pub(super) fn load_family_by_token(
@@ -221,6 +240,48 @@ fn verify_events(session: &mut LocalSession, family: &SessionFamily) -> Result<(
 }
 
 fn verify_issuance_event(row: &Row, family: &SessionFamily) -> Result<(), StorageError> {
+    let event = decode_issuance_event(row)?;
+    if event.matches(family) {
+        Ok(())
+    } else {
+        Err(integrity_failure())
+    }
+}
+
+struct PersistedIssuanceEvent {
+    tenant: String,
+    user: String,
+    family_id: SessionFamilyId,
+    session_id: SessionId,
+    version: SessionFamilyVersion,
+    kind: String,
+    occurred_at: UtcTimestamp,
+    _actor: PrincipalId,
+}
+
+impl PersistedIssuanceEvent {
+    fn matches(&self, family: &SessionFamily) -> bool {
+        (
+            self.tenant.as_str(),
+            self.user.as_str(),
+            &self.family_id,
+            &self.session_id,
+            self.version,
+            self.kind.as_str(),
+            self.occurred_at,
+        ) == (
+            family.tenant_id().as_str(),
+            family.user_id().as_str(),
+            family.id(),
+            family.current().id(),
+            family.version(),
+            "issued",
+            family.issued_at(),
+        )
+    }
+}
+
+fn decode_issuance_event(row: &Row) -> Result<PersistedIssuanceEvent, StorageError> {
     let [
         SqlValue::Text(tenant),
         SqlValue::Text(user),
@@ -234,19 +295,16 @@ fn verify_issuance_event(row: &Row, family: &SessionFamily) -> Result<(), Storag
     else {
         return Err(integrity_failure());
     };
-    PrincipalId::parse(actor).map_err(|_| integrity_failure())?;
-    let valid = tenant == family.tenant_id().as_str()
-        && user == family.user_id().as_str()
-        && family_id == family.id().as_str()
-        && session_id == family.current().id().as_str()
-        && parse_family_version(version)? == family.version()
-        && kind == "issued"
-        && *occurred_at == family.issued_at().unix_seconds();
-    if valid {
-        Ok(())
-    } else {
-        Err(integrity_failure())
-    }
+    Ok(PersistedIssuanceEvent {
+        tenant: tenant.clone(),
+        user: user.clone(),
+        family_id: parse_family_id(family_id)?,
+        session_id: parse_session_id(session_id)?,
+        version: parse_family_version(version)?,
+        kind: kind.clone(),
+        occurred_at: UtcTimestamp::from_unix_seconds(*occurred_at),
+        _actor: PrincipalId::parse(actor).map_err(|_| integrity_failure())?,
+    })
 }
 
 struct TokenOwner {
