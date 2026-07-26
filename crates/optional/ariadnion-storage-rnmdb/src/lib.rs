@@ -13,6 +13,7 @@ mod identity_transaction;
 mod index;
 mod inspection;
 mod instance;
+mod invitation_repository;
 mod location;
 mod maintenance;
 mod migration;
@@ -38,6 +39,7 @@ pub use codec::{CurrencyCode, MoneyValue, NormalizedJson, StorageUuid, UtcTimest
 pub use index::{FixedIndexDefinition, RnmdbIndexManager, RnmdbIndexMethod};
 pub use inspection::{RnmdbInspectionAdapter, RnmdbInspectionResolver};
 pub use instance::{RnmdbInstanceProfile, RnmdbInstanceRegistry, RnmdbInstanceResourceLimits};
+pub use invitation_repository::RnmdbInvitationRepository;
 pub use location::StorageFileLocation;
 pub use maintenance::{
     BackupSummary, NewTargetSummary, RestorePreflight, RnmdbMaintenance, UpgradeSummary,
