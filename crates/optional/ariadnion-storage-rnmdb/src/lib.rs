@@ -97,7 +97,7 @@ pub use upgrade::{
 pub use user_repository::{AuditSubjectKeyMaterial, RnmdbUserRepository};
 
 /// The reviewed upstream source revision compiled by this adapter.
-pub const REVIEWED_RNMDB_COMMIT: &str = "f07f1da2c1a193ad3732ee779d228ac8ec3dbffd";
+pub const REVIEWED_RNMDB_COMMIT: &str = "013ec2f48a1dab89997430d72c2b176be2c29d47";
 
 /// One compile-time link between an RNMDB package and an adapter boundary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

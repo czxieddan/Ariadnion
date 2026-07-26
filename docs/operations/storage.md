@@ -3,7 +3,7 @@
 Ariadnion uses RNovModularDB (RNMDB) as its embedded data engine. The standard
 and complete compositions run storage in the Ariadnion process; the primary
 data path does not use TCP or an internal database service. The reviewed RNMDB
-revision is `f07f1da2c1a193ad3732ee779d228ac8ec3dbffd`.
+revision is `013ec2f48a1dab89997430d72c2b176be2c29d47`.
 
 This document defines the operator boundary for inspection, verification,
 backup, restore, upgrade, and rollback. It does not define a public SQL or

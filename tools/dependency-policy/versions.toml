@@ -11,7 +11,7 @@ forbidden = ["GPL-2.0-only", "GPL-2.0-or-later", "GPL-3.0-only", "GPL-3.0-or-lat
 
 [[licenses.exceptions]]
 repository = "https://github.com/czxieddan/RNovModularDB.git"
-commit = "f07f1da2c1a193ad3732ee779d228ac8ec3dbffd"
+commit = "013ec2f48a1dab89997430d72c2b176be2c29d47"
 package_prefix = "rnmdb-"
 packages = ["rnmdb-common", "rnmdb-types", "rnmdb-sql", "rnmdb-planner", "rnmdb-executor", "rnmdb-txn", "rnmdb-index", "rnmdb-fts", "rnmdb-catalog", "rnmdb-storage", "rnmdb-udf", "rnmdb-security", "rnmdb-instance", "rnmdb-server", "rnmdb-cli"]
 allowed = ["AGPL-3.0-only"]

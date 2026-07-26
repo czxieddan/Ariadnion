@@ -3,7 +3,7 @@
 Ariadnion resolves RNovModularDB directly from the repository below:
 
 - Repository: `https://github.com/czxieddan/RNovModularDB.git`
-- Reviewed commit: `f07f1da2c1a193ad3732ee779d228ac8ec3dbffd`
+- Reviewed commit: `013ec2f48a1dab89997430d72c2b176be2c29d47`
 - Cargo selector: full Git `rev`, repeated for every approved `rnmdb-*` package
 - License evidence: `LICENSE` at the reviewed repository commit
 - Commercial licensing contact: `licensing@aperip.com`

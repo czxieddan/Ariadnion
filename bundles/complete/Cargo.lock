@@ -49,6 +49,57 @@ dependencies = [
  "blake2",
  "cpufeatures 0.2.17",
  "password-hash",
+ "zeroize",
+]
+
+[[package]]
+name = "ariadnion-audit-domain"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+ "ariadnion-user-domain",
+ "sha2 0.10.9",
+]
+
+[[package]]
+name = "ariadnion-audit-store"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-audit-domain",
+ "ariadnion-core",
+ "ariadnion-user-domain",
+]
+
+[[package]]
+name = "ariadnion-auth-api-key"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+ "ariadnion-user-domain",
+ "sha2 0.10.9",
+ "subtle",
+]
+
+[[package]]
+name = "ariadnion-auth-password"
+version = "0.1.0"
+dependencies = [
+ "argon2",
+ "ariadnion-core",
+ "ariadnion-user-domain",
+ "sha2 0.10.9",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
+name = "ariadnion-auth-session"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+ "ariadnion-user-domain",
+ "sha2 0.10.9",
+ "subtle",
 ]
 
 [[package]]
@@ -89,6 +140,32 @@ name = "ariadnion-diagnostics"
 version = "0.1.0"
 dependencies = [
  "ariadnion-core",
+]
+
+[[package]]
+name = "ariadnion-invitation"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+ "ariadnion-organization",
+ "ariadnion-user-domain",
+]
+
+[[package]]
+name = "ariadnion-organization"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+ "ariadnion-user-domain",
+]
+
+[[package]]
+name = "ariadnion-rbac"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+ "ariadnion-organization",
+ "ariadnion-user-domain",
 ]
 
 [[package]]
@@ -160,7 +237,15 @@ dependencies = [
 name = "ariadnion-storage-rnmdb"
 version = "0.1.0"
 dependencies = [
+ "ariadnion-audit-domain",
+ "ariadnion-audit-store",
+ "ariadnion-auth-api-key",
+ "ariadnion-auth-password",
+ "ariadnion-auth-session",
  "ariadnion-core",
+ "ariadnion-invitation",
+ "ariadnion-organization",
+ "ariadnion-rbac",
  "ariadnion-storage-backup",
  "ariadnion-storage-domain",
  "ariadnion-storage-maintenance",
@@ -168,6 +253,8 @@ dependencies = [
  "ariadnion-storage-query",
  "ariadnion-storage-restore",
  "ariadnion-storage-upgrade",
+ "ariadnion-user-domain",
+ "ariadnion-user-service",
  "hmac 0.12.1",
  "rnmdb-catalog",
  "rnmdb-cli",
@@ -194,6 +281,21 @@ version = "0.1.0"
 dependencies = [
  "ariadnion-core",
  "ariadnion-storage-domain",
+]
+
+[[package]]
+name = "ariadnion-user-domain"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+]
+
+[[package]]
+name = "ariadnion-user-service"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+ "ariadnion-user-domain",
 ]
 
 [[package]]
@@ -1127,7 +1229,7 @@ dependencies = [
 [[package]]
 name = "rnmdb-catalog"
 version = "0.1.0"
-source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=f07f1da2c1a193ad3732ee779d228ac8ec3dbffd#f07f1da2c1a193ad3732ee779d228ac8ec3dbffd"
+source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=013ec2f48a1dab89997430d72c2b176be2c29d47#013ec2f48a1dab89997430d72c2b176be2c29d47"
 dependencies = [
  "rnmdb-common",
  "rnmdb-types",
@@ -1136,7 +1238,7 @@ dependencies = [
 [[package]]
 name = "rnmdb-cli"
 version = "0.1.0"
-source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=f07f1da2c1a193ad3732ee779d228ac8ec3dbffd#f07f1da2c1a193ad3732ee779d228ac8ec3dbffd"
+source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=013ec2f48a1dab89997430d72c2b176be2c29d47#013ec2f48a1dab89997430d72c2b176be2c29d47"
 dependencies = [
  "rnmdb-catalog",
  "rnmdb-common",
@@ -1153,12 +1255,12 @@ dependencies = [
 [[package]]
 name = "rnmdb-common"
 version = "0.1.0"
-source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=f07f1da2c1a193ad3732ee779d228ac8ec3dbffd#f07f1da2c1a193ad3732ee779d228ac8ec3dbffd"
+source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=013ec2f48a1dab89997430d72c2b176be2c29d47#013ec2f48a1dab89997430d72c2b176be2c29d47"
 
 [[package]]
 name = "rnmdb-executor"
 version = "0.1.0"
-source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=f07f1da2c1a193ad3732ee779d228ac8ec3dbffd#f07f1da2c1a193ad3732ee779d228ac8ec3dbffd"
+source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=013ec2f48a1dab89997430d72c2b176be2c29d47#013ec2f48a1dab89997430d72c2b176be2c29d47"
 dependencies = [
  "crc",
  "rnmdb-catalog",
@@ -1175,7 +1277,7 @@ dependencies = [
 [[package]]
 name = "rnmdb-fts"
 version = "0.1.0"
-source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=f07f1da2c1a193ad3732ee779d228ac8ec3dbffd#f07f1da2c1a193ad3732ee779d228ac8ec3dbffd"
+source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=013ec2f48a1dab89997430d72c2b176be2c29d47#013ec2f48a1dab89997430d72c2b176be2c29d47"
 dependencies = [
  "rnmdb-common",
  "rnmdb-types",
@@ -1184,7 +1286,7 @@ dependencies = [
 [[package]]
 name = "rnmdb-index"
 version = "0.1.0"
-source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=f07f1da2c1a193ad3732ee779d228ac8ec3dbffd#f07f1da2c1a193ad3732ee779d228ac8ec3dbffd"
+source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=013ec2f48a1dab89997430d72c2b176be2c29d47#013ec2f48a1dab89997430d72c2b176be2c29d47"
 dependencies = [
  "rnmdb-common",
  "rnmdb-types",
@@ -1193,7 +1295,7 @@ dependencies = [
 [[package]]
 name = "rnmdb-instance"
 version = "0.1.0"
-source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=f07f1da2c1a193ad3732ee779d228ac8ec3dbffd#f07f1da2c1a193ad3732ee779d228ac8ec3dbffd"
+source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=013ec2f48a1dab89997430d72c2b176be2c29d47#013ec2f48a1dab89997430d72c2b176be2c29d47"
 dependencies = [
  "rnmdb-common",
 ]
@@ -1201,7 +1303,7 @@ dependencies = [
 [[package]]
 name = "rnmdb-planner"
 version = "0.1.0"
-source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=f07f1da2c1a193ad3732ee779d228ac8ec3dbffd#f07f1da2c1a193ad3732ee779d228ac8ec3dbffd"
+source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=013ec2f48a1dab89997430d72c2b176be2c29d47#013ec2f48a1dab89997430d72c2b176be2c29d47"
 dependencies = [
  "rnmdb-catalog",
  "rnmdb-common",
@@ -1213,7 +1315,7 @@ dependencies = [
 [[package]]
 name = "rnmdb-security"
 version = "0.1.0"
-source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=f07f1da2c1a193ad3732ee779d228ac8ec3dbffd#f07f1da2c1a193ad3732ee779d228ac8ec3dbffd"
+source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=013ec2f48a1dab89997430d72c2b176be2c29d47#013ec2f48a1dab89997430d72c2b176be2c29d47"
 dependencies = [
  "argon2",
  "chacha20poly1305",
@@ -1226,7 +1328,7 @@ dependencies = [
 [[package]]
 name = "rnmdb-server"
 version = "0.1.0"
-source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=f07f1da2c1a193ad3732ee779d228ac8ec3dbffd#f07f1da2c1a193ad3732ee779d228ac8ec3dbffd"
+source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=013ec2f48a1dab89997430d72c2b176be2c29d47#013ec2f48a1dab89997430d72c2b176be2c29d47"
 dependencies = [
  "rnmdb-cli",
  "rnmdb-common",
@@ -1238,7 +1340,7 @@ dependencies = [
 [[package]]
 name = "rnmdb-sql"
 version = "0.1.0"
-source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=f07f1da2c1a193ad3732ee779d228ac8ec3dbffd#f07f1da2c1a193ad3732ee779d228ac8ec3dbffd"
+source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=013ec2f48a1dab89997430d72c2b176be2c29d47#013ec2f48a1dab89997430d72c2b176be2c29d47"
 dependencies = [
  "phf",
  "rnmdb-catalog",
@@ -1249,21 +1351,20 @@ dependencies = [
 [[package]]
 name = "rnmdb-storage"
 version = "0.1.0"
-source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=f07f1da2c1a193ad3732ee779d228ac8ec3dbffd#f07f1da2c1a193ad3732ee779d228ac8ec3dbffd"
+source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=013ec2f48a1dab89997430d72c2b176be2c29d47#013ec2f48a1dab89997430d72c2b176be2c29d47"
 dependencies = [
  "chacha20poly1305",
  "crc",
- "libc",
  "rnmdb-common",
+ "rustix",
  "sha2 0.11.0",
- "winapi-util",
  "windows-sys",
 ]
 
 [[package]]
 name = "rnmdb-txn"
 version = "0.1.0"
-source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=f07f1da2c1a193ad3732ee779d228ac8ec3dbffd#f07f1da2c1a193ad3732ee779d228ac8ec3dbffd"
+source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=013ec2f48a1dab89997430d72c2b176be2c29d47#013ec2f48a1dab89997430d72c2b176be2c29d47"
 dependencies = [
  "rnmdb-common",
 ]
@@ -1271,7 +1372,7 @@ dependencies = [
 [[package]]
 name = "rnmdb-types"
 version = "0.1.0"
-source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=f07f1da2c1a193ad3732ee779d228ac8ec3dbffd#f07f1da2c1a193ad3732ee779d228ac8ec3dbffd"
+source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=013ec2f48a1dab89997430d72c2b176be2c29d47#013ec2f48a1dab89997430d72c2b176be2c29d47"
 dependencies = [
  "rnmdb-common",
  "serde_json",
@@ -1280,7 +1381,7 @@ dependencies = [
 [[package]]
 name = "rnmdb-udf"
 version = "0.1.0"
-source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=f07f1da2c1a193ad3732ee779d228ac8ec3dbffd#f07f1da2c1a193ad3732ee779d228ac8ec3dbffd"
+source = "git+https://github.com/czxieddan/RNovModularDB.git?rev=013ec2f48a1dab89997430d72c2b176be2c29d47#013ec2f48a1dab89997430d72c2b176be2c29d47"
 dependencies = [
  "rnmdb-common",
  "rnmdb-types",
