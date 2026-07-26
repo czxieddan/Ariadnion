@@ -18,6 +18,13 @@ use ariadnion_auth_api_key::migrations::{
     IDENTITY_API_KEYS_MIGRATION_TO_VERSION,
 };
 use ariadnion_auth_password::migrations::{
+    IDENTITY_PASSWORD_COMMIT_EVIDENCE_MIGRATION_CANONICAL_V1_SHA256,
+    IDENTITY_PASSWORD_COMMIT_EVIDENCE_MIGRATION_DOMAIN,
+    IDENTITY_PASSWORD_COMMIT_EVIDENCE_MIGRATION_FROM_VERSION,
+    IDENTITY_PASSWORD_COMMIT_EVIDENCE_MIGRATION_ID,
+    IDENTITY_PASSWORD_COMMIT_EVIDENCE_MIGRATION_REQUIRES_BACKUP,
+    IDENTITY_PASSWORD_COMMIT_EVIDENCE_MIGRATION_STATEMENTS,
+    IDENTITY_PASSWORD_COMMIT_EVIDENCE_MIGRATION_TO_VERSION,
     IDENTITY_PASSWORD_MIGRATION_CANONICAL_V1_SHA256, IDENTITY_PASSWORD_MIGRATION_DOMAIN,
     IDENTITY_PASSWORD_MIGRATION_FROM_VERSION, IDENTITY_PASSWORD_MIGRATION_ID,
     IDENTITY_PASSWORD_MIGRATION_REQUIRES_BACKUP, IDENTITY_PASSWORD_MIGRATION_STATEMENTS,
@@ -364,6 +371,7 @@ fn compile_identity_security_definitions(
         compile_identity_api_key_definition()?,
         compile_identity_rbac_definition()?,
         compile_identity_organization_event_replay_definition()?,
+        compile_identity_password_commit_evidence_definition()?,
     ] {
         insert_definition(definitions, definition)?;
     }
@@ -542,6 +550,20 @@ fn compile_identity_password_definition() -> Result<RnmdbMigrationDefinition, St
         statements: IDENTITY_PASSWORD_MIGRATION_STATEMENTS,
         expected_checksum: IDENTITY_PASSWORD_MIGRATION_CANONICAL_V1_SHA256,
         requires_backup: IDENTITY_PASSWORD_MIGRATION_REQUIRES_BACKUP,
+    };
+    compile_migration_definition(input, CanonicalAstV1)
+}
+
+fn compile_identity_password_commit_evidence_definition()
+-> Result<RnmdbMigrationDefinition, StorageError> {
+    let input = CanonicalMigrationDefinitionInput {
+        id: IDENTITY_PASSWORD_COMMIT_EVIDENCE_MIGRATION_ID,
+        domain: IDENTITY_PASSWORD_COMMIT_EVIDENCE_MIGRATION_DOMAIN,
+        from: IDENTITY_PASSWORD_COMMIT_EVIDENCE_MIGRATION_FROM_VERSION,
+        to: IDENTITY_PASSWORD_COMMIT_EVIDENCE_MIGRATION_TO_VERSION,
+        statements: IDENTITY_PASSWORD_COMMIT_EVIDENCE_MIGRATION_STATEMENTS,
+        expected_checksum: IDENTITY_PASSWORD_COMMIT_EVIDENCE_MIGRATION_CANONICAL_V1_SHA256,
+        requires_backup: IDENTITY_PASSWORD_COMMIT_EVIDENCE_MIGRATION_REQUIRES_BACKUP,
     };
     compile_migration_definition(input, CanonicalAstV1)
 }
