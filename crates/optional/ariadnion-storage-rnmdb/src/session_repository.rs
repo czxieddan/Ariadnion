@@ -8,8 +8,10 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ariadnion_auth_session::{
-    SessionCommitReceipt, SessionEventKind, SessionFamily, SessionFamilyVersion,
-    SessionRepositoryError, SessionRepositoryErrorCode, SessionRepositoryPort, SessionTransition,
+    SessionAction, SessionCommand, SessionCommitReceipt, SessionEventKind, SessionFamily,
+    SessionFamilyVersion, SessionRepositoryError, SessionRepositoryErrorCode,
+    SessionRepositoryPort, SessionRotation, SessionRotationEvidence, SessionSubject,
+    SessionTransition, transition_session_family,
 };
 use ariadnion_core::{PrincipalContext, RequestContext, TenantId};
 use ariadnion_storage_domain::{StorageError, StorageErrorCode};
@@ -108,7 +110,7 @@ impl SessionRepositoryPort for RnmdbSessionRepository {
         self.session
             .with_identity_session(context, |session| {
                 run_identity_transaction(session, context, |session| {
-                    commit_issuance(session, &request, &self.audit_subject_key)
+                    commit_transition(session, &request, &self.audit_subject_key)
                 })
             })
             .map_err(map_storage_error)
@@ -156,6 +158,135 @@ fn commit_issuance(
     Ok(commit_receipt(request, committed_at))
 }
 
+fn commit_transition(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    key: &AuditSubjectKeyMaterial,
+) -> Result<SessionCommitReceipt, StorageError> {
+    if is_issuance(request) {
+        return commit_issuance(session, request, key);
+    }
+    commit_update(session, request, key)
+}
+
+fn commit_update(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    key: &AuditSubjectKeyMaterial,
+) -> Result<SessionCommitReceipt, StorageError> {
+    let durable = decode::load_family(
+        session,
+        request.tenant_id,
+        request.user_id,
+        request.transition.family().id(),
+    )?;
+    validate_expected_version(&durable, request)?;
+    let replayed = replay_transition(&durable, request)?;
+    validate_replayed_transition(&replayed, request)?;
+    persist_update(session, request, key, &durable)
+}
+
+fn validate_replayed_transition(
+    replayed: &SessionTransition,
+    request: &CommitRequest<'_>,
+) -> Result<(), StorageError> {
+    if replayed == request.transition {
+        Ok(())
+    } else {
+        Err(integrity_failure())
+    }
+}
+
+fn persist_update(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    key: &AuditSubjectKeyMaterial,
+    durable: &SessionFamily,
+) -> Result<SessionCommitReceipt, StorageError> {
+    sql::update_family(session, request, durable)?;
+    sql::replace_leaves(session, request.transition.family(), durable)?;
+    sql::insert_event(session, request.transition.event())?;
+    let committed_at = trusted_commit_time()?;
+    evidence::persist_transition_evidence(session, request, key, committed_at)?;
+    Ok(commit_receipt(request, committed_at))
+}
+
+fn validate_expected_version(
+    durable: &SessionFamily,
+    request: &CommitRequest<'_>,
+) -> Result<(), StorageError> {
+    if durable.version() == request.expected_previous_version {
+        Ok(())
+    } else {
+        Err(StorageError::new(StorageErrorCode::Conflict))
+    }
+}
+
+fn replay_transition(
+    durable: &SessionFamily,
+    request: &CommitRequest<'_>,
+) -> Result<SessionTransition, StorageError> {
+    let event = request.transition.event();
+    let action = replay_action(durable, request)?;
+    let command = SessionCommand::new(
+        request.expected_previous_version,
+        event.actor().clone(),
+        event.occurred_at(),
+        action,
+    );
+    transition_session_family(durable, command).map_err(|_| integrity_failure())
+}
+
+fn replay_action(
+    durable: &SessionFamily,
+    request: &CommitRequest<'_>,
+) -> Result<SessionAction, StorageError> {
+    match request.transition.event().kind() {
+        SessionEventKind::Rotated => Ok(rotation_action(durable, request)),
+        SessionEventKind::ReuseRevoked => reuse_action(durable, request),
+        SessionEventKind::Revoked => Ok(SessionAction::Revoke {
+            subject: request_subject(request),
+        }),
+        SessionEventKind::Expired => Ok(SessionAction::Expire {
+            subject: request_subject(request),
+        }),
+        SessionEventKind::Issued => Err(integrity_failure()),
+    }
+}
+
+fn rotation_action(durable: &SessionFamily, request: &CommitRequest<'_>) -> SessionAction {
+    let target = request.transition.family();
+    let evidence = SessionRotationEvidence::new(
+        durable.id().clone(),
+        durable.current().id().clone(),
+        request_subject(request),
+        durable.current().token_digest(),
+    );
+    SessionAction::Rotate(SessionRotation::new(
+        evidence,
+        target.current().id().clone(),
+        target.current().token_digest(),
+        target.current().idle_expires_at(),
+    ))
+}
+
+fn reuse_action(
+    durable: &SessionFamily,
+    request: &CommitRequest<'_>,
+) -> Result<SessionAction, StorageError> {
+    let reused = durable.rotated().first().ok_or_else(integrity_failure)?;
+    Ok(SessionAction::DetectReuse {
+        family_id: durable.id().clone(),
+        session_id: reused.id().clone(),
+        subject: request_subject(request),
+        presented_token: reused.token_digest(),
+    })
+}
+
+fn request_subject(request: &CommitRequest<'_>) -> SessionSubject {
+    SessionSubject::new(request.tenant_id.clone(), request.user_id.clone())
+}
+
 fn commit_receipt(request: &CommitRequest<'_>, committed_at: UtcTimestamp) -> SessionCommitReceipt {
     let family = request.transition.family();
     SessionCommitReceipt::new(
@@ -173,7 +304,7 @@ fn validate_commit_request(request: &CommitRequest<'_>) -> Result<(), StorageErr
     validate_family_binding(request)?;
     validate_leaf_bindings(request)?;
     validate_event_binding(request, principal)?;
-    validate_issuance_shape(request)
+    validate_version_shape(request)
 }
 
 fn validate_family_binding(request: &CommitRequest<'_>) -> Result<(), StorageError> {
@@ -220,17 +351,27 @@ fn validate_event_binding(
     }
 }
 
-fn validate_issuance_shape(request: &CommitRequest<'_>) -> Result<(), StorageError> {
+fn validate_version_shape(request: &CommitRequest<'_>) -> Result<(), StorageError> {
     let family = request.transition.family();
-    let valid = request.expected_previous_version == SessionFamilyVersion::initial()
-        && family.version() == SessionFamilyVersion::initial()
-        && family.rotated().is_empty()
-        && request.transition.event().kind() == SessionEventKind::Issued;
+    let valid = if is_issuance(request) {
+        family.rotated().is_empty()
+    } else {
+        request
+            .expected_previous_version
+            .next()
+            .is_ok_and(|version| version == family.version())
+    };
     if valid {
         Ok(())
     } else {
         Err(StorageError::new(StorageErrorCode::Conflict))
     }
+}
+
+fn is_issuance(request: &CommitRequest<'_>) -> bool {
+    request.expected_previous_version == SessionFamilyVersion::initial()
+        && request.transition.family().version() == SessionFamilyVersion::initial()
+        && request.transition.event().kind() == SessionEventKind::Issued
 }
 
 pub(super) fn authenticated_principal(

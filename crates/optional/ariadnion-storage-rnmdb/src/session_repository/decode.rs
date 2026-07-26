@@ -1,7 +1,7 @@
 //! Strict bounded decoding for browser session-family snapshots.
 
 use ariadnion_auth_session::{
-    MAX_ROTATED_SESSIONS, SessionFamily, SessionFamilyId, SessionFamilySnapshot,
+    MAX_ROTATED_SESSIONS, SessionEventKind, SessionFamily, SessionFamilyId, SessionFamilySnapshot,
     SessionFamilyState, SessionFamilyVersion, SessionId, SessionSnapshot, SessionState,
     SessionSubject, SessionTokenDigest, SessionVersion,
 };
@@ -233,55 +233,158 @@ fn verify_events(session: &mut LocalSession, family: &SessionFamily) -> Result<(
         family.id(),
     )?)?;
     validate_columns(batch.columns(), event_columns())?;
-    let [row] = batch.rows() else {
-        return Err(integrity_failure());
-    };
-    verify_issuance_event(row, family)
+    let events = decode_events(batch.rows())?;
+    verify_event_history(family, &events)
 }
 
-fn verify_issuance_event(row: &Row, family: &SessionFamily) -> Result<(), StorageError> {
-    let event = decode_issuance_event(row)?;
-    if event.matches(family) {
+fn decode_events(rows: &[Row]) -> Result<Vec<PersistedSessionEvent>, StorageError> {
+    if rows.is_empty() || rows.len() > MAX_ROTATED_SESSIONS + 2 {
+        return Err(integrity_failure());
+    }
+    rows.iter().map(decode_session_event).collect()
+}
+
+fn verify_event_history(
+    family: &SessionFamily,
+    events: &[PersistedSessionEvent],
+) -> Result<(), StorageError> {
+    let expected = usize::try_from(family.version().get()).map_err(|_| integrity_failure())?;
+    if events.len() != expected {
+        return Err(integrity_failure());
+    }
+    verify_issuance_event(family, &events[0])?;
+    verify_rotation_events(family, events)?;
+    verify_terminal_event(family, events)
+}
+
+fn verify_issuance_event(
+    family: &SessionFamily,
+    event: &PersistedSessionEvent,
+) -> Result<(), StorageError> {
+    let first = family.rotated().first().unwrap_or_else(|| family.current());
+    let valid = event.matches_boundary(family)
+        && event.session_id == *first.id()
+        && event.version == SessionFamilyVersion::initial()
+        && event.kind == SessionEventKind::Issued
+        && event.occurred_at == family.issued_at();
+    if valid {
         Ok(())
     } else {
         Err(integrity_failure())
     }
 }
 
-struct PersistedIssuanceEvent {
+fn verify_rotation_events(
+    family: &SessionFamily,
+    events: &[PersistedSessionEvent],
+) -> Result<(), StorageError> {
+    let leaves: Vec<_> = family
+        .rotated()
+        .iter()
+        .chain(std::iter::once(family.current()))
+        .collect();
+    for (index, successor) in leaves.iter().enumerate().skip(1) {
+        verify_rotation_event(family, &events[index], successor, index)?;
+    }
+    Ok(())
+}
+
+fn verify_rotation_event(
+    family: &SessionFamily,
+    event: &PersistedSessionEvent,
+    successor: &ariadnion_auth_session::Session,
+    index: usize,
+) -> Result<(), StorageError> {
+    let version = u64::try_from(index)
+        .ok()
+        .and_then(|value| value.checked_add(1))
+        .and_then(|value| SessionFamilyVersion::new(value).ok())
+        .ok_or_else(integrity_failure)?;
+    let valid = event.matches_boundary(family)
+        && event.session_id == *successor.id()
+        && event.version == version
+        && event.kind == SessionEventKind::Rotated
+        && event.occurred_at == successor.issued_at();
+    if valid {
+        Ok(())
+    } else {
+        Err(integrity_failure())
+    }
+}
+
+fn verify_terminal_event(
+    family: &SessionFamily,
+    events: &[PersistedSessionEvent],
+) -> Result<(), StorageError> {
+    if family.state() == SessionFamilyState::Active {
+        return Ok(());
+    }
+    let index = family.rotated().len() + 1;
+    let event = events.get(index).ok_or_else(integrity_failure)?;
+    if terminal_event_matches(family, event) {
+        Ok(())
+    } else {
+        Err(integrity_failure())
+    }
+}
+
+fn terminal_event_matches(family: &SessionFamily, event: &PersistedSessionEvent) -> bool {
+    event.matches_boundary(family)
+        && event.session_id == *family.current().id()
+        && event.version == family.version()
+        && terminal_kind_matches(family.state(), event.kind)
+        && terminal_time_matches(family, event)
+}
+
+fn terminal_kind_matches(state: SessionFamilyState, kind: SessionEventKind) -> bool {
+    match state {
+        SessionFamilyState::Active => false,
+        SessionFamilyState::Revoked => {
+            matches!(
+                kind,
+                SessionEventKind::ReuseRevoked | SessionEventKind::Revoked
+            )
+        }
+        SessionFamilyState::Expired => kind == SessionEventKind::Expired,
+    }
+}
+
+fn terminal_time_matches(family: &SessionFamily, event: &PersistedSessionEvent) -> bool {
+    match event.kind {
+        SessionEventKind::ReuseRevoked | SessionEventKind::Revoked => {
+            event.occurred_at >= family.current().last_seen_at()
+        }
+        SessionEventKind::Expired => {
+            event.occurred_at >= family.absolute_expires_at()
+                || event.occurred_at >= family.current().idle_expires_at()
+        }
+        SessionEventKind::Issued | SessionEventKind::Rotated => false,
+    }
+}
+
+struct PersistedSessionEvent {
     tenant: String,
     user: String,
     family_id: SessionFamilyId,
     session_id: SessionId,
     version: SessionFamilyVersion,
-    kind: String,
+    kind: SessionEventKind,
     occurred_at: UtcTimestamp,
     _actor: PrincipalId,
 }
 
-impl PersistedIssuanceEvent {
-    fn matches(&self, family: &SessionFamily) -> bool {
-        (
-            self.tenant.as_str(),
-            self.user.as_str(),
-            &self.family_id,
-            &self.session_id,
-            self.version,
-            self.kind.as_str(),
-            self.occurred_at,
-        ) == (
-            family.tenant_id().as_str(),
-            family.user_id().as_str(),
-            family.id(),
-            family.current().id(),
-            family.version(),
-            "issued",
-            family.issued_at(),
-        )
+impl PersistedSessionEvent {
+    fn matches_boundary(&self, family: &SessionFamily) -> bool {
+        (self.tenant.as_str(), self.user.as_str(), &self.family_id)
+            == (
+                family.tenant_id().as_str(),
+                family.user_id().as_str(),
+                family.id(),
+            )
     }
 }
 
-fn decode_issuance_event(row: &Row) -> Result<PersistedIssuanceEvent, StorageError> {
+fn decode_session_event(row: &Row) -> Result<PersistedSessionEvent, StorageError> {
     let [
         SqlValue::Text(tenant),
         SqlValue::Text(user),
@@ -295,16 +398,27 @@ fn decode_issuance_event(row: &Row) -> Result<PersistedIssuanceEvent, StorageErr
     else {
         return Err(integrity_failure());
     };
-    Ok(PersistedIssuanceEvent {
+    Ok(PersistedSessionEvent {
         tenant: tenant.clone(),
         user: user.clone(),
         family_id: parse_family_id(family_id)?,
         session_id: parse_session_id(session_id)?,
         version: parse_family_version(version)?,
-        kind: kind.clone(),
+        kind: parse_event_kind(kind)?,
         occurred_at: UtcTimestamp::from_unix_seconds(*occurred_at),
         _actor: PrincipalId::parse(actor).map_err(|_| integrity_failure())?,
     })
+}
+
+fn parse_event_kind(value: &str) -> Result<SessionEventKind, StorageError> {
+    match value {
+        "issued" => Ok(SessionEventKind::Issued),
+        "rotated" => Ok(SessionEventKind::Rotated),
+        "reuse_revoked" => Ok(SessionEventKind::ReuseRevoked),
+        "revoked" => Ok(SessionEventKind::Revoked),
+        "expired" => Ok(SessionEventKind::Expired),
+        _ => Err(integrity_failure()),
+    }
 }
 
 struct TokenOwner {

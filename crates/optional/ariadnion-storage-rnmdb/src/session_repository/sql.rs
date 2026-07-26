@@ -9,7 +9,7 @@ use ariadnion_storage_domain::{StorageError, StorageErrorCode};
 use ariadnion_user_domain::UserId;
 use rnmdb_cli::{CommandOutput, LocalSession};
 
-use super::integrity_failure;
+use super::{CommitRequest, integrity_failure};
 use crate::session::map_rnmdb_error;
 
 pub(super) const FAMILY_PROJECTION: &str = "tenant_id, user_id, family_id, current_session_id, issued_at, absolute_expires_at, version, state";
@@ -126,6 +126,53 @@ pub(super) fn insert_leaves(
     Ok(())
 }
 
+pub(super) fn update_family(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    durable: &SessionFamily,
+) -> Result<(), StorageError> {
+    let target = request.transition.family();
+    let mut sql = String::from("UPDATE identity_session_families SET current_session_id = ");
+    push_text(&mut sql, target.current().id().as_str());
+    sql.push_str(", version = ");
+    push_text(&mut sql, &encode_family_version(target.version()));
+    sql.push_str(", state = ");
+    push_text(&mut sql, family_state_label(target.state()));
+    sql.push_str(" WHERE tenant_id = ");
+    push_text(&mut sql, request.tenant_id.as_str());
+    push_scope(&mut sql, request.user_id, durable.id());
+    sql.push_str(" AND current_session_id = ");
+    push_text(&mut sql, durable.current().id().as_str());
+    sql.push_str(" AND version = ");
+    push_text(
+        &mut sql,
+        &encode_family_version(request.expected_previous_version),
+    );
+    sql.push(';');
+    require_single_update(session, sql)
+}
+
+pub(super) fn replace_leaves(
+    session: &mut LocalSession,
+    target: &SessionFamily,
+    durable: &SessionFamily,
+) -> Result<(), StorageError> {
+    delete_leaves(session, durable)?;
+    insert_leaves(session, target)
+}
+
+fn delete_leaves(session: &mut LocalSession, family: &SessionFamily) -> Result<(), StorageError> {
+    let mut sql = String::from("DELETE FROM identity_session_leaves WHERE tenant_id = ");
+    push_text(&mut sql, family.tenant_id().as_str());
+    push_scope(&mut sql, family.user_id(), family.id());
+    sql.push(';');
+    let expected = u64::try_from(family.rotated().len())
+        .ok()
+        .and_then(|count| count.checked_add(1))
+        .ok_or_else(integrity_failure)?;
+    require_affected(session, sql, expected)
+}
+
 fn insert_leaf(
     session: &mut LocalSession,
     leaf: &SessionSnapshot,
@@ -198,6 +245,25 @@ fn require_single_insert(session: &mut LocalSession, sql: String) -> Result<(), 
     match execute(session, &finish(sql)?)? {
         CommandOutput::RowsAffected(1) => Ok(()),
         CommandOutput::RowsAffected(0) => Err(StorageError::new(StorageErrorCode::Conflict)),
+        _ => Err(integrity_failure()),
+    }
+}
+
+fn require_single_update(session: &mut LocalSession, sql: String) -> Result<(), StorageError> {
+    match execute(session, &finish(sql)?)? {
+        CommandOutput::RowsAffected(1) => Ok(()),
+        CommandOutput::RowsAffected(0) => Err(StorageError::new(StorageErrorCode::Conflict)),
+        _ => Err(integrity_failure()),
+    }
+}
+
+fn require_affected(
+    session: &mut LocalSession,
+    sql: String,
+    expected: u64,
+) -> Result<(), StorageError> {
+    match execute(session, &finish(sql)?)? {
+        CommandOutput::RowsAffected(actual) if actual == expected => Ok(()),
         _ => Err(integrity_failure()),
     }
 }
