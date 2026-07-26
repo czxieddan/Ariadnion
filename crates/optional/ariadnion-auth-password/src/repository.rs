@@ -350,7 +350,7 @@ pub struct PasswordResetOnlyCommit<'a> {
 }
 
 impl<'a> PasswordResetOnlyCommit<'a> {
-    /// Returns the exact issuance, revocation, or expiry transition.
+    /// Returns the exact revocation or expiry transition.
     #[must_use]
     pub const fn transition(&self) -> &'a PasswordResetTransition {
         self.transition

@@ -464,11 +464,49 @@ fn verify_history_entry(
         && event.purpose == PasswordResetPurpose::PasswordRecovery
         && evidence.issued_credential_version == reset.issued_credential_version()
         && event.password_hash_digest == evidence.password_hash_digest;
+    if !valid {
+        return Err(integrity_failure());
+    }
+    verify_evidence_result(reset, event.kind, evidence)
+}
+
+fn verify_evidence_result(
+    reset: &PasswordReset,
+    kind: PasswordResetEventKind,
+    evidence: &PersistedCommitEvidence,
+) -> Result<(), StorageError> {
+    let valid = match kind {
+        PasswordResetEventKind::Consumed => consumed_result_matches(reset, evidence)?,
+        PasswordResetEventKind::Issued
+        | PasswordResetEventKind::Revoked
+        | PasswordResetEventKind::Expired => empty_result_matches(evidence),
+    };
     if valid {
         Ok(())
     } else {
         Err(integrity_failure())
     }
+}
+
+fn consumed_result_matches(
+    reset: &PasswordReset,
+    evidence: &PersistedCommitEvidence,
+) -> Result<bool, StorageError> {
+    let expected_version = reset
+        .issued_credential_version()
+        .next()
+        .map_err(|_| integrity_failure())?;
+    Ok(
+        evidence.resulting_credential_version == Some(expected_version)
+            && evidence.resulting_hash_policy_version.is_some()
+            && evidence.password_hash_digest.is_some(),
+    )
+}
+
+fn empty_result_matches(evidence: &PersistedCommitEvidence) -> bool {
+    evidence.resulting_credential_version.is_none()
+        && evidence.resulting_hash_policy_version.is_none()
+        && evidence.password_hash_digest.is_none()
 }
 
 fn verify_terminal_history(
@@ -502,8 +540,18 @@ fn terminal_matches(reset: &PasswordReset, event: &PersistedEvent) -> bool {
             | (PasswordResetState::Expired, PasswordResetEventKind::Expired)
     );
     lifecycle
-        && event.occurred_at >= reset.issued_at()
+        && terminal_time_matches(reset, event)
         && event.password_hash_digest == reset.password_hash_digest()
+}
+
+fn terminal_time_matches(reset: &PasswordReset, event: &PersistedEvent) -> bool {
+    match event.kind {
+        PasswordResetEventKind::Consumed | PasswordResetEventKind::Revoked => {
+            event.occurred_at >= reset.issued_at() && event.occurred_at < reset.expires_at()
+        }
+        PasswordResetEventKind::Expired => event.occurred_at >= reset.expires_at(),
+        PasswordResetEventKind::Issued => false,
+    }
 }
 
 fn classify_collisions(
