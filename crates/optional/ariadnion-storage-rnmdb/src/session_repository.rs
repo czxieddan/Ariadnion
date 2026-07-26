@@ -1,0 +1,292 @@
+//! Atomic durable persistence for tenant-bound browser session families.
+
+mod decode;
+mod evidence;
+mod sql;
+
+use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use ariadnion_auth_session::{
+    SessionCommitReceipt, SessionEventKind, SessionFamily, SessionFamilyVersion,
+    SessionRepositoryError, SessionRepositoryErrorCode, SessionRepositoryPort, SessionTransition,
+};
+use ariadnion_core::{PrincipalContext, RequestContext, TenantId};
+use ariadnion_storage_domain::{StorageError, StorageErrorCode};
+use ariadnion_user_domain::{UserId, UtcTimestamp};
+use rnmdb_cli::LocalSession;
+
+use crate::identity_transaction::run_identity_transaction;
+use crate::{AuditSubjectKeyMaterial, RnmdbSessionOwner, SessionOpenOptions};
+
+/// Persists complete browser session families and immutable issuance evidence.
+pub struct RnmdbSessionRepository {
+    session: Arc<RnmdbSessionOwner>,
+    audit_subject_key: AuditSubjectKeyMaterial,
+}
+
+impl RnmdbSessionRepository {
+    /// Opens a repository over a newly created serialized RNMDB session.
+    ///
+    /// Callers must discard a repository after an indeterminate commit and
+    /// reopen the database with fresh key material.
+    ///
+    /// # Errors
+    ///
+    /// Returns a redacted storage error when the encrypted database cannot be
+    /// opened with the supplied validated options.
+    pub fn open(
+        options: SessionOpenOptions,
+        audit_subject_key: AuditSubjectKeyMaterial,
+    ) -> Result<Self, StorageError> {
+        let session = RnmdbSessionOwner::open(options).map(Arc::new)?;
+        Ok(Self::new(session, audit_subject_key))
+    }
+
+    /// Creates a repository over one serialized session and subject key.
+    ///
+    /// Wrapping a tainted session does not make it reusable. Reopen the
+    /// database after any indeterminate commit result.
+    #[must_use]
+    pub const fn new(
+        session: Arc<RnmdbSessionOwner>,
+        audit_subject_key: AuditSubjectKeyMaterial,
+    ) -> Self {
+        Self {
+            session,
+            audit_subject_key,
+        }
+    }
+}
+
+impl SessionRepositoryPort for RnmdbSessionRepository {
+    fn load(
+        &self,
+        tenant_id: &TenantId,
+        user_id: &UserId,
+        family_id: &ariadnion_auth_session::SessionFamilyId,
+        context: &RequestContext,
+    ) -> Result<SessionFamily, SessionRepositoryError> {
+        validate_authenticated_tenant(context, tenant_id).map_err(map_storage_error)?;
+        self.session
+            .with_storage_session(context, |session| {
+                decode::load_family(session, tenant_id, user_id, family_id)
+            })
+            .map_err(map_storage_error)
+    }
+
+    fn load_by_token_digest(
+        &self,
+        tenant_id: &TenantId,
+        token_digest: ariadnion_auth_session::SessionTokenDigest,
+        context: &RequestContext,
+    ) -> Result<SessionFamily, SessionRepositoryError> {
+        validate_routed_tenant(context, tenant_id).map_err(map_storage_error)?;
+        self.session
+            .with_storage_session(context, |session| {
+                decode::load_family_by_token(session, tenant_id, token_digest)
+            })
+            .map_err(map_storage_error)
+    }
+
+    fn compare_and_commit(
+        &self,
+        tenant_id: &TenantId,
+        user_id: &UserId,
+        expected_previous_version: SessionFamilyVersion,
+        transition: &SessionTransition,
+        context: &RequestContext,
+    ) -> Result<SessionCommitReceipt, SessionRepositoryError> {
+        let request = CommitRequest {
+            tenant_id,
+            user_id,
+            expected_previous_version,
+            transition,
+            context,
+        };
+        validate_commit_request(&request).map_err(map_storage_error)?;
+        self.session
+            .with_identity_session(context, |session| {
+                run_identity_transaction(session, context, |session| {
+                    commit_issuance(session, &request, &self.audit_subject_key)
+                })
+            })
+            .map_err(map_storage_error)
+    }
+
+    fn reconcile_commit(
+        &self,
+        tenant_id: &TenantId,
+        user_id: &UserId,
+        expected_previous_version: SessionFamilyVersion,
+        transition: &SessionTransition,
+        context: &RequestContext,
+    ) -> Result<SessionCommitReceipt, SessionRepositoryError> {
+        let request = CommitRequest {
+            tenant_id,
+            user_id,
+            expected_previous_version,
+            transition,
+            context,
+        };
+        validate_commit_request(&request).map_err(map_storage_error)?;
+        Err(repository_error(SessionRepositoryErrorCode::Unavailable))
+    }
+}
+
+pub(super) struct CommitRequest<'a> {
+    pub(super) tenant_id: &'a TenantId,
+    pub(super) user_id: &'a UserId,
+    pub(super) expected_previous_version: SessionFamilyVersion,
+    pub(super) transition: &'a SessionTransition,
+    pub(super) context: &'a RequestContext,
+}
+
+fn commit_issuance(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    key: &AuditSubjectKeyMaterial,
+) -> Result<SessionCommitReceipt, StorageError> {
+    decode::ensure_issuance_absent(session, request)?;
+    sql::insert_family(session, request.transition.family())?;
+    sql::insert_leaves(session, request.transition.family())?;
+    sql::insert_event(session, request.transition.event())?;
+    let committed_at = trusted_commit_time()?;
+    evidence::persist_transition_evidence(session, request, key, committed_at)?;
+    Ok(commit_receipt(request, committed_at))
+}
+
+fn commit_receipt(request: &CommitRequest<'_>, committed_at: UtcTimestamp) -> SessionCommitReceipt {
+    let family = request.transition.family();
+    SessionCommitReceipt::new(
+        request.tenant_id.clone(),
+        request.user_id.clone(),
+        family.id().clone(),
+        family.current().id().clone(),
+        family.version(),
+        committed_at,
+    )
+}
+
+fn validate_commit_request(request: &CommitRequest<'_>) -> Result<(), StorageError> {
+    let principal = validate_authenticated_tenant(request.context, request.tenant_id)?;
+    validate_family_binding(request)?;
+    validate_leaf_bindings(request)?;
+    validate_event_binding(request, principal)?;
+    validate_issuance_shape(request)
+}
+
+fn validate_family_binding(request: &CommitRequest<'_>) -> Result<(), StorageError> {
+    let family = request.transition.family();
+    if family.tenant_id() == request.tenant_id && family.user_id() == request.user_id {
+        Ok(())
+    } else {
+        Err(integrity_failure())
+    }
+}
+
+fn validate_leaf_bindings(request: &CommitRequest<'_>) -> Result<(), StorageError> {
+    let snapshot = request.transition.family().snapshot_state();
+    let invalid = std::iter::once(&snapshot.current)
+        .chain(snapshot.rotated.iter())
+        .any(|leaf| {
+            leaf.family_id != snapshot.id
+                || leaf.subject.tenant_id() != request.tenant_id
+                || leaf.subject.user_id() != request.user_id
+        });
+    if invalid {
+        Err(integrity_failure())
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_event_binding(
+    request: &CommitRequest<'_>,
+    principal: &PrincipalContext,
+) -> Result<(), StorageError> {
+    let family = request.transition.family();
+    let event = request.transition.event();
+    let valid = event.tenant_id() == request.tenant_id
+        && event.user_id() == request.user_id
+        && event.family_id() == family.id()
+        && event.session_id() == family.current().id()
+        && event.version() == family.version()
+        && event.actor() == principal.principal_id();
+    if valid {
+        Ok(())
+    } else {
+        Err(integrity_failure())
+    }
+}
+
+fn validate_issuance_shape(request: &CommitRequest<'_>) -> Result<(), StorageError> {
+    let family = request.transition.family();
+    let valid = request.expected_previous_version == SessionFamilyVersion::initial()
+        && family.version() == SessionFamilyVersion::initial()
+        && family.rotated().is_empty()
+        && request.transition.event().kind() == SessionEventKind::Issued;
+    if valid {
+        Ok(())
+    } else {
+        Err(StorageError::new(StorageErrorCode::Conflict))
+    }
+}
+
+pub(super) fn authenticated_principal(
+    context: &RequestContext,
+) -> Result<&PrincipalContext, StorageError> {
+    context.principal().ok_or_else(integrity_failure)
+}
+
+fn validate_authenticated_tenant<'a>(
+    context: &'a RequestContext,
+    tenant_id: &TenantId,
+) -> Result<&'a PrincipalContext, StorageError> {
+    let principal = authenticated_principal(context)?;
+    if principal.tenant_id() == tenant_id {
+        Ok(principal)
+    } else {
+        Err(integrity_failure())
+    }
+}
+
+fn validate_routed_tenant(
+    context: &RequestContext,
+    tenant_id: &TenantId,
+) -> Result<(), StorageError> {
+    match context.principal() {
+        Some(principal) if principal.tenant_id() != tenant_id => Err(integrity_failure()),
+        Some(_) | None => Ok(()),
+    }
+}
+
+fn trusted_commit_time() -> Result<UtcTimestamp, StorageError> {
+    let duration = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| integrity_failure())?;
+    let seconds = i64::try_from(duration.as_secs()).map_err(|_| integrity_failure())?;
+    Ok(UtcTimestamp::from_unix_seconds(seconds))
+}
+
+fn map_storage_error(error: StorageError) -> SessionRepositoryError {
+    let code = match error.code() {
+        StorageErrorCode::NotFound => SessionRepositoryErrorCode::NotFound,
+        StorageErrorCode::Conflict => SessionRepositoryErrorCode::Conflict,
+        StorageErrorCode::Cancelled => SessionRepositoryErrorCode::Cancelled,
+        StorageErrorCode::DeadlineExceeded => SessionRepositoryErrorCode::DeadlineExceeded,
+        StorageErrorCode::ResourceExhausted => SessionRepositoryErrorCode::ResourceExhausted,
+        StorageErrorCode::Unavailable => SessionRepositoryErrorCode::Unavailable,
+        StorageErrorCode::CommitIndeterminate => SessionRepositoryErrorCode::CommitIndeterminate,
+        _ => SessionRepositoryErrorCode::IntegrityFailure,
+    };
+    repository_error(code)
+}
+
+const fn repository_error(code: SessionRepositoryErrorCode) -> SessionRepositoryError {
+    SessionRepositoryError::new(code)
+}
+
+pub(super) const fn integrity_failure() -> StorageError {
+    StorageError::new(StorageErrorCode::IntegrityFailure)
+}

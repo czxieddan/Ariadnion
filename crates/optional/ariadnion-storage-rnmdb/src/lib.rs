@@ -29,6 +29,7 @@ mod secret_reference;
 mod secret_reference_repository;
 mod security;
 mod session;
+mod session_repository;
 mod transaction;
 mod udf;
 mod upgrade;
@@ -77,6 +78,7 @@ pub use secret_reference::{
 pub use secret_reference_repository::RnmdbSecretReferenceRepository;
 pub use security::{RnmdbColumnSecurity, SecretLocatorKeyMaterial};
 pub use session::{PageKeyMaterial, RnmdbSessionOwner, SessionOpenOptions};
+pub use session_repository::RnmdbSessionRepository;
 pub use transaction::RnmdbTransactionManager;
 pub use udf::{
     FIXED_UDF_RESULT_BYTES, FixedScalarSignature, FixedScalarType, FixedScalarUdfDefinition,
