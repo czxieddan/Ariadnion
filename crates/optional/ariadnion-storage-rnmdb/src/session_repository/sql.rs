@@ -16,6 +16,7 @@ pub(super) const FAMILY_PROJECTION: &str = "tenant_id, user_id, family_id, curre
 pub(super) const LEAF_PROJECTION: &str = "tenant_id, user_id, family_id, session_id, ordinal, predecessor_session_id, token_digest_hex, issued_at, last_seen_at, idle_expires_at, version, state";
 pub(super) const EVENT_PROJECTION: &str =
     "tenant_id, user_id, family_id, session_id, version, kind, occurred_at, actor_id";
+pub(super) const OUTBOX_PROJECTION: &str = "tenant_id, event_id, topic, idempotency_key, payload_hex, created_at, available_at, attempt, state, lease_token, lease_worker, lease_expires_at, delivered_at, failed_at";
 const TOKEN_OWNER_PROJECTION: &str = "user_id, family_id, session_id, token_digest_hex";
 const FAMILY_OWNER_PROJECTION: &str = "user_id, family_id";
 const MAX_SQL_BYTES: usize = 1_048_576;
@@ -87,6 +88,22 @@ pub(super) fn load_family_owner(
     push_text(&mut sql, tenant.as_str());
     sql.push_str(" AND family_id = ");
     push_text(&mut sql, family.as_str());
+    sql.push_str(" LIMIT 2;");
+    execute(session, &finish(sql)?)
+}
+
+pub(super) fn load_outbox(
+    session: &mut LocalSession,
+    tenant: &TenantId,
+    event_id: &str,
+    idempotency_key: &str,
+) -> Result<CommandOutput, StorageError> {
+    let mut sql = format!("SELECT {OUTBOX_PROJECTION} FROM platform_outbox WHERE tenant_id = ");
+    push_text(&mut sql, tenant.as_str());
+    sql.push_str(" AND event_id = ");
+    push_text(&mut sql, event_id);
+    sql.push_str(" AND idempotency_key = ");
+    push_text(&mut sql, idempotency_key);
     sql.push_str(" LIMIT 2;");
     execute(session, &finish(sql)?)
 }

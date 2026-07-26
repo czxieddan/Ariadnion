@@ -10,27 +10,31 @@ use ariadnion_audit_domain::{
 use ariadnion_auth_session::{SessionEventKind, SessionFamily, SessionSnapshot};
 use ariadnion_storage_domain::{StorageError, StorageErrorCode};
 use ariadnion_storage_outbox::{
-    EnqueueStatus, NewOutboxMessage, OutboxEventId, OutboxIdempotencyKey, OutboxPayload,
-    OutboxTopic,
+    EnqueueStatus, NewOutboxMessage, OutboxEventId, OutboxIdempotencyKey, OutboxLeaseToken,
+    OutboxPayload, OutboxTopic, OutboxWorkerId,
 };
 use ariadnion_user_domain::UtcTimestamp;
 use hmac::{Hmac, Mac};
 use rnmdb_cli::LocalSession;
+use rnmdb_executor::vector::{ColumnSchema, Row, VectorBatch};
+use rnmdb_types::{SqlType, SqlValue};
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
 use super::{CommitRequest, authenticated_principal, integrity_failure};
-use crate::AuditSubjectKeyMaterial;
-use crate::audit_repository::{append_in_transaction, load_event_by_id, load_head_from_session};
+use crate::audit_repository::{
+    append_in_transaction, load_durable_event_with_head, load_event_by_id, load_head_from_session,
+};
 use crate::outbox::enqueue_message;
+use crate::{AuditSubjectKeyMaterial, UtcTimestampMicros};
 
 const SUBJECT_DOMAIN: &[u8] = b"ariadnion.browser-session.audit-subject.v1\0";
-const IDENTITY_DOMAIN: &[u8] = b"ariadnion.browser-session.transition.identity.v1\0";
+const IDENTITY_DOMAIN: &[u8] = b"ariadnion.browser-session.transition.identity.v2\0";
 const SNAPSHOT_DOMAIN: &[u8] = b"ariadnion.browser-session.snapshot.v1\0";
-const PAYLOAD_DOMAIN: &[u8] = b"ariadnion.browser-session.transition.payload.v1\0";
-const AUDIT_ID_DOMAIN: &[u8] = b"ariadnion.browser-session.audit-event-id.v1\0";
-const OUTBOX_ID_DOMAIN: &[u8] = b"ariadnion.browser-session.outbox-event-id.v1\0";
-const OUTBOX_KEY_DOMAIN: &[u8] = b"ariadnion.browser-session.outbox-idempotency.v1\0";
+const PAYLOAD_DOMAIN: &[u8] = b"ariadnion.browser-session.transition.payload.v2\0";
+const AUDIT_ID_DOMAIN: &[u8] = b"ariadnion.browser-session.audit-event-id.v2\0";
+const OUTBOX_ID_DOMAIN: &[u8] = b"ariadnion.browser-session.outbox-event-id.v2\0";
+const OUTBOX_KEY_DOMAIN: &[u8] = b"ariadnion.browser-session.outbox-idempotency.v2\0";
 const OUTBOX_TOPIC: &str = "identity.browser-session.lifecycle.v1";
 
 type HmacSha256 = Hmac<Sha256>;
@@ -41,7 +45,8 @@ pub(super) fn persist_transition_evidence(
     key: &AuditSubjectKeyMaterial,
     committed_at: UtcTimestamp,
 ) -> Result<(), StorageError> {
-    let evidence = TransitionEvidence::new(request, key, committed_at)?;
+    let record = EvidenceRecord::from_request(request);
+    let evidence = TransitionEvidence::new(record, key, committed_at)?;
     append_audit(session, request, &evidence)?;
     enqueue_outbox(session, request, &evidence)
 }
@@ -77,6 +82,71 @@ fn enqueue_outbox(
     }
 }
 
+pub(super) fn reconcile_transition_evidence(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    key: &AuditSubjectKeyMaterial,
+) -> Result<UtcTimestamp, StorageError> {
+    reconcile_record(
+        session,
+        EvidenceRecord::from_request(request),
+        key,
+        request.context,
+    )
+}
+
+pub(super) fn verify_persisted_transition_evidence(
+    session: &mut LocalSession,
+    boundary: (&ariadnion_core::TenantId, &ariadnion_user_domain::UserId),
+    expected_previous_version: ariadnion_auth_session::SessionFamilyVersion,
+    family: &SessionFamily,
+    event: &super::decode::PersistedSessionEvent,
+    key: &AuditSubjectKeyMaterial,
+    context: &ariadnion_core::RequestContext,
+) -> Result<(), StorageError> {
+    let record = EvidenceRecord::from_persisted(
+        boundary.0,
+        boundary.1,
+        expected_previous_version,
+        family,
+        event,
+    );
+    reconcile_record(session, record, key, context).map(|_| ())
+}
+
+fn reconcile_record(
+    session: &mut LocalSession,
+    record: EvidenceRecord,
+    key: &AuditSubjectKeyMaterial,
+    context: &ariadnion_core::RequestContext,
+) -> Result<UtcTimestamp, StorageError> {
+    let identity = EvidenceIdentity::new(record, key)?;
+    let outbox = load_outbox(session, &identity)?;
+    let evidence = TransitionEvidence::from_identity(identity, outbox.committed_at)?;
+    if evidence.payload.as_slice() != outbox.payload.as_slice() {
+        return Err(integrity_failure());
+    }
+    reconcile_audit(session, &evidence, context)?;
+    Ok(outbox.committed_at)
+}
+
+fn reconcile_audit(
+    session: &mut LocalSession,
+    evidence: &TransitionEvidence,
+    context: &ariadnion_core::RequestContext,
+) -> Result<(), StorageError> {
+    let (persisted, _) =
+        load_durable_event_with_head(session, &evidence.tenant, &evidence.audit_id, context)
+            .map_err(map_reconcile_error)?;
+    let expected =
+        evidence.audit_event_at(persisted.sequence(), persisted.previous_chain_digest())?;
+    if persisted == expected {
+        Ok(())
+    } else {
+        Err(integrity_failure())
+    }
+}
+
 struct TransitionEvidence {
     tenant: ariadnion_core::TenantId,
     actor: ariadnion_core::PrincipalId,
@@ -92,22 +162,27 @@ struct TransitionEvidence {
 
 impl TransitionEvidence {
     fn new(
-        request: &CommitRequest<'_>,
+        record: EvidenceRecord,
         key: &AuditSubjectKeyMaterial,
         committed_at: UtcTimestamp,
     ) -> Result<Self, StorageError> {
-        let canonical = canonical_identity(request)?;
-        let event = request.transition.event();
+        Self::from_identity(EvidenceIdentity::new(record, key)?, committed_at)
+    }
+
+    fn from_identity(
+        identity: EvidenceIdentity,
+        committed_at: UtcTimestamp,
+    ) -> Result<Self, StorageError> {
         Ok(Self {
-            tenant: request.tenant_id.clone(),
-            actor: event.actor().clone(),
-            occurred_at: event.occurred_at(),
-            kind: event.kind(),
-            subject: subject_digest(request, key)?,
-            audit_id: derive_audit_id(&canonical)?,
-            outbox_id: derive_outbox_id(&canonical)?,
-            outbox_key: derive_outbox_key(&canonical)?,
-            payload: canonical_payload(&canonical, committed_at)?,
+            tenant: identity.record.tenant,
+            actor: identity.record.actor,
+            occurred_at: identity.record.occurred_at,
+            kind: identity.record.kind,
+            subject: identity.subject,
+            audit_id: identity.audit_id,
+            outbox_id: identity.outbox_id,
+            outbox_key: identity.outbox_key,
+            payload: canonical_payload(&identity.canonical, committed_at)?,
             committed_at,
         })
     }
@@ -116,19 +191,27 @@ impl TransitionEvidence {
         &self,
         head: &ariadnion_audit_store::AuditChainHead,
     ) -> Result<ariadnion_audit_domain::AuditEvent, StorageError> {
+        self.audit_event_at(next_sequence(head)?, head.chain_digest())
+    }
+
+    fn audit_event_at(
+        &self,
+        sequence: AuditSequence,
+        previous: Option<ariadnion_audit_domain::AuditChainDigest>,
+    ) -> Result<ariadnion_audit_domain::AuditEvent, StorageError> {
         let binding = AuditEventBinding::new(
             self.audit_id.clone(),
             self.tenant.clone(),
             self.actor.clone(),
             self.occurred_at,
-            next_sequence(head)?,
+            sequence,
         );
         let content = AuditEventContent::new(
             audit_event_kind(self.kind),
             AuditSubject::from_digest(AuditSubjectKind::SessionFamily, self.subject),
             audit_reason(self.kind),
             AuditPayloadDigest::from_payload(&self.payload).map_err(|_| integrity_failure())?,
-            head.chain_digest(),
+            previous,
         )
         .map_err(|_| integrity_failure())?;
         build_audit_event(AuditEventRequest::new(binding, content)).map_err(|_| integrity_failure())
@@ -146,36 +229,102 @@ impl TransitionEvidence {
     }
 }
 
-fn canonical_identity(request: &CommitRequest<'_>) -> Result<Zeroizing<Vec<u8>>, StorageError> {
+struct EvidenceRecord {
+    tenant: ariadnion_core::TenantId,
+    user: ariadnion_user_domain::UserId,
+    family: SessionFamily,
+    expected_previous_version: ariadnion_auth_session::SessionFamilyVersion,
+    session_id: ariadnion_auth_session::SessionId,
+    actor: ariadnion_core::PrincipalId,
+    occurred_at: UtcTimestamp,
+    kind: SessionEventKind,
+}
+
+impl EvidenceRecord {
+    fn from_request(request: &CommitRequest<'_>) -> Self {
+        let event = request.transition.event();
+        Self {
+            tenant: request.tenant_id.clone(),
+            user: request.user_id.clone(),
+            family: request.transition.family().clone(),
+            expected_previous_version: request.expected_previous_version,
+            session_id: event.session_id().clone(),
+            actor: event.actor().clone(),
+            occurred_at: event.occurred_at(),
+            kind: event.kind(),
+        }
+    }
+
+    fn from_persisted(
+        tenant: &ariadnion_core::TenantId,
+        user: &ariadnion_user_domain::UserId,
+        expected_previous_version: ariadnion_auth_session::SessionFamilyVersion,
+        family: &SessionFamily,
+        event: &super::decode::PersistedSessionEvent,
+    ) -> Self {
+        Self {
+            tenant: tenant.clone(),
+            user: user.clone(),
+            family: family.clone(),
+            expected_previous_version,
+            session_id: event.session_id().clone(),
+            actor: event.actor().clone(),
+            occurred_at: event.occurred_at(),
+            kind: event.kind(),
+        }
+    }
+}
+
+struct EvidenceIdentity {
+    record: EvidenceRecord,
+    canonical: Zeroizing<Vec<u8>>,
+    subject: AuditSubjectDigest,
+    audit_id: AuditEventId,
+    outbox_id: OutboxEventId,
+    outbox_key: OutboxIdempotencyKey,
+}
+
+impl EvidenceIdentity {
+    fn new(record: EvidenceRecord, key: &AuditSubjectKeyMaterial) -> Result<Self, StorageError> {
+        let canonical = canonical_identity(&record)?;
+        Ok(Self {
+            subject: subject_digest(&record, key)?,
+            audit_id: derive_audit_id(&canonical)?,
+            outbox_id: derive_outbox_id(&canonical)?,
+            outbox_key: derive_outbox_key(&canonical)?,
+            record,
+            canonical,
+        })
+    }
+}
+
+fn canonical_identity(record: &EvidenceRecord) -> Result<Zeroizing<Vec<u8>>, StorageError> {
     let mut output = Zeroizing::new(IDENTITY_DOMAIN.to_vec());
-    push_identity_boundary(&mut output, request)?;
-    push_transition_identity(&mut output, request)?;
-    push_field(&mut output, &snapshot_digest(request.transition.family())?)?;
+    push_identity_boundary(&mut output, record)?;
+    push_transition_identity(&mut output, record)?;
+    push_field(&mut output, &snapshot_digest(&record.family)?)?;
     Ok(output)
 }
 
 fn push_identity_boundary(
     output: &mut Vec<u8>,
-    request: &CommitRequest<'_>,
+    record: &EvidenceRecord,
 ) -> Result<(), StorageError> {
-    let family = request.transition.family();
-    push_text(output, request.tenant_id.as_str())?;
-    push_text(output, request.user_id.as_str())?;
-    push_text(output, family.id().as_str())
+    push_text(output, record.tenant.as_str())?;
+    push_text(output, record.user.as_str())?;
+    push_text(output, record.family.id().as_str())
 }
 
 fn push_transition_identity(
     output: &mut Vec<u8>,
-    request: &CommitRequest<'_>,
+    record: &EvidenceRecord,
 ) -> Result<(), StorageError> {
-    let event = request.transition.event();
-    push_u64(output, request.expected_previous_version.get())?;
-    push_u64(output, request.transition.family().version().get())?;
-    push_text(output, event.session_id().as_str())?;
-    push_text(output, event.actor().as_str())?;
-    push_text(output, request.context.request_id().as_str())?;
-    push_i64(output, event.occurred_at().unix_seconds())?;
-    push_text(output, super::sql::event_kind_label(event.kind()))
+    push_u64(output, record.expected_previous_version.get())?;
+    push_u64(output, record.family.version().get())?;
+    push_text(output, record.session_id.as_str())?;
+    push_text(output, record.actor.as_str())?;
+    push_i64(output, record.occurred_at.unix_seconds())?;
+    push_text(output, super::sql::event_kind_label(record.kind))
 }
 
 fn snapshot_digest(family: &SessionFamily) -> Result<[u8; 32], StorageError> {
@@ -230,30 +379,30 @@ fn canonical_payload(
 }
 
 fn subject_digest(
-    request: &CommitRequest<'_>,
+    record: &EvidenceRecord,
     key: &AuditSubjectKeyMaterial,
 ) -> Result<AuditSubjectDigest, StorageError> {
     let mut material = Zeroizing::new(SUBJECT_DOMAIN.to_vec());
-    push_text(&mut material, request.tenant_id.as_str())?;
-    push_text(&mut material, request.user_id.as_str())?;
-    push_text(&mut material, request.transition.family().id().as_str())?;
+    push_text(&mut material, record.tenant.as_str())?;
+    push_text(&mut material, record.user.as_str())?;
+    push_text(&mut material, record.family.id().as_str())?;
     let mut mac = HmacSha256::new_from_slice(key.as_bytes()).map_err(|_| integrity_failure())?;
     mac.update(&material);
     Ok(AuditSubjectDigest::new(mac.finalize().into_bytes().into()))
 }
 
 fn derive_audit_id(canonical: &[u8]) -> Result<AuditEventId, StorageError> {
-    let value = derived_id(AUDIT_ID_DOMAIN, "session-audit-v1-", canonical)?;
+    let value = derived_id(AUDIT_ID_DOMAIN, "session-audit-v2-", canonical)?;
     AuditEventId::parse(&value).map_err(|_| integrity_failure())
 }
 
 fn derive_outbox_id(canonical: &[u8]) -> Result<OutboxEventId, StorageError> {
-    let value = derived_id(OUTBOX_ID_DOMAIN, "session-outbox-v1-", canonical)?;
+    let value = derived_id(OUTBOX_ID_DOMAIN, "session-outbox-v2-", canonical)?;
     OutboxEventId::parse(&value).map_err(|_| integrity_failure())
 }
 
 fn derive_outbox_key(canonical: &[u8]) -> Result<OutboxIdempotencyKey, StorageError> {
-    let value = derived_id(OUTBOX_KEY_DOMAIN, "session-transition-v1-", canonical)?;
+    let value = derived_id(OUTBOX_KEY_DOMAIN, "session-transition-v2-", canonical)?;
     OutboxIdempotencyKey::parse(&value).map_err(|_| integrity_failure())
 }
 
@@ -261,6 +410,253 @@ fn derived_id(domain: &[u8], prefix: &str, canonical: &[u8]) -> Result<String, S
     let mut material = Zeroizing::new(domain.to_vec());
     push_field(&mut material, canonical)?;
     Ok(format!("{prefix}{}", hex(&Sha256::digest(&material))))
+}
+
+struct PersistedOutbox {
+    committed_at: UtcTimestamp,
+    payload: Zeroizing<Vec<u8>>,
+}
+
+fn load_outbox(
+    session: &mut LocalSession,
+    identity: &EvidenceIdentity,
+) -> Result<PersistedOutbox, StorageError> {
+    let output = super::sql::load_outbox(
+        session,
+        &identity.record.tenant,
+        identity.outbox_id.as_str(),
+        identity.outbox_key.as_str(),
+    )?;
+    let batch = rows(output)?;
+    validate_columns(batch.columns(), &outbox_columns())?;
+    let [row] = batch.rows() else {
+        return Err(integrity_failure());
+    };
+    decode_outbox_row(row, identity)
+}
+
+fn decode_outbox_row(
+    row: &Row,
+    identity: &EvidenceIdentity,
+) -> Result<PersistedOutbox, StorageError> {
+    let [
+        SqlValue::Text(tenant),
+        SqlValue::Text(event_id),
+        SqlValue::Text(topic),
+        SqlValue::Text(key),
+        SqlValue::Text(payload),
+        created_at,
+        available_at,
+        SqlValue::Int64(attempt),
+        SqlValue::Text(state),
+        lease_token,
+        lease_worker,
+        lease_expires_at,
+        delivered_at,
+        failed_at,
+    ] = row.values()
+    else {
+        return Err(integrity_failure());
+    };
+    validate_outbox_identity(tenant, event_id, topic, key, identity)?;
+    let created = decode_timestamp(created_at)?;
+    let available = decode_timestamp(available_at)?;
+    validate_outbox_lifecycle(
+        *attempt,
+        state,
+        created,
+        available,
+        &[
+            lease_token,
+            lease_worker,
+            lease_expires_at,
+            delivered_at,
+            failed_at,
+        ],
+    )?;
+    Ok(PersistedOutbox {
+        committed_at: decode_receipt_time(created)?,
+        payload: decode_hex(payload)?,
+    })
+}
+
+fn validate_outbox_identity(
+    tenant: &str,
+    event_id: &str,
+    topic: &str,
+    key: &str,
+    identity: &EvidenceIdentity,
+) -> Result<(), StorageError> {
+    let actual = (tenant, event_id, topic, key);
+    let expected = (
+        identity.record.tenant.as_str(),
+        identity.outbox_id.as_str(),
+        OUTBOX_TOPIC,
+        identity.outbox_key.as_str(),
+    );
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(integrity_failure())
+    }
+}
+
+fn validate_outbox_lifecycle(
+    attempt: i64,
+    state: &str,
+    created: i64,
+    available: i64,
+    mutable: &[&SqlValue; 5],
+) -> Result<(), StorageError> {
+    match state {
+        "pending" => validate_pending(attempt, created, available, mutable),
+        "leased" => validate_leased(attempt, mutable),
+        "delivered" => validate_terminal(attempt, mutable, true),
+        "dead" => validate_terminal(attempt, mutable, false),
+        _ => Err(integrity_failure()),
+    }
+}
+
+fn validate_pending(
+    attempt: i64,
+    created: i64,
+    available: i64,
+    mutable: &[&SqlValue; 5],
+) -> Result<(), StorageError> {
+    if !valid_attempt(attempt, true) || (attempt == 0 && created != available) {
+        return Err(integrity_failure());
+    }
+    require_all_null(mutable)
+}
+
+fn validate_leased(attempt: i64, mutable: &[&SqlValue; 5]) -> Result<(), StorageError> {
+    if !valid_attempt(attempt, false) {
+        return Err(integrity_failure());
+    }
+    decode_lease_token(mutable[0])?;
+    let worker = required_text(mutable[1])?;
+    OutboxWorkerId::parse(worker).map_err(|_| integrity_failure())?;
+    decode_timestamp(mutable[2])?;
+    require_all_null(&[mutable[3], mutable[4]])
+}
+
+fn validate_terminal(
+    attempt: i64,
+    mutable: &[&SqlValue; 5],
+    delivered: bool,
+) -> Result<(), StorageError> {
+    if !valid_attempt(attempt, false) {
+        return Err(integrity_failure());
+    }
+    require_all_null(&[mutable[0], mutable[1], mutable[2]])?;
+    let terminal = if delivered {
+        [mutable[3], mutable[4]]
+    } else {
+        [mutable[4], mutable[3]]
+    };
+    decode_timestamp(terminal[0])?;
+    require_all_null(&[terminal[1]])
+}
+
+fn valid_attempt(attempt: i64, allow_zero: bool) -> bool {
+    attempt >= 0 && u32::try_from(attempt).is_ok() && (allow_zero || attempt > 0)
+}
+
+fn require_all_null(values: &[&SqlValue]) -> Result<(), StorageError> {
+    if values.iter().all(|value| matches!(value, SqlValue::Null)) {
+        Ok(())
+    } else {
+        Err(integrity_failure())
+    }
+}
+
+fn decode_lease_token(value: &SqlValue) -> Result<(), StorageError> {
+    let bytes = decode_hex(required_text(value)?)?;
+    OutboxLeaseToken::new(&bytes)
+        .map(|_| ())
+        .map_err(|_| integrity_failure())
+}
+
+fn required_text(value: &SqlValue) -> Result<&str, StorageError> {
+    match value {
+        SqlValue::Text(value) => Ok(value),
+        _ => Err(integrity_failure()),
+    }
+}
+
+fn decode_timestamp(value: &SqlValue) -> Result<i64, StorageError> {
+    UtcTimestampMicros::try_from_sql_value(value)
+        .map(UtcTimestampMicros::epoch_micros)
+        .map_err(|_| integrity_failure())
+}
+
+fn decode_receipt_time(micros: i64) -> Result<UtcTimestamp, StorageError> {
+    if micros.rem_euclid(1_000_000) != 0 {
+        return Err(integrity_failure());
+    }
+    Ok(UtcTimestamp::from_unix_seconds(
+        micros.div_euclid(1_000_000),
+    ))
+}
+
+fn decode_hex(value: &str) -> Result<Zeroizing<Vec<u8>>, StorageError> {
+    if value.is_empty() || value.len() > 2 * 1024 * 1024 || !value.len().is_multiple_of(2) {
+        return Err(integrity_failure());
+    }
+    let mut output = Zeroizing::new(Vec::with_capacity(value.len() / 2));
+    for pair in value.as_bytes().chunks_exact(2) {
+        output.push((hex_nibble(pair[0])? << 4) | hex_nibble(pair[1])?);
+    }
+    Ok(output)
+}
+
+fn hex_nibble(value: u8) -> Result<u8, StorageError> {
+    match value {
+        b'0'..=b'9' => Ok(value - b'0'),
+        b'a'..=b'f' => Ok(value - b'a' + 10),
+        _ => Err(integrity_failure()),
+    }
+}
+
+fn rows(output: rnmdb_cli::CommandOutput) -> Result<VectorBatch, StorageError> {
+    match output {
+        rnmdb_cli::CommandOutput::Rows(batch) => Ok(batch),
+        _ => Err(integrity_failure()),
+    }
+}
+
+fn validate_columns(
+    columns: &[ColumnSchema],
+    expected: &[(&str, SqlType)],
+) -> Result<(), StorageError> {
+    let valid = columns.len() == expected.len()
+        && columns.iter().zip(expected).all(|(column, expected)| {
+            column.name() == expected.0 && column.data_type() == &expected.1
+        });
+    if valid {
+        Ok(())
+    } else {
+        Err(integrity_failure())
+    }
+}
+
+fn outbox_columns() -> [(&'static str, SqlType); 14] {
+    [
+        ("tenant_id", SqlType::Text),
+        ("event_id", SqlType::Text),
+        ("topic", SqlType::Text),
+        ("idempotency_key", SqlType::Text),
+        ("payload_hex", SqlType::Text),
+        ("created_at", SqlType::Timestamp),
+        ("available_at", SqlType::Timestamp),
+        ("attempt", SqlType::Int64),
+        ("state", SqlType::Text),
+        ("lease_token", SqlType::Text),
+        ("lease_worker", SqlType::Text),
+        ("lease_expires_at", SqlType::Timestamp),
+        ("delivered_at", SqlType::Timestamp),
+        ("failed_at", SqlType::Timestamp),
+    ]
 }
 
 fn next_sequence(
@@ -338,6 +734,16 @@ fn map_fresh_collision(error: StorageError) -> StorageError {
         integrity_failure()
     } else {
         error
+    }
+}
+
+fn map_reconcile_error(error: StorageError) -> StorageError {
+    match error.code() {
+        StorageErrorCode::Cancelled
+        | StorageErrorCode::DeadlineExceeded
+        | StorageErrorCode::ResourceExhausted
+        | StorageErrorCode::Unavailable => error,
+        _ => integrity_failure(),
     }
 }
 

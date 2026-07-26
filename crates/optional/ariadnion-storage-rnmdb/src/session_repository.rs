@@ -132,7 +132,11 @@ impl SessionRepositoryPort for RnmdbSessionRepository {
             context,
         };
         validate_commit_request(&request).map_err(map_storage_error)?;
-        Err(repository_error(SessionRepositoryErrorCode::Unavailable))
+        self.session
+            .with_storage_session(context, |session| {
+                reconcile_read_only(session, &request, &self.audit_subject_key)
+            })
+            .map_err(map_storage_error)
     }
 }
 
@@ -299,6 +303,90 @@ fn commit_receipt(request: &CommitRequest<'_>, committed_at: UtcTimestamp) -> Se
     )
 }
 
+fn reconcile_read_only(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    key: &AuditSubjectKeyMaterial,
+) -> Result<SessionCommitReceipt, StorageError> {
+    let loaded = decode::load_family_with_history(
+        session,
+        request.tenant_id,
+        request.user_id,
+        request.transition.family().id(),
+    )
+    .map_err(map_reconcile_error)?;
+    let target = authenticate_reconciliation_target(&loaded, request)?;
+    let committed_at = evidence::reconcile_transition_evidence(session, request, key)
+        .map_err(map_reconcile_error)?;
+    verify_optional_successor(session, &loaded, &target, request, key)?;
+    Ok(commit_receipt(request, committed_at))
+}
+
+fn authenticate_reconciliation_target(
+    loaded: &decode::LoadedSessionFamily,
+    request: &CommitRequest<'_>,
+) -> Result<SessionFamily, StorageError> {
+    validate_reconciliation_distance(loaded, request)?;
+    let version = request.transition.family().version();
+    let target = decode::family_at_version(&loaded.family, version)?;
+    let event = event_at(&loaded.events, version)?;
+    if target == *request.transition.family() && event.matches_transition(request.transition) {
+        Ok(target)
+    } else {
+        Err(integrity_failure())
+    }
+}
+
+fn validate_reconciliation_distance(
+    loaded: &decode::LoadedSessionFamily,
+    request: &CommitRequest<'_>,
+) -> Result<(), StorageError> {
+    let target = request.transition.family().version();
+    let one_later = target.next().ok();
+    if loaded.family.version() == target || one_later == Some(loaded.family.version()) {
+        Ok(())
+    } else {
+        Err(integrity_failure())
+    }
+}
+
+fn verify_optional_successor(
+    session: &mut LocalSession,
+    loaded: &decode::LoadedSessionFamily,
+    target: &SessionFamily,
+    request: &CommitRequest<'_>,
+    key: &AuditSubjectKeyMaterial,
+) -> Result<(), StorageError> {
+    if loaded.family.version() == target.version() {
+        return Ok(());
+    }
+    let successor_version = target.version().next().map_err(|_| integrity_failure())?;
+    let successor = decode::family_at_version(&loaded.family, successor_version)?;
+    let event = event_at(&loaded.events, successor_version)?;
+    evidence::verify_persisted_transition_evidence(
+        session,
+        (request.tenant_id, request.user_id),
+        target.version(),
+        &successor,
+        event,
+        key,
+        request.context,
+    )
+    .map_err(map_reconcile_error)
+}
+
+fn event_at(
+    events: &[decode::PersistedSessionEvent],
+    version: SessionFamilyVersion,
+) -> Result<&decode::PersistedSessionEvent, StorageError> {
+    let index = version
+        .get()
+        .checked_sub(1)
+        .and_then(|value| usize::try_from(value).ok())
+        .ok_or_else(integrity_failure)?;
+    events.get(index).ok_or_else(integrity_failure)
+}
+
 fn validate_commit_request(request: &CommitRequest<'_>) -> Result<(), StorageError> {
     let principal = validate_authenticated_tenant(request.context, request.tenant_id)?;
     validate_family_binding(request)?;
@@ -422,6 +510,16 @@ fn map_storage_error(error: StorageError) -> SessionRepositoryError {
         _ => SessionRepositoryErrorCode::IntegrityFailure,
     };
     repository_error(code)
+}
+
+fn map_reconcile_error(error: StorageError) -> StorageError {
+    match error.code() {
+        StorageErrorCode::Cancelled
+        | StorageErrorCode::DeadlineExceeded
+        | StorageErrorCode::ResourceExhausted
+        | StorageErrorCode::Unavailable => error,
+        _ => integrity_failure(),
+    }
 }
 
 const fn repository_error(code: SessionRepositoryErrorCode) -> SessionRepositoryError {

@@ -3,7 +3,7 @@
 use ariadnion_auth_session::{
     MAX_ROTATED_SESSIONS, SessionEventKind, SessionFamily, SessionFamilyId, SessionFamilySnapshot,
     SessionFamilyState, SessionFamilyVersion, SessionId, SessionSnapshot, SessionState,
-    SessionSubject, SessionTokenDigest, SessionVersion,
+    SessionSubject, SessionTokenDigest, SessionTransition, SessionVersion,
 };
 use ariadnion_core::{PrincipalId, TenantId};
 use ariadnion_storage_domain::{StorageError, StorageErrorCode};
@@ -23,9 +23,26 @@ pub(super) fn load_family(
     user: &UserId,
     family: &SessionFamilyId,
 ) -> Result<SessionFamily, StorageError> {
+    load_family_with_history(session, tenant, user, family).map(|loaded| loaded.family)
+}
+
+pub(super) struct LoadedSessionFamily {
+    pub(super) family: SessionFamily,
+    pub(super) events: Vec<PersistedSessionEvent>,
+}
+
+pub(super) fn load_family_with_history(
+    session: &mut LocalSession,
+    tenant: &TenantId,
+    user: &UserId,
+    family: &SessionFamilyId,
+) -> Result<LoadedSessionFamily, StorageError> {
     let decoded = decode_family(session, tenant, user, family)?;
-    verify_events(session, &decoded)?;
-    Ok(decoded)
+    let events = load_events(session, &decoded)?;
+    Ok(LoadedSessionFamily {
+        family: decoded,
+        events,
+    })
 }
 
 fn decode_family(
@@ -225,7 +242,10 @@ fn assemble_snapshot(
     })
 }
 
-fn verify_events(session: &mut LocalSession, family: &SessionFamily) -> Result<(), StorageError> {
+fn load_events(
+    session: &mut LocalSession,
+    family: &SessionFamily,
+) -> Result<Vec<PersistedSessionEvent>, StorageError> {
     let batch = rows(sql::load_events(
         session,
         family.tenant_id(),
@@ -234,7 +254,8 @@ fn verify_events(session: &mut LocalSession, family: &SessionFamily) -> Result<(
     )?)?;
     validate_columns(batch.columns(), event_columns())?;
     let events = decode_events(batch.rows())?;
-    verify_event_history(family, &events)
+    verify_event_history(family, &events)?;
+    Ok(events)
 }
 
 fn decode_events(rows: &[Row]) -> Result<Vec<PersistedSessionEvent>, StorageError> {
@@ -332,19 +353,18 @@ fn terminal_event_matches(family: &SessionFamily, event: &PersistedSessionEvent)
     event.matches_boundary(family)
         && event.session_id == *family.current().id()
         && event.version == family.version()
-        && terminal_kind_matches(family.state(), event.kind)
+        && terminal_kind_matches(family, event.kind)
         && terminal_time_matches(family, event)
 }
 
-fn terminal_kind_matches(state: SessionFamilyState, kind: SessionEventKind) -> bool {
-    match state {
+fn terminal_kind_matches(family: &SessionFamily, kind: SessionEventKind) -> bool {
+    match family.state() {
         SessionFamilyState::Active => false,
-        SessionFamilyState::Revoked => {
-            matches!(
-                kind,
-                SessionEventKind::ReuseRevoked | SessionEventKind::Revoked
-            )
-        }
+        SessionFamilyState::Revoked => match kind {
+            SessionEventKind::ReuseRevoked => !family.rotated().is_empty(),
+            SessionEventKind::Revoked => true,
+            _ => false,
+        },
         SessionFamilyState::Expired => kind == SessionEventKind::Expired,
     }
 }
@@ -362,7 +382,8 @@ fn terminal_time_matches(family: &SessionFamily, event: &PersistedSessionEvent) 
     }
 }
 
-struct PersistedSessionEvent {
+#[derive(Clone)]
+pub(super) struct PersistedSessionEvent {
     tenant: String,
     user: String,
     family_id: SessionFamilyId,
@@ -370,7 +391,7 @@ struct PersistedSessionEvent {
     version: SessionFamilyVersion,
     kind: SessionEventKind,
     occurred_at: UtcTimestamp,
-    _actor: PrincipalId,
+    actor: PrincipalId,
 }
 
 impl PersistedSessionEvent {
@@ -381,6 +402,41 @@ impl PersistedSessionEvent {
                 family.user_id().as_str(),
                 family.id(),
             )
+    }
+
+    pub(super) fn kind(&self) -> SessionEventKind {
+        self.kind
+    }
+
+    pub(super) fn session_id(&self) -> &SessionId {
+        &self.session_id
+    }
+
+    pub(super) fn actor(&self) -> &PrincipalId {
+        &self.actor
+    }
+
+    pub(super) fn occurred_at(&self) -> UtcTimestamp {
+        self.occurred_at
+    }
+
+    pub(super) fn matches_transition(&self, transition: &SessionTransition) -> bool {
+        let event = transition.event();
+        (
+            self.family_id.as_str(),
+            self.session_id.as_str(),
+            self.version,
+            self.kind,
+            self.occurred_at,
+            self.actor.as_str(),
+        ) == (
+            event.family_id().as_str(),
+            event.session_id().as_str(),
+            event.version(),
+            event.kind(),
+            event.occurred_at(),
+            event.actor().as_str(),
+        )
     }
 }
 
@@ -406,7 +462,84 @@ fn decode_session_event(row: &Row) -> Result<PersistedSessionEvent, StorageError
         version: parse_family_version(version)?,
         kind: parse_event_kind(kind)?,
         occurred_at: UtcTimestamp::from_unix_seconds(*occurred_at),
-        _actor: PrincipalId::parse(actor).map_err(|_| integrity_failure())?,
+        actor: PrincipalId::parse(actor).map_err(|_| integrity_failure())?,
+    })
+}
+
+pub(super) fn family_at_version(
+    durable: &SessionFamily,
+    version: SessionFamilyVersion,
+) -> Result<SessionFamily, StorageError> {
+    if version == durable.version() {
+        return Ok(durable.clone());
+    }
+    historical_active_family(durable, version)
+}
+
+fn historical_active_family(
+    durable: &SessionFamily,
+    version: SessionFamilyVersion,
+) -> Result<SessionFamily, StorageError> {
+    let snapshot = durable.snapshot_state();
+    let leaves = ordered_leaf_snapshots(&snapshot);
+    let current_index = version_index(version)?;
+    let current = leaves
+        .get(current_index)
+        .ok_or_else(integrity_failure)
+        .and_then(|leaf| historical_leaf(leaf, SessionState::Active))?;
+    let rotated = leaves[..current_index]
+        .iter()
+        .map(|leaf| historical_leaf(leaf, SessionState::Rotated))
+        .collect::<Result<Vec<_>, _>>()?;
+    SessionFamily::from_snapshot(SessionFamilySnapshot {
+        id: snapshot.id,
+        subject: snapshot.subject,
+        issued_at: snapshot.issued_at,
+        absolute_expires_at: snapshot.absolute_expires_at,
+        version,
+        state: SessionFamilyState::Active,
+        current,
+        rotated,
+    })
+    .map_err(|_| integrity_failure())
+}
+
+fn ordered_leaf_snapshots(snapshot: &SessionFamilySnapshot) -> Vec<&SessionSnapshot> {
+    snapshot
+        .rotated
+        .iter()
+        .chain(std::iter::once(&snapshot.current))
+        .collect()
+}
+
+fn version_index(version: SessionFamilyVersion) -> Result<usize, StorageError> {
+    version
+        .get()
+        .checked_sub(1)
+        .and_then(|value| usize::try_from(value).ok())
+        .ok_or_else(integrity_failure)
+}
+
+fn historical_leaf(
+    source: &SessionSnapshot,
+    state: SessionState,
+) -> Result<SessionSnapshot, StorageError> {
+    let version = match state {
+        SessionState::Active => Ok(SessionVersion::initial()),
+        SessionState::Rotated => SessionVersion::new(2).map_err(|_| integrity_failure()),
+        SessionState::Revoked | SessionState::Expired => Err(integrity_failure()),
+    };
+    Ok(SessionSnapshot {
+        family_id: source.family_id.clone(),
+        subject: source.subject.clone(),
+        id: source.id.clone(),
+        token_digest: source.token_digest,
+        issued_at: source.issued_at,
+        last_seen_at: source.last_seen_at,
+        idle_expires_at: source.idle_expires_at,
+        version: version?,
+        state,
+        predecessor_id: source.predecessor_id.clone(),
     })
 }
 
