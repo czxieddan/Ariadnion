@@ -7,6 +7,7 @@ mod error;
 mod ids;
 pub mod migrations;
 mod model;
+mod repository;
 mod transition;
 
 pub use error::{SessionError, SessionErrorCode};
@@ -17,6 +18,9 @@ pub use model::{
     SessionFamilySnapshot, SessionFamilyState, SessionIssueBinding, SessionIssueRequest,
     SessionProofDigest, SessionSnapshot, SessionState, SessionSubject, SessionTokenDigest,
     SessionValidityWindow,
+};
+pub use repository::{
+    SessionCommitReceipt, SessionRepositoryError, SessionRepositoryErrorCode, SessionRepositoryPort,
 };
 pub use transition::{
     SessionAction, SessionCommand, SessionEvent, SessionEventKind, SessionRotation,
