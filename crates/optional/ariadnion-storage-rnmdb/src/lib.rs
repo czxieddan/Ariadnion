@@ -22,6 +22,7 @@ mod migration_executor;
 mod module;
 mod organization_repository;
 mod outbox;
+mod password_repository;
 mod query;
 mod restore;
 mod secret_reference;
@@ -49,9 +50,9 @@ pub use migration::{
     MigrationApplyStatus, RnmdbMigrationRunner, identity_api_key_migration,
     identity_audit_migration, identity_invitation_migration,
     identity_organization_event_replay_migration, identity_organization_migration,
-    identity_password_migration, identity_rbac_migration, identity_session_migration,
-    identity_users_migration, platform_initial_migration, platform_outbox_migration,
-    platform_secret_references_migration,
+    identity_password_commit_evidence_migration, identity_password_migration,
+    identity_rbac_migration, identity_session_migration, identity_users_migration,
+    platform_initial_migration, platform_outbox_migration, platform_secret_references_migration,
 };
 pub use migration_definition::canonical_migration_checksum;
 pub use migration_executor::{RnmdbMigrationExecutor, RnmdbMigrationPageKeys};
@@ -60,6 +61,7 @@ pub use organization_repository::{
     MAX_ORGANIZATION_EVENT_HISTORY_ROWS, RnmdbOrganizationRepository,
 };
 pub use outbox::{OutboxLeaseKeyMaterial, RnmdbOutboxRepository};
+pub use password_repository::RnmdbPasswordRepository;
 pub use query::{
     FixedRnmdbReadQuery, QueryPlanDiagnostic, QueryPlanFormat, RnmdbFixedQueryExecutor,
     RnmdbQueryDiagnostics,
