@@ -5,6 +5,7 @@
 
 use std::any::type_name;
 
+mod api_key_repository;
 mod audit_repository;
 mod backup;
 mod codec;
@@ -35,6 +36,7 @@ mod udf;
 mod upgrade;
 mod user_repository;
 
+pub use api_key_repository::RnmdbApiKeyRepository;
 pub use audit_repository::{MAX_AUDIT_MEMBERSHIP_DISTANCE, RnmdbAuditRepository};
 pub use backup::{RnmdbBackupAdapter, RnmdbBackupEnvironment};
 pub use codec::{CurrencyCode, MoneyValue, NormalizedJson, StorageUuid, UtcTimestampMicros};

@@ -269,9 +269,14 @@ fn verify_events(session: &mut LocalSession, key: &ApiKey) -> Result<(), Storage
     let batch = rows(sql::load_events(session, key.tenant_id(), key.id())?)?;
     validate_columns(batch.columns(), event_columns())?;
     let events = decode_events(batch.rows(), key)?;
-    verify_issuance_event(&events[0], key)?;
+    verify_first_event(&events, key)?;
     verify_contiguous_events(&events, key)?;
     verify_final_event(events.last().ok_or_else(integrity_failure)?, key)
+}
+
+fn verify_first_event(events: &[PersistedEvent], key: &ApiKey) -> Result<(), StorageError> {
+    let first = events.first().ok_or_else(integrity_failure)?;
+    verify_issuance_event(first, key)
 }
 
 fn decode_events(rows: &[Row], key: &ApiKey) -> Result<Vec<PersistedEvent>, StorageError> {
@@ -283,7 +288,7 @@ fn decode_events(rows: &[Row], key: &ApiKey) -> Result<Vec<PersistedEvent>, Stor
 }
 
 struct PersistedEvent {
-    tenant: String,
+    tenant: TenantId,
     key: ApiKeyId,
     user: UserId,
     version: ApiKeyVersion,
@@ -320,14 +325,14 @@ fn decode_event(row: &Row) -> Result<PersistedEvent, StorageError> {
 }
 
 struct EventBoundary {
-    tenant: String,
+    tenant: TenantId,
     key: ApiKeyId,
     user: UserId,
 }
 
 fn decode_event_boundary(values: &[SqlValue]) -> Result<EventBoundary, StorageError> {
     Ok(EventBoundary {
-        tenant: text_at(values, 0)?.to_owned(),
+        tenant: TenantId::parse(text_at(values, 0)?).map_err(|_| integrity_failure())?,
         key: parse_key_id(text_at(values, 1)?)?,
         user: parse_user(text_at(values, 2)?)?,
     })
@@ -461,9 +466,7 @@ fn verify_final_event(event: &PersistedEvent, key: &ApiKey) -> Result<(), Storag
 
 impl PersistedEvent {
     fn matches_boundary(&self, key: &ApiKey) -> bool {
-        self.tenant == key.tenant_id().as_str()
-            && self.user == *key.user_id()
-            && self.key == *key.id()
+        self.tenant == *key.tenant_id() && self.user == *key.user_id() && self.key == *key.id()
     }
 }
 
