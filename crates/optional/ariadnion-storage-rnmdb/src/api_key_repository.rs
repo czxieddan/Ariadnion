@@ -22,7 +22,7 @@ use crate::{AuditSubjectKeyMaterial, RnmdbSessionOwner, SessionOpenOptions};
 
 pub(super) const MAX_API_KEY_EVENT_ROWS: usize = MAX_RETIRED_SECRETS * 2 + 2;
 
-/// Persists complete API-key snapshots and immutable issuance evidence.
+/// Persists complete API-key snapshots and immutable lifecycle evidence.
 pub struct RnmdbApiKeyRepository {
     session: Arc<RnmdbSessionOwner>,
     audit_subject_key: AuditSubjectKeyMaterial,
@@ -108,14 +108,12 @@ impl ApiKeyRepositoryPort for RnmdbApiKeyRepository {
             context,
         };
         validate_commit_binding(&request).map_err(map_storage_error)?;
-        if !is_issuance(&request) {
-            return Err(repository_error(ApiKeyRepositoryErrorCode::Unavailable));
-        }
-        validate_issuance_shape(&request).map_err(map_storage_error)?;
+        let kind = commit_kind(&request).map_err(map_storage_error)?;
+        validate_commit_shape(&request, kind).map_err(map_storage_error)?;
         self.session
             .with_identity_transaction_session(context, tenant_id, |session| {
                 run_identity_transaction(session, context, |session| {
-                    commit_issuance(session, &request, &self.audit_subject_key)
+                    commit_transition(session, &request, &self.audit_subject_key, kind)
                 })
             })
             .map_err(map_storage_error)
@@ -137,7 +135,13 @@ impl ApiKeyRepositoryPort for RnmdbApiKeyRepository {
             context,
         };
         validate_commit_binding(&request).map_err(map_storage_error)?;
-        Err(repository_error(ApiKeyRepositoryErrorCode::Unavailable))
+        let kind = commit_kind(&request).map_err(map_storage_error)?;
+        validate_commit_shape(&request, kind).map_err(map_storage_error)?;
+        self.session
+            .with_identity_storage_session(context, tenant_id, |session| {
+                reconcile_exact(session, &request, &self.audit_subject_key)
+            })
+            .map_err(map_storage_error)
     }
 }
 
@@ -147,6 +151,26 @@ pub(super) struct CommitRequest<'a> {
     pub(super) expected_previous_version: ApiKeyVersion,
     pub(super) transition: &'a ApiKeyTransition,
     pub(super) context: &'a RequestContext,
+}
+
+#[derive(Clone, Copy)]
+enum CommitKind {
+    Issuance,
+    Rotation,
+    RotationCompletion,
+}
+
+fn commit_transition(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    subject_key: &AuditSubjectKeyMaterial,
+    kind: CommitKind,
+) -> Result<ApiKeyCommitReceipt, StorageError> {
+    match kind {
+        CommitKind::Issuance => commit_issuance(session, request, subject_key),
+        CommitKind::Rotation => commit_rotation(session, request, subject_key),
+        CommitKind::RotationCompletion => commit_rotation_completion(session, request, subject_key),
+    }
 }
 
 fn commit_issuance(
@@ -165,6 +189,57 @@ fn commit_issuance(
     Ok(commit_receipt(request, committed_at))
 }
 
+fn commit_rotation(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    subject_key: &AuditSubjectKeyMaterial,
+) -> Result<ApiKeyCommitReceipt, StorageError> {
+    let durable = decode::load_key(
+        session,
+        request.tenant_id,
+        request.user_id,
+        request.transition.key().id(),
+    )?;
+    validate_rotation_precondition(request, &durable)?;
+    sql::update_rotation(session, request, &durable)?;
+    sql::insert_event(
+        session,
+        request.transition.event(),
+        request.transition.key(),
+    )?;
+    let committed_at = trusted_commit_time()?;
+    evidence::persist_transition_evidence(session, request, subject_key, committed_at)?;
+    Ok(commit_receipt(request, committed_at))
+}
+
+fn commit_rotation_completion(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    subject_key: &AuditSubjectKeyMaterial,
+) -> Result<ApiKeyCommitReceipt, StorageError> {
+    let durable = decode::load_key(
+        session,
+        request.tenant_id,
+        request.user_id,
+        request.transition.key().id(),
+    )?;
+    validate_completion_precondition(request, &durable)?;
+    sql::update_rotation_completion(session, request, &durable)?;
+    sql::insert_retired_at(
+        session,
+        request.transition.key(),
+        durable.retired_secrets().len(),
+    )?;
+    sql::insert_event(
+        session,
+        request.transition.event(),
+        request.transition.key(),
+    )?;
+    let committed_at = trusted_commit_time()?;
+    evidence::persist_transition_evidence(session, request, subject_key, committed_at)?;
+    Ok(commit_receipt(request, committed_at))
+}
+
 fn commit_receipt(request: &CommitRequest<'_>, committed_at: UtcTimestamp) -> ApiKeyCommitReceipt {
     let key = request.transition.key();
     ApiKeyCommitReceipt::new(
@@ -174,6 +249,26 @@ fn commit_receipt(request: &CommitRequest<'_>, committed_at: UtcTimestamp) -> Ap
         key.version(),
         committed_at,
     )
+}
+
+fn reconcile_exact(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    subject_key: &AuditSubjectKeyMaterial,
+) -> Result<ApiKeyCommitReceipt, StorageError> {
+    let target = request.transition.key();
+    let durable = decode::load_key(session, request.tenant_id, request.user_id, target.id())
+        .map_err(map_reconcile_error)?;
+    validate_reconciliation_snapshot(&durable, target)?;
+    decode::verify_target_event(session, request, &durable).map_err(map_reconcile_error)?;
+    let committed_at = evidence::reconcile_transition_evidence(session, request, subject_key)
+        .map_err(map_reconcile_error)?;
+    Ok(commit_receipt(request, committed_at))
+}
+
+fn validate_reconciliation_snapshot(durable: &ApiKey, target: &ApiKey) -> Result<(), StorageError> {
+    let valid = durable.version() >= target.version() && immutable_fields_match(durable, target);
+    valid.then_some(()).ok_or_else(integrity_failure)
 }
 
 fn validate_commit_binding(request: &CommitRequest<'_>) -> Result<(), StorageError> {
@@ -210,6 +305,130 @@ fn validate_issuance_shape(request: &CommitRequest<'_>) -> Result<(), StorageErr
     validate_initial_state(request)
 }
 
+fn validate_commit_shape(
+    request: &CommitRequest<'_>,
+    kind: CommitKind,
+) -> Result<(), StorageError> {
+    match kind {
+        CommitKind::Issuance => validate_issuance_shape(request),
+        CommitKind::Rotation => validate_rotation_shape(request),
+        CommitKind::RotationCompletion => validate_completion_shape(request),
+    }
+}
+
+fn validate_rotation_shape(request: &CommitRequest<'_>) -> Result<(), StorageError> {
+    let key = request.transition.key();
+    let event = request.transition.event();
+    let next = request
+        .expected_previous_version
+        .get()
+        .checked_add(1)
+        .ok_or_else(integrity_failure)?;
+    let valid = key.version().get() == next
+        && event.kind() == ApiKeyEventKind::Rotated
+        && key.state() == ApiKeyState::Rotating
+        && key.previous_secret().is_some()
+        && key.rotation_started_at() == Some(event.occurred_at())
+        && key.previous_secret_expires_at().is_some();
+    valid.then_some(()).ok_or_else(integrity_failure)
+}
+
+fn validate_completion_shape(request: &CommitRequest<'_>) -> Result<(), StorageError> {
+    let key = request.transition.key();
+    let event = request.transition.event();
+    let next = request
+        .expected_previous_version
+        .get()
+        .checked_add(1)
+        .ok_or_else(integrity_failure)?;
+    let valid = key.version().get() == next
+        && event.kind() == ApiKeyEventKind::RotationCompleted
+        && key.state() == ApiKeyState::Active
+        && key.previous_secret().is_none()
+        && key.rotation_started_at().is_none()
+        && key.previous_secret_expires_at().is_none();
+    valid.then_some(()).ok_or_else(integrity_failure)
+}
+
+fn validate_rotation_precondition(
+    request: &CommitRequest<'_>,
+    durable: &ApiKey,
+) -> Result<(), StorageError> {
+    if durable.version() != request.expected_previous_version {
+        return Err(StorageError::new(StorageErrorCode::Conflict));
+    }
+    validate_rotation_snapshot(durable, request.transition.key())
+}
+
+fn validate_rotation_snapshot(durable: &ApiKey, target: &ApiKey) -> Result<(), StorageError> {
+    if !immutable_fields_match(durable, target) {
+        return Err(integrity_failure());
+    }
+    let matches = durable.retired_secrets() == target.retired_secrets()
+        && rotation_state_matches(durable, target);
+    matches
+        .then_some(())
+        .ok_or_else(|| StorageError::new(StorageErrorCode::Conflict))
+}
+
+fn immutable_fields_match(durable: &ApiKey, target: &ApiKey) -> bool {
+    durable.id() == target.id()
+        && durable.tenant_id() == target.tenant_id()
+        && durable.user_id() == target.user_id()
+        && durable.prefix() == target.prefix()
+        && durable.scopes() == target.scopes()
+        && durable.issued_at() == target.issued_at()
+        && durable.expires_at() == target.expires_at()
+}
+
+fn rotation_state_matches(durable: &ApiKey, target: &ApiKey) -> bool {
+    durable.state() == ApiKeyState::Active
+        && durable.previous_secret().is_none()
+        && durable.rotation_started_at().is_none()
+        && durable.previous_secret_expires_at().is_none()
+        && target.previous_secret() == Some(durable.current_secret())
+}
+
+fn validate_completion_precondition(
+    request: &CommitRequest<'_>,
+    durable: &ApiKey,
+) -> Result<(), StorageError> {
+    if durable.version() != request.expected_previous_version {
+        return Err(StorageError::new(StorageErrorCode::Conflict));
+    }
+    let target = request.transition.key();
+    if !immutable_fields_match(durable, target) {
+        return Err(integrity_failure());
+    }
+    completion_state_matches(durable, target)
+        .then_some(())
+        .ok_or_else(|| StorageError::new(StorageErrorCode::Conflict))
+}
+
+fn completion_state_matches(durable: &ApiKey, target: &ApiKey) -> bool {
+    let expected_retired = durable
+        .previous_secret()
+        .and_then(|previous| appended_retired_matches(durable, target, previous));
+    durable.state() == ApiKeyState::Rotating
+        && durable.rotation_started_at().is_some()
+        && durable.previous_secret_expires_at().is_some()
+        && target.current_secret() == durable.current_secret()
+        && expected_retired.is_some()
+}
+
+fn appended_retired_matches(
+    durable: &ApiKey,
+    target: &ApiKey,
+    previous: ariadnion_auth_api_key::ApiKeySecretDigest,
+) -> Option<()> {
+    let expected_len = durable.retired_secrets().len().checked_add(1)?;
+    let (last, prefix) = target.retired_secrets().split_last()?;
+    (target.retired_secrets().len() == expected_len
+        && prefix == durable.retired_secrets()
+        && *last == previous)
+        .then_some(())
+}
+
 fn validate_initial_version(request: &CommitRequest<'_>) -> Result<(), StorageError> {
     let key = request.transition.key();
     let event = request.transition.event();
@@ -234,6 +453,15 @@ fn is_issuance(request: &CommitRequest<'_>) -> bool {
     request.expected_previous_version == ApiKeyVersion::initial()
         && request.transition.key().version() == ApiKeyVersion::initial()
         && request.transition.event().kind() == ApiKeyEventKind::Issued
+}
+
+fn commit_kind(request: &CommitRequest<'_>) -> Result<CommitKind, StorageError> {
+    match request.transition.event().kind() {
+        ApiKeyEventKind::Issued if is_issuance(request) => Ok(CommitKind::Issuance),
+        ApiKeyEventKind::Rotated => Ok(CommitKind::Rotation),
+        ApiKeyEventKind::RotationCompleted => Ok(CommitKind::RotationCompletion),
+        _ => Err(StorageError::new(StorageErrorCode::Unavailable)),
+    }
 }
 
 pub(super) fn authenticated_principal(
@@ -284,6 +512,16 @@ fn map_storage_error(error: StorageError) -> ApiKeyRepositoryError {
         _ => ApiKeyRepositoryErrorCode::IntegrityFailure,
     };
     repository_error(code)
+}
+
+fn map_reconcile_error(error: StorageError) -> StorageError {
+    match error.code() {
+        StorageErrorCode::Cancelled
+        | StorageErrorCode::DeadlineExceeded
+        | StorageErrorCode::ResourceExhausted
+        | StorageErrorCode::Unavailable => error,
+        _ => integrity_failure(),
+    }
 }
 
 const fn repository_error(code: ApiKeyRepositoryErrorCode) -> ApiKeyRepositoryError {

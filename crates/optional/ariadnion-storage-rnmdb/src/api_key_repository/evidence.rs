@@ -1,4 +1,4 @@
-//! Deterministic audit and outbox evidence for API-key issuance.
+//! Deterministic audit and outbox evidence for API-key lifecycle transitions.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -10,18 +10,23 @@ use ariadnion_audit_domain::{
 use ariadnion_auth_api_key::{ApiKey, ApiKeyEventKind};
 use ariadnion_storage_domain::{StorageError, StorageErrorCode};
 use ariadnion_storage_outbox::{
-    EnqueueStatus, NewOutboxMessage, OutboxEventId, OutboxIdempotencyKey, OutboxPayload,
-    OutboxTopic,
+    EnqueueStatus, NewOutboxMessage, OutboxEventId, OutboxIdempotencyKey, OutboxLeaseToken,
+    OutboxPayload, OutboxTopic, OutboxWorkerId,
 };
 use ariadnion_user_domain::UtcTimestamp;
 use hmac::{Hmac, Mac};
 use rnmdb_cli::LocalSession;
+use rnmdb_executor::vector::{ColumnSchema, Row, VectorBatch};
+use rnmdb_types::{SqlType, SqlValue};
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
 use super::{CommitRequest, authenticated_principal, integrity_failure};
 use crate::AuditSubjectKeyMaterial;
-use crate::audit_repository::{append_in_transaction, load_event_by_id, load_head_from_session};
+use crate::UtcTimestampMicros;
+use crate::audit_repository::{
+    append_in_transaction, load_durable_event_with_head, load_event_by_id, load_head_from_session,
+};
 use crate::outbox::enqueue_message;
 
 const SUBJECT_DOMAIN: &[u8] = b"ariadnion.api-key.audit-subject.v1\0";
@@ -44,6 +49,67 @@ pub(super) fn persist_transition_evidence(
     let evidence = TransitionEvidence::new(request, key, committed_at)?;
     append_audit(session, request, &evidence)?;
     enqueue_outbox(session, request, &evidence)
+}
+
+pub(super) fn reconcile_transition_evidence(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    key: &AuditSubjectKeyMaterial,
+) -> Result<UtcTimestamp, StorageError> {
+    let identity = reconciliation_identity(request)?;
+    let outbox = load_outbox(session, request, &identity.outbox_id, &identity.outbox_key)?;
+    let evidence = TransitionEvidence::new(request, key, outbox.committed_at)?;
+    validate_reconciled_evidence(&evidence, &outbox, &identity)?;
+    reconcile_audit(session, &evidence, request.context)?;
+    Ok(outbox.committed_at)
+}
+
+struct ReconciliationIdentity {
+    audit_id: AuditEventId,
+    outbox_id: OutboxEventId,
+    outbox_key: OutboxIdempotencyKey,
+}
+
+fn reconciliation_identity(
+    request: &CommitRequest<'_>,
+) -> Result<ReconciliationIdentity, StorageError> {
+    let canonical = canonical_identity(request)?;
+    Ok(ReconciliationIdentity {
+        audit_id: derive_audit_id(&canonical)?,
+        outbox_id: derive_outbox_id(&canonical)?,
+        outbox_key: derive_outbox_key(&canonical)?,
+    })
+}
+
+fn validate_reconciled_evidence(
+    evidence: &TransitionEvidence,
+    outbox: &PersistedOutbox,
+    identity: &ReconciliationIdentity,
+) -> Result<(), StorageError> {
+    let matches = evidence.audit_id == identity.audit_id
+        && evidence.payload.as_slice() == outbox.payload.as_slice();
+    if matches {
+        Ok(())
+    } else {
+        Err(integrity_failure())
+    }
+}
+
+fn reconcile_audit(
+    session: &mut LocalSession,
+    evidence: &TransitionEvidence,
+    context: &ariadnion_core::RequestContext,
+) -> Result<(), StorageError> {
+    let (persisted, _) =
+        load_durable_event_with_head(session, &evidence.tenant, &evidence.audit_id, context)
+            .map_err(map_reconcile_error)?;
+    let expected =
+        evidence.audit_event_at(persisted.sequence(), persisted.previous_chain_digest())?;
+    if persisted == expected {
+        Ok(())
+    } else {
+        Err(integrity_failure())
+    }
 }
 
 fn append_audit(
@@ -80,6 +146,7 @@ fn enqueue_outbox(
 struct TransitionEvidence {
     tenant: ariadnion_core::TenantId,
     actor: ariadnion_core::PrincipalId,
+    event_kind: ApiKeyEventKind,
     occurred_at: UtcTimestamp,
     subject: AuditSubjectDigest,
     audit_id: AuditEventId,
@@ -100,6 +167,7 @@ impl TransitionEvidence {
         Ok(Self {
             tenant: request.tenant_id.clone(),
             actor: event.actor().clone(),
+            event_kind: event.kind(),
             occurred_at: event.occurred_at(),
             subject: subject_digest(request, key)?,
             audit_id: derive_audit_id(&canonical)?,
@@ -114,19 +182,28 @@ impl TransitionEvidence {
         &self,
         head: &ariadnion_audit_store::AuditChainHead,
     ) -> Result<ariadnion_audit_domain::AuditEvent, StorageError> {
+        self.audit_event_at(next_sequence(head)?, head.chain_digest())
+    }
+
+    fn audit_event_at(
+        &self,
+        sequence: AuditSequence,
+        previous: Option<ariadnion_audit_domain::AuditChainDigest>,
+    ) -> Result<ariadnion_audit_domain::AuditEvent, StorageError> {
+        let (kind, reason) = audit_descriptor(self.event_kind)?;
         let binding = AuditEventBinding::new(
             self.audit_id.clone(),
             self.tenant.clone(),
             self.actor.clone(),
             self.occurred_at,
-            next_sequence(head)?,
+            sequence,
         );
         let content = AuditEventContent::new(
-            AuditEventKind::Issued,
+            kind,
             AuditSubject::from_digest(AuditSubjectKind::ApiKey, self.subject),
-            "API_KEY_ISSUED",
+            reason,
             AuditPayloadDigest::from_payload(&self.payload).map_err(|_| integrity_failure())?,
-            head.chain_digest(),
+            previous,
         )
         .map_err(|_| integrity_failure())?;
         build_audit_event(AuditEventRequest::new(binding, content)).map_err(|_| integrity_failure())
@@ -141,6 +218,275 @@ impl TransitionEvidence {
             OutboxPayload::new(&self.payload).map_err(|_| integrity_failure())?,
             system_time(self.committed_at)?,
         ))
+    }
+}
+
+struct PersistedOutbox {
+    committed_at: UtcTimestamp,
+    payload: Zeroizing<Vec<u8>>,
+}
+
+fn load_outbox(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    event_id: &OutboxEventId,
+    key: &OutboxIdempotencyKey,
+) -> Result<PersistedOutbox, StorageError> {
+    let output =
+        super::sql::load_outbox(session, request.tenant_id, event_id.as_str(), key.as_str())?;
+    let batch = rows(output)?;
+    validate_columns(batch.columns(), &outbox_columns())?;
+    let [row] = batch.rows() else {
+        return Err(integrity_failure());
+    };
+    decode_outbox_row(row, request, event_id, key)
+}
+
+fn decode_outbox_row(
+    row: &Row,
+    request: &CommitRequest<'_>,
+    expected_event: &OutboxEventId,
+    expected_key: &OutboxIdempotencyKey,
+) -> Result<PersistedOutbox, StorageError> {
+    let [
+        SqlValue::Text(tenant),
+        SqlValue::Text(event_id),
+        SqlValue::Text(topic),
+        SqlValue::Text(key),
+        SqlValue::Text(payload),
+        created_at,
+        available_at,
+        SqlValue::Int64(attempt),
+        SqlValue::Text(state),
+        lease_token,
+        lease_worker,
+        lease_expires_at,
+        delivered_at,
+        failed_at,
+    ] = row.values()
+    else {
+        return Err(integrity_failure());
+    };
+    let identity = PersistedOutboxIdentity {
+        tenant,
+        event_id,
+        topic,
+        key,
+    };
+    validate_outbox_identity(&identity, request, expected_event, expected_key)?;
+    let created = decode_timestamp(created_at)?;
+    let available = decode_timestamp(available_at)?;
+    validate_outbox_lifecycle(
+        *attempt,
+        state,
+        created,
+        available,
+        &[
+            lease_token,
+            lease_worker,
+            lease_expires_at,
+            delivered_at,
+            failed_at,
+        ],
+    )?;
+    Ok(PersistedOutbox {
+        committed_at: decode_receipt_time(created)?,
+        payload: decode_hex(payload)?,
+    })
+}
+
+struct PersistedOutboxIdentity<'a> {
+    tenant: &'a str,
+    event_id: &'a str,
+    topic: &'a str,
+    key: &'a str,
+}
+
+fn validate_outbox_identity(
+    actual: &PersistedOutboxIdentity<'_>,
+    request: &CommitRequest<'_>,
+    event: &OutboxEventId,
+    key: &OutboxIdempotencyKey,
+) -> Result<(), StorageError> {
+    let matches = actual.tenant == request.tenant_id.as_str()
+        && actual.event_id == event.as_str()
+        && actual.topic == OUTBOX_TOPIC
+        && actual.key == key.as_str();
+    matches.then_some(()).ok_or_else(integrity_failure)
+}
+
+fn validate_outbox_lifecycle(
+    attempt: i64,
+    state: &str,
+    created: i64,
+    available: i64,
+    mutable: &[&SqlValue; 5],
+) -> Result<(), StorageError> {
+    match state {
+        "pending" => validate_pending(attempt, created, available, mutable),
+        "leased" => validate_leased(attempt, mutable),
+        "delivered" => validate_terminal(attempt, mutable, true),
+        "dead" => validate_terminal(attempt, mutable, false),
+        _ => Err(integrity_failure()),
+    }
+}
+
+fn validate_pending(
+    attempt: i64,
+    created: i64,
+    available: i64,
+    mutable: &[&SqlValue; 5],
+) -> Result<(), StorageError> {
+    if !valid_attempt(attempt, true) || (attempt == 0 && created != available) {
+        return Err(integrity_failure());
+    }
+    require_all_null(mutable)
+}
+
+fn validate_leased(attempt: i64, mutable: &[&SqlValue; 5]) -> Result<(), StorageError> {
+    if !valid_attempt(attempt, false) {
+        return Err(integrity_failure());
+    }
+    decode_lease_token(mutable[0])?;
+    let worker = required_text(mutable[1])?;
+    OutboxWorkerId::parse(worker).map_err(|_| integrity_failure())?;
+    decode_timestamp(mutable[2])?;
+    require_all_null(&[mutable[3], mutable[4]])
+}
+
+fn validate_terminal(
+    attempt: i64,
+    mutable: &[&SqlValue; 5],
+    delivered: bool,
+) -> Result<(), StorageError> {
+    if !valid_attempt(attempt, false) {
+        return Err(integrity_failure());
+    }
+    require_all_null(&[mutable[0], mutable[1], mutable[2]])?;
+    let terminal = if delivered {
+        [mutable[3], mutable[4]]
+    } else {
+        [mutable[4], mutable[3]]
+    };
+    decode_timestamp(terminal[0])?;
+    require_all_null(&[terminal[1]])
+}
+
+fn valid_attempt(attempt: i64, allow_zero: bool) -> bool {
+    attempt >= 0 && u32::try_from(attempt).is_ok() && (allow_zero || attempt > 0)
+}
+
+fn require_all_null(values: &[&SqlValue]) -> Result<(), StorageError> {
+    values
+        .iter()
+        .all(|value| matches!(value, SqlValue::Null))
+        .then_some(())
+        .ok_or_else(integrity_failure)
+}
+
+fn decode_lease_token(value: &SqlValue) -> Result<(), StorageError> {
+    let bytes = decode_hex(required_text(value)?)?;
+    OutboxLeaseToken::new(&bytes)
+        .map(|_| ())
+        .map_err(|_| integrity_failure())
+}
+
+fn required_text(value: &SqlValue) -> Result<&str, StorageError> {
+    match value {
+        SqlValue::Text(value) => Ok(value),
+        _ => Err(integrity_failure()),
+    }
+}
+
+fn decode_timestamp(value: &SqlValue) -> Result<i64, StorageError> {
+    UtcTimestampMicros::try_from_sql_value(value)
+        .map(UtcTimestampMicros::epoch_micros)
+        .map_err(|_| integrity_failure())
+}
+
+fn decode_receipt_time(micros: i64) -> Result<UtcTimestamp, StorageError> {
+    if micros.rem_euclid(1_000_000) != 0 {
+        return Err(integrity_failure());
+    }
+    Ok(UtcTimestamp::from_unix_seconds(
+        micros.div_euclid(1_000_000),
+    ))
+}
+
+fn decode_hex(value: &str) -> Result<Zeroizing<Vec<u8>>, StorageError> {
+    if value.is_empty() || value.len() > 2 * 1024 * 1024 || !value.len().is_multiple_of(2) {
+        return Err(integrity_failure());
+    }
+    let mut output = Zeroizing::new(Vec::with_capacity(value.len() / 2));
+    for pair in value.as_bytes().chunks_exact(2) {
+        output.push((hex_nibble(pair[0])? << 4) | hex_nibble(pair[1])?);
+    }
+    Ok(output)
+}
+
+fn hex_nibble(value: u8) -> Result<u8, StorageError> {
+    match value {
+        b'0'..=b'9' => Ok(value - b'0'),
+        b'a'..=b'f' => Ok(value - b'a' + 10),
+        _ => Err(integrity_failure()),
+    }
+}
+
+fn rows(output: rnmdb_cli::CommandOutput) -> Result<VectorBatch, StorageError> {
+    match output {
+        rnmdb_cli::CommandOutput::Rows(batch) => Ok(batch),
+        _ => Err(integrity_failure()),
+    }
+}
+
+fn validate_columns(
+    columns: &[ColumnSchema],
+    expected: &[(&str, SqlType)],
+) -> Result<(), StorageError> {
+    let valid = columns.len() == expected.len()
+        && columns.iter().zip(expected).all(|(column, expected)| {
+            column.name() == expected.0 && column.data_type() == &expected.1
+        });
+    valid.then_some(()).ok_or_else(integrity_failure)
+}
+
+fn outbox_columns() -> [(&'static str, SqlType); 14] {
+    [
+        ("tenant_id", SqlType::Text),
+        ("event_id", SqlType::Text),
+        ("topic", SqlType::Text),
+        ("idempotency_key", SqlType::Text),
+        ("payload_hex", SqlType::Text),
+        ("created_at", SqlType::Timestamp),
+        ("available_at", SqlType::Timestamp),
+        ("attempt", SqlType::Int64),
+        ("state", SqlType::Text),
+        ("lease_token", SqlType::Text),
+        ("lease_worker", SqlType::Text),
+        ("lease_expires_at", SqlType::Timestamp),
+        ("delivered_at", SqlType::Timestamp),
+        ("failed_at", SqlType::Timestamp),
+    ]
+}
+
+fn map_reconcile_error(error: StorageError) -> StorageError {
+    match error.code() {
+        StorageErrorCode::Cancelled
+        | StorageErrorCode::DeadlineExceeded
+        | StorageErrorCode::ResourceExhausted
+        | StorageErrorCode::Unavailable => error,
+        _ => integrity_failure(),
+    }
+}
+
+fn audit_descriptor(kind: ApiKeyEventKind) -> Result<(AuditEventKind, &'static str), StorageError> {
+    match kind {
+        ApiKeyEventKind::Issued => Ok((AuditEventKind::Issued, "API_KEY_ISSUED")),
+        ApiKeyEventKind::Rotated => Ok((AuditEventKind::Rotated, "API_KEY_ROTATED")),
+        ApiKeyEventKind::RotationCompleted => {
+            Ok((AuditEventKind::Rotated, "API_KEY_ROTATION_COMPLETED"))
+        }
+        _ => Err(integrity_failure()),
     }
 }
 

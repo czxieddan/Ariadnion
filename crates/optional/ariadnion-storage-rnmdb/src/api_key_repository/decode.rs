@@ -266,12 +266,45 @@ fn decode_retired_row(
 }
 
 fn verify_events(session: &mut LocalSession, key: &ApiKey) -> Result<(), StorageError> {
+    let events = load_events(session, key)?;
+    verify_event_history(&events, key)
+}
+
+fn load_events(
+    session: &mut LocalSession,
+    key: &ApiKey,
+) -> Result<Vec<PersistedEvent>, StorageError> {
     let batch = rows(sql::load_events(session, key.tenant_id(), key.id())?)?;
     validate_columns(batch.columns(), event_columns())?;
-    let events = decode_events(batch.rows(), key)?;
-    verify_first_event(&events, key)?;
-    verify_contiguous_events(&events, key)?;
+    decode_events(batch.rows(), key)
+}
+
+fn verify_event_history(events: &[PersistedEvent], key: &ApiKey) -> Result<(), StorageError> {
+    verify_first_event(events, key)?;
+    verify_contiguous_events(events, key)?;
+    verify_retired_history(events, key)?;
     verify_final_event(events.last().ok_or_else(integrity_failure)?, key)
+}
+
+pub(super) fn verify_target_event(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    durable: &ApiKey,
+) -> Result<(), StorageError> {
+    let target = request.transition.key();
+    let events = load_events(session, durable)?;
+    let index = target
+        .version()
+        .get()
+        .checked_sub(1)
+        .and_then(|value| usize::try_from(value).ok())
+        .ok_or_else(integrity_failure)?;
+    let persisted = events.get(index).ok_or_else(integrity_failure)?;
+    persisted
+        .matches_transition(request)
+        .then_some(())
+        .ok_or_else(integrity_failure)?;
+    verify_retired_history(&events[..=index], target)
 }
 
 fn verify_first_event(events: &[PersistedEvent], key: &ApiKey) -> Result<(), StorageError> {
@@ -294,7 +327,7 @@ struct PersistedEvent {
     version: ApiKeyVersion,
     kind: ApiKeyEventKind,
     occurred_at: UtcTimestamp,
-    _actor: PrincipalId,
+    actor: PrincipalId,
     state: ApiKeyState,
     current_secret: ApiKeySecretDigest,
     previous_secret: Option<ApiKeySecretDigest>,
@@ -315,7 +348,7 @@ fn decode_event(row: &Row) -> Result<PersistedEvent, StorageError> {
         version: transition.version,
         kind: transition.kind,
         occurred_at: transition.occurred_at,
-        _actor: transition.actor,
+        actor: transition.actor,
         state: snapshot.state,
         current_secret: snapshot.current_secret,
         previous_secret: snapshot.previous_secret,
@@ -421,7 +454,86 @@ fn verify_contiguous_events(events: &[PersistedEvent], key: &ApiKey) -> Result<(
             .ok_or_else(integrity_failure)?;
         validate_event_sequence_entry(event, key, index, expected)?;
     }
-    Ok(())
+    verify_adjacent_events(events)
+}
+
+fn verify_adjacent_events(events: &[PersistedEvent]) -> Result<(), StorageError> {
+    events.windows(2).try_for_each(verify_event_pair)
+}
+
+fn verify_event_pair(pair: &[PersistedEvent]) -> Result<(), StorageError> {
+    let [previous, current] = pair else {
+        return Err(integrity_failure());
+    };
+    match current.kind {
+        ApiKeyEventKind::Rotated => verify_rotation_event(previous, current),
+        ApiKeyEventKind::RotationCompleted => verify_completion_event(previous, current),
+        _ => Err(integrity_failure()),
+    }
+}
+
+fn verify_rotation_event(
+    previous: &PersistedEvent,
+    current: &PersistedEvent,
+) -> Result<(), StorageError> {
+    let valid = previous_event_can_rotate(previous) && rotation_overlap_matches(previous, current);
+    valid.then_some(()).ok_or_else(integrity_failure)
+}
+
+fn previous_event_can_rotate(previous: &PersistedEvent) -> bool {
+    previous.state == ApiKeyState::Active
+        && previous.previous_secret.is_none()
+        && previous.rotation_started_at.is_none()
+        && previous.previous_secret_expires_at.is_none()
+}
+
+fn rotation_overlap_matches(previous: &PersistedEvent, current: &PersistedEvent) -> bool {
+    let overlap_ends_after_start = current
+        .previous_secret_expires_at
+        .is_some_and(|expires| expires.unix_seconds() > current.occurred_at.unix_seconds());
+    current.state == ApiKeyState::Rotating
+        && current.current_secret != previous.current_secret
+        && current.previous_secret == Some(previous.current_secret)
+        && current.rotation_started_at == Some(current.occurred_at)
+        && overlap_ends_after_start
+}
+
+fn verify_completion_event(
+    previous: &PersistedEvent,
+    current: &PersistedEvent,
+) -> Result<(), StorageError> {
+    let overlap_ended = previous
+        .previous_secret_expires_at
+        .is_some_and(|expires| current.occurred_at.unix_seconds() >= expires.unix_seconds());
+    let valid = previous.kind == ApiKeyEventKind::Rotated
+        && previous.state == ApiKeyState::Rotating
+        && current.state == ApiKeyState::Active
+        && current.current_secret == previous.current_secret
+        && current.previous_secret.is_none()
+        && current.rotation_started_at.is_none()
+        && current.previous_secret_expires_at.is_none()
+        && overlap_ended;
+    valid.then_some(()).ok_or_else(integrity_failure)
+}
+
+fn verify_retired_history(events: &[PersistedEvent], key: &ApiKey) -> Result<(), StorageError> {
+    let retired = events
+        .windows(2)
+        .filter_map(completed_previous_secret)
+        .collect::<Result<Vec<_>, _>>()?;
+    (retired == key.retired_secrets())
+        .then_some(())
+        .ok_or_else(integrity_failure)
+}
+
+fn completed_previous_secret(
+    pair: &[PersistedEvent],
+) -> Option<Result<ApiKeySecretDigest, StorageError>> {
+    let [previous, current] = pair else {
+        return Some(Err(integrity_failure()));
+    };
+    (current.kind == ApiKeyEventKind::RotationCompleted)
+        .then(|| previous.previous_secret.ok_or_else(integrity_failure))
 }
 
 fn validate_event_sequence_entry(
@@ -467,6 +579,28 @@ fn verify_final_event(event: &PersistedEvent, key: &ApiKey) -> Result<(), Storag
 impl PersistedEvent {
     fn matches_boundary(&self, key: &ApiKey) -> bool {
         self.tenant == *key.tenant_id() && self.user == *key.user_id() && self.key == *key.id()
+    }
+
+    fn matches_transition(&self, request: &CommitRequest<'_>) -> bool {
+        let key = request.transition.key();
+        let event = request.transition.event();
+        self.matches_event(key, event) && self.matches_snapshot(key)
+    }
+
+    fn matches_event(&self, key: &ApiKey, event: &ariadnion_auth_api_key::ApiKeyEvent) -> bool {
+        self.matches_boundary(key)
+            && self.version == event.version()
+            && self.kind == event.kind()
+            && self.occurred_at == event.occurred_at()
+            && self.actor == *event.actor()
+    }
+
+    fn matches_snapshot(&self, key: &ApiKey) -> bool {
+        self.state == key.state()
+            && self.current_secret == key.current_secret()
+            && self.previous_secret == key.previous_secret()
+            && self.rotation_started_at == key.rotation_started_at()
+            && self.previous_secret_expires_at == key.previous_secret_expires_at()
     }
 }
 
