@@ -14,7 +14,7 @@ use ariadnion_rbac::migrations::IDENTITY_RUNTIME_ROLE;
 use ariadnion_storage_domain::{
     StorageError, StorageErrorCode, StorageInstanceId, TransactionScope,
 };
-use rnmdb_cli::LocalSession;
+use rnmdb_cli::{CommandOutput, LocalSession};
 use rnmdb_common::{ErrorKind, RnovError};
 use rnmdb_security::ColumnKeyMaterial as UpstreamColumnKeyMaterial;
 use rnmdb_storage::PageCryptoKey;
@@ -284,7 +284,17 @@ impl RnmdbSessionOwner {
             return Err(StorageError::new(StorageErrorCode::Conflict));
         }
         let result = session.execute("BEGIN").map_err(map_rnmdb_error);
-        if session.in_transaction() {
+        let transaction_active = session.in_transaction();
+        self.finish_begin_transaction(session, transaction_active, result)
+    }
+
+    fn finish_begin_transaction(
+        &self,
+        session: &mut LocalSession,
+        transaction_active: bool,
+        result: Result<CommandOutput, StorageError>,
+    ) -> Result<(), StorageError> {
+        if transaction_active {
             if result.is_ok() {
                 return Ok(());
             }
@@ -311,17 +321,24 @@ impl RnmdbSessionOwner {
     ) -> Result<bool, StorageError> {
         check_shutdown_deadline(deadline)?;
         self.ensure_usable()?;
-        let rolled_back = match rollback_for_shutdown(session) {
-            Ok(rolled_back) => rolled_back,
-            Err(error) => {
-                self.mark_tainted();
-                return Err(error);
-            }
-        };
+        let rolled_back = self.rollback_for_shutdown_or_taint(session)?;
         check_shutdown_deadline(deadline)?;
         session.checkpoint().map_err(map_rnmdb_error)?;
         check_shutdown_deadline(deadline)?;
         Ok(rolled_back)
+    }
+
+    fn rollback_for_shutdown_or_taint(
+        &self,
+        session: &mut LocalSession,
+    ) -> Result<bool, StorageError> {
+        match rollback_for_shutdown(session) {
+            Ok(rolled_back) => Ok(rolled_back),
+            Err(error) => {
+                self.mark_tainted();
+                Err(error)
+            }
+        }
     }
 
     pub(crate) fn with_session<T>(
@@ -462,6 +479,15 @@ impl RnmdbSessionOwner {
         let mut session = lock_session(&self.session);
         check_context(context)?;
         self.ensure_usable()?;
+        self.execute_transaction_command_on_session(&mut session, command, command_failure)
+    }
+
+    fn execute_transaction_command_on_session(
+        &self,
+        session: &mut LocalSession,
+        command: &str,
+        command_failure: StorageError,
+    ) -> Result<(), StorageError> {
         if session.execute(command).is_err() {
             self.mark_tainted();
             return Err(command_failure);
