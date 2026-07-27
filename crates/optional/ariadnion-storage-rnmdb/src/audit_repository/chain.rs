@@ -96,6 +96,10 @@ fn membership_starts_at_genesis(
     if prefix > MAX_AUDIT_MEMBERSHIP_DISTANCE {
         return validate_anchor_budget(suffix);
     }
+    validate_full_budget(prefix, suffix)
+}
+
+fn validate_full_budget(prefix: u64, suffix: u64) -> Result<bool, StorageError> {
     let total = prefix.checked_add(suffix).ok_or_else(integrity_failure)?;
     if total > MAX_AUDIT_MEMBERSHIP_DISTANCE {
         return Err(StorageError::new(StorageErrorCode::ResourceExhausted));

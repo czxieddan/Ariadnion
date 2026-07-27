@@ -447,7 +447,12 @@ fn tenant_has_event(
     after: Option<AuditSequence>,
 ) -> Result<bool, StorageError> {
     let sql = event_presence_sql(tenant_id, after)?;
-    let batch = rows(execute(session, &sql)?)?;
+    let output = execute(session, &sql)?;
+    decode_event_presence(output)
+}
+
+fn decode_event_presence(output: CommandOutput) -> Result<bool, StorageError> {
+    let batch = rows(output)?;
     validate_columns(batch.columns(), &event_presence_columns())?;
     match batch.rows() {
         [] => Ok(false),

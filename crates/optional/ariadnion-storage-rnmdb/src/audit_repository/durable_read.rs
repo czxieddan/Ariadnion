@@ -5,12 +5,11 @@ use ariadnion_audit_store::AuditChainHead;
 use ariadnion_core::{RequestContext, TenantId};
 use ariadnion_storage_domain::StorageError;
 use rnmdb_cli::{CommandOutput, LocalSession};
-use rnmdb_types::SqlValue;
 
 use super::{
-    StoredHead, chain, decode_optional_event, decode_stored_head, event_by_id_sql,
-    event_by_sequence_sql, event_presence_sql, execute, head_columns, head_select_sql,
-    integrity_failure, map_store_error, not_found, rows, validate_columns,
+    StoredHead, chain, decode_event_presence, decode_optional_event, decode_stored_head,
+    event_by_id_sql, event_by_sequence_sql, event_presence_sql, execute, head_columns,
+    head_select_sql, integrity_failure, map_store_error, not_found, rows, validate_columns,
 };
 use crate::session::check_context;
 
@@ -133,6 +132,15 @@ fn load_head(
     let sql = head_select_sql(tenant_id)?;
     let output = boundary.execute(session, &sql, AuditReadQuery::Head)?;
     boundary.before_decode(AuditReadQuery::Head);
+    decode_head(output, session, tenant_id, boundary)
+}
+
+fn decode_head(
+    output: CommandOutput,
+    session: &mut LocalSession,
+    tenant_id: &TenantId,
+    boundary: &ReadBoundary<'_>,
+) -> Result<AuditChainHead, StorageError> {
     let batch = rows(output)?;
     validate_columns(batch.columns(), &head_columns())?;
     match batch.rows() {
@@ -206,16 +214,7 @@ fn tenant_has_event(
     let sql = event_presence_sql(tenant_id, after)?;
     let output = boundary.execute(session, &sql, AuditReadQuery::Head)?;
     boundary.before_decode(AuditReadQuery::Head);
-    let batch = rows(output)?;
-    validate_columns(batch.columns(), &[("event_id", rnmdb_types::SqlType::Text)])?;
-    match batch.rows() {
-        [] => Ok(false),
-        [row] => match row.values() {
-            [SqlValue::Text(_)] => Ok(true),
-            _ => Err(integrity_failure()),
-        },
-        _ => Err(integrity_failure()),
-    }
+    decode_event_presence(output)
 }
 
 pub(super) fn load_event_by_sequence(
