@@ -511,17 +511,28 @@ fn map_fresh_evidence_error(error: StorageError) -> StorageError {
 }
 
 fn map_storage_error(error: StorageError) -> InvitationRepositoryError {
-    let code = match error.code() {
+    repository_error(map_storage_error_code(error.code()))
+}
+
+const fn map_storage_error_code(code: StorageErrorCode) -> InvitationRepositoryErrorCode {
+    match code {
         StorageErrorCode::NotFound => InvitationRepositoryErrorCode::NotFound,
         StorageErrorCode::Conflict => InvitationRepositoryErrorCode::Conflict,
         StorageErrorCode::Cancelled => InvitationRepositoryErrorCode::Cancelled,
         StorageErrorCode::DeadlineExceeded => InvitationRepositoryErrorCode::DeadlineExceeded,
+        remaining => map_storage_durability_error_code(remaining),
+    }
+}
+
+const fn map_storage_durability_error_code(
+    code: StorageErrorCode,
+) -> InvitationRepositoryErrorCode {
+    match code {
         StorageErrorCode::ResourceExhausted => InvitationRepositoryErrorCode::ResourceExhausted,
         StorageErrorCode::Unavailable => InvitationRepositoryErrorCode::Unavailable,
         StorageErrorCode::CommitIndeterminate => InvitationRepositoryErrorCode::CommitIndeterminate,
         _ => InvitationRepositoryErrorCode::IntegrityFailure,
-    };
-    repository_error(code)
+    }
 }
 
 const fn repository_error(code: InvitationRepositoryErrorCode) -> InvitationRepositoryError {

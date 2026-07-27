@@ -499,17 +499,26 @@ fn trusted_commit_time() -> Result<UtcTimestamp, StorageError> {
 }
 
 fn map_storage_error(error: StorageError) -> SessionRepositoryError {
-    let code = match error.code() {
+    repository_error(map_storage_error_code(error.code()))
+}
+
+const fn map_storage_error_code(code: StorageErrorCode) -> SessionRepositoryErrorCode {
+    match code {
         StorageErrorCode::NotFound => SessionRepositoryErrorCode::NotFound,
         StorageErrorCode::Conflict => SessionRepositoryErrorCode::Conflict,
         StorageErrorCode::Cancelled => SessionRepositoryErrorCode::Cancelled,
         StorageErrorCode::DeadlineExceeded => SessionRepositoryErrorCode::DeadlineExceeded,
+        remaining => map_storage_durability_error_code(remaining),
+    }
+}
+
+const fn map_storage_durability_error_code(code: StorageErrorCode) -> SessionRepositoryErrorCode {
+    match code {
         StorageErrorCode::ResourceExhausted => SessionRepositoryErrorCode::ResourceExhausted,
         StorageErrorCode::Unavailable => SessionRepositoryErrorCode::Unavailable,
         StorageErrorCode::CommitIndeterminate => SessionRepositoryErrorCode::CommitIndeterminate,
         _ => SessionRepositoryErrorCode::IntegrityFailure,
-    };
-    repository_error(code)
+    }
 }
 
 fn map_reconcile_error(error: StorageError) -> StorageError {

@@ -58,11 +58,27 @@ impl StorageErrorCode {
             Self::DeadlineExceeded => "STORAGE_DEADLINE_EXCEEDED",
             Self::Cancelled => "STORAGE_CANCELLED",
             Self::ResourceExhausted => "STORAGE_RESOURCE_EXHAUSTED",
+            Self::Unavailable
+            | Self::CommitIndeterminate
+            | Self::IntegrityFailure
+            | Self::MigrationRequired
+            | Self::Internal => self.system_code(),
+        }
+    }
+
+    const fn system_code(self) -> &'static str {
+        match self {
             Self::Unavailable => "STORAGE_UNAVAILABLE",
             Self::CommitIndeterminate => "STORAGE_COMMIT_INDETERMINATE",
             Self::IntegrityFailure => "STORAGE_INTEGRITY_FAILURE",
             Self::MigrationRequired => "STORAGE_MIGRATION_REQUIRED",
             Self::Internal => "STORAGE_INTERNAL",
+            Self::InvalidArgument
+            | Self::NotFound
+            | Self::Conflict
+            | Self::DeadlineExceeded
+            | Self::Cancelled
+            | Self::ResourceExhausted => self.as_str(),
         }
     }
 }

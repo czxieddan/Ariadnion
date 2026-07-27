@@ -976,13 +976,25 @@ pub(super) fn map_fresh_insert_error(error: StorageError) -> StorageError {
 }
 
 fn map_storage_error(error: StorageError) -> AuthorizationPolicyRepositoryError {
-    let code = match error.code() {
+    AuthorizationPolicyRepositoryError::new(map_storage_error_code(error.code()))
+}
+
+const fn map_storage_error_code(code: StorageErrorCode) -> AuthorizationPolicyRepositoryErrorCode {
+    match code {
         StorageErrorCode::NotFound => AuthorizationPolicyRepositoryErrorCode::NotFound,
         StorageErrorCode::Conflict => AuthorizationPolicyRepositoryErrorCode::Conflict,
         StorageErrorCode::Cancelled => AuthorizationPolicyRepositoryErrorCode::Cancelled,
         StorageErrorCode::DeadlineExceeded => {
             AuthorizationPolicyRepositoryErrorCode::DeadlineExceeded
         }
+        remaining => map_storage_durability_error_code(remaining),
+    }
+}
+
+const fn map_storage_durability_error_code(
+    code: StorageErrorCode,
+) -> AuthorizationPolicyRepositoryErrorCode {
+    match code {
         StorageErrorCode::ResourceExhausted => {
             AuthorizationPolicyRepositoryErrorCode::ResourceExhausted
         }
@@ -991,6 +1003,5 @@ fn map_storage_error(error: StorageError) -> AuthorizationPolicyRepositoryError 
             AuthorizationPolicyRepositoryErrorCode::CommitIndeterminate
         }
         _ => AuthorizationPolicyRepositoryErrorCode::IntegrityFailure,
-    };
-    AuthorizationPolicyRepositoryError::new(code)
+    }
 }

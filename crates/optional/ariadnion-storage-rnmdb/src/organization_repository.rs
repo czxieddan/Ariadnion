@@ -684,17 +684,28 @@ const fn optional_int_field(value: Option<i64>) -> sql::SqlField<'static> {
 }
 
 fn map_storage_error(error: StorageError) -> OrganizationRepositoryError {
-    let code = match error.code() {
+    OrganizationRepositoryError::new(map_storage_error_code(error.code()))
+}
+
+const fn map_storage_error_code(code: StorageErrorCode) -> OrganizationRepositoryErrorCode {
+    match code {
         StorageErrorCode::NotFound => OrganizationRepositoryErrorCode::NotFound,
         StorageErrorCode::Conflict => OrganizationRepositoryErrorCode::Conflict,
         StorageErrorCode::Cancelled => OrganizationRepositoryErrorCode::Cancelled,
         StorageErrorCode::DeadlineExceeded => OrganizationRepositoryErrorCode::DeadlineExceeded,
+        remaining => map_storage_durability_error_code(remaining),
+    }
+}
+
+const fn map_storage_durability_error_code(
+    code: StorageErrorCode,
+) -> OrganizationRepositoryErrorCode {
+    match code {
         StorageErrorCode::ResourceExhausted => OrganizationRepositoryErrorCode::ResourceExhausted,
         StorageErrorCode::Unavailable => OrganizationRepositoryErrorCode::Unavailable,
         StorageErrorCode::CommitIndeterminate => {
             OrganizationRepositoryErrorCode::CommitIndeterminate
         }
         _ => OrganizationRepositoryErrorCode::IntegrityFailure,
-    };
-    OrganizationRepositoryError::new(code)
+    }
 }

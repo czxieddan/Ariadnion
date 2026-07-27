@@ -346,17 +346,26 @@ fn map_fresh_collision(error: StorageError) -> StorageError {
 }
 
 fn map_storage_error(error: StorageError) -> UserRepositoryError {
-    let code = match error.code() {
+    UserRepositoryError::new(map_storage_error_code(error.code()))
+}
+
+const fn map_storage_error_code(code: StorageErrorCode) -> UserRepositoryErrorCode {
+    match code {
         StorageErrorCode::NotFound => UserRepositoryErrorCode::NotFound,
         StorageErrorCode::Conflict => UserRepositoryErrorCode::Conflict,
         StorageErrorCode::Cancelled => UserRepositoryErrorCode::Cancelled,
         StorageErrorCode::DeadlineExceeded => UserRepositoryErrorCode::DeadlineExceeded,
+        remaining => map_storage_durability_error_code(remaining),
+    }
+}
+
+const fn map_storage_durability_error_code(code: StorageErrorCode) -> UserRepositoryErrorCode {
+    match code {
         StorageErrorCode::ResourceExhausted => UserRepositoryErrorCode::ResourceExhausted,
         StorageErrorCode::Unavailable => UserRepositoryErrorCode::Unavailable,
         StorageErrorCode::CommitIndeterminate => UserRepositoryErrorCode::CommitIndeterminate,
         _ => UserRepositoryErrorCode::IntegrityFailure,
-    };
-    UserRepositoryError::new(code)
+    }
 }
 
 pub(super) const fn integrity_failure() -> StorageError {

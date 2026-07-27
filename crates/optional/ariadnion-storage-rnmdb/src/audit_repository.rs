@@ -966,6 +966,12 @@ fn decode_event_kind(value: &str) -> Result<AuditEventKind, StorageError> {
         "consumed" => Ok(AuditEventKind::Consumed),
         "rotated" => Ok(AuditEventKind::Rotated),
         "revoked" => Ok(AuditEventKind::Revoked),
+        remaining => decode_event_kind_remainder(remaining),
+    }
+}
+
+fn decode_event_kind_remainder(value: &str) -> Result<AuditEventKind, StorageError> {
+    match value {
         "expired" => Ok(AuditEventKind::Expired),
         "reuse_detected" => Ok(AuditEventKind::ReuseDetected),
         "administered" => Ok(AuditEventKind::Administered),
@@ -991,6 +997,12 @@ fn decode_subject_kind(value: &str) -> Result<AuditSubjectKind, StorageError> {
         "organization" => Ok(AuditSubjectKind::Organization),
         "invitation" => Ok(AuditSubjectKind::Invitation),
         "session_family" => Ok(AuditSubjectKind::SessionFamily),
+        remaining => decode_subject_kind_remainder(remaining),
+    }
+}
+
+fn decode_subject_kind_remainder(value: &str) -> Result<AuditSubjectKind, StorageError> {
+    match value {
         "api_key" => Ok(AuditSubjectKind::ApiKey),
         "password_reset" => Ok(AuditSubjectKind::PasswordReset),
         "administration" => Ok(AuditSubjectKind::Administration),

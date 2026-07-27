@@ -496,17 +496,26 @@ fn map_repository_error(error: PasswordRepositoryError) -> StorageError {
 }
 
 fn map_storage_error(error: StorageError) -> PasswordRepositoryError {
-    let code = match error.code() {
+    PasswordRepositoryError::new(map_storage_error_code(error.code()))
+}
+
+const fn map_storage_error_code(code: StorageErrorCode) -> PasswordRepositoryErrorCode {
+    match code {
         StorageErrorCode::NotFound => PasswordRepositoryErrorCode::NotFound,
         StorageErrorCode::Conflict => PasswordRepositoryErrorCode::Conflict,
         StorageErrorCode::Cancelled => PasswordRepositoryErrorCode::Cancelled,
         StorageErrorCode::DeadlineExceeded => PasswordRepositoryErrorCode::DeadlineExceeded,
+        remaining => map_storage_durability_error_code(remaining),
+    }
+}
+
+const fn map_storage_durability_error_code(code: StorageErrorCode) -> PasswordRepositoryErrorCode {
+    match code {
         StorageErrorCode::ResourceExhausted => PasswordRepositoryErrorCode::ResourceExhausted,
         StorageErrorCode::Unavailable => PasswordRepositoryErrorCode::Unavailable,
         StorageErrorCode::CommitIndeterminate => PasswordRepositoryErrorCode::CommitIndeterminate,
         _ => PasswordRepositoryErrorCode::IntegrityFailure,
-    };
-    PasswordRepositoryError::new(code)
+    }
 }
 
 pub(super) const fn integrity_failure() -> StorageError {
