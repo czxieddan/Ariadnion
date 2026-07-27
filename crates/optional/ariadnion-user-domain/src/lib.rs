@@ -609,9 +609,21 @@ fn dispatch(
     current: &User,
     action: UserTransitionAction,
 ) -> Result<UserTransition, UserDomainError> {
+    validate_dispatchable_user(current)?;
+    dispatch_user_action(current, action)
+}
+
+fn validate_dispatchable_user(current: &User) -> Result<(), UserDomainError> {
     if matches!(current.state, UserState::Deleted) {
         return Err(error(UserDomainErrorCode::DeletedTerminal));
     }
+    Ok(())
+}
+
+fn dispatch_user_action(
+    current: &User,
+    action: UserTransitionAction,
+) -> Result<UserTransition, UserDomainError> {
     match action {
         UserTransitionAction::Activate { occurred_at } => activate(current, occurred_at),
         UserTransitionAction::Suspend { occurred_at } => suspend(current, occurred_at),

@@ -418,17 +418,25 @@ fn apply_expire(
 ) -> Result<SessionTransition, SessionError> {
     validate_subject(current, &subject)?;
     validate_active_family(current)?;
-    if occurred_at.unix_seconds() < current.absolute_expires_at().unix_seconds()
-        && occurred_at.unix_seconds() < current.current().idle_expires_at().unix_seconds()
-    {
-        return Err(error(SessionErrorCode::NotYetExpired));
-    }
+    validate_expiration_time(current, occurred_at)?;
     let version = current.version().next()?;
     let current_leaf = current.current().with_state(SessionState::Expired)?;
     let rotated = rotated_with_state(current, SessionState::Expired)?;
     let family = current.advance(version, SessionFamilyState::Expired, current_leaf, rotated);
     let event = event_from(&family, actor, occurred_at, SessionEventKind::Expired);
     Ok(SessionTransition { family, event })
+}
+
+fn validate_expiration_time(
+    current: &SessionFamily,
+    occurred_at: UtcTimestamp,
+) -> Result<(), SessionError> {
+    if occurred_at.unix_seconds() < current.absolute_expires_at().unix_seconds()
+        && occurred_at.unix_seconds() < current.current().idle_expires_at().unix_seconds()
+    {
+        return Err(error(SessionErrorCode::NotYetExpired));
+    }
+    Ok(())
 }
 
 fn revoke_for_reuse(

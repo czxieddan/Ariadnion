@@ -292,7 +292,7 @@ fn replay_membership_event(
     audit: &AuditContext,
     kind: &OrganizationEventKind,
 ) -> Result<Option<OrganizationTransition>, OrganizationError> {
-    let transition = match kind {
+    match kind {
         OrganizationEventKind::MembershipAdded {
             membership_id,
             user_id,
@@ -309,19 +309,19 @@ fn replay_membership_event(
                 origin: *origin,
                 expires_at: *expires_at,
             },
-        )?,
+        )
+        .map(Some),
         OrganizationEventKind::MembershipSuspended { membership_id, .. } => {
-            suspend_membership(current, audit, membership_id)?
+            suspend_membership(current, audit, membership_id).map(Some)
         }
         OrganizationEventKind::MembershipActivated { membership_id } => {
-            activate_membership(current, audit, membership_id)?
+            activate_membership(current, audit, membership_id).map(Some)
         }
         OrganizationEventKind::MembershipLeft { membership_id, .. } => {
-            leave_membership(current, audit, membership_id)?
+            leave_membership(current, audit, membership_id).map(Some)
         }
-        _ => return Ok(None),
-    };
-    Ok(Some(transition))
+        _ => Ok(None),
+    }
 }
 
 fn replay_other_event(
@@ -370,14 +370,30 @@ fn validate_replayed_owners(
     previous_index: usize,
     new_index: usize,
 ) -> Result<(), OrganizationError> {
+    validate_distinct_owner_indexes(previous_index, new_index)?;
+    let previous = membership_at(current, previous_index)?;
+    let new = membership_at(current, new_index)?;
+    validate_replayed_owner_roles(previous, new, audit.occurred_at)
+}
+
+fn validate_distinct_owner_indexes(
+    previous_index: usize,
+    new_index: usize,
+) -> Result<(), OrganizationError> {
     if previous_index == new_index {
         return Err(error(OrganizationErrorCode::InvalidArgument));
     }
-    let previous = membership_at(current, previous_index)?;
-    let new = membership_at(current, new_index)?;
+    Ok(())
+}
+
+fn validate_replayed_owner_roles(
+    previous: &Membership,
+    new: &Membership,
+    occurred_at: UtcTimestamp,
+) -> Result<(), OrganizationError> {
     let valid_previous =
         previous.kind == MembershipKind::Owner && previous.state == MembershipState::Active;
-    let valid_new = new.kind == MembershipKind::Member && new.is_eligible_at(audit.occurred_at);
+    let valid_new = new.kind == MembershipKind::Member && new.is_eligible_at(occurred_at);
     if !valid_previous || !valid_new {
         return Err(error(OrganizationErrorCode::InvalidArgument));
     }

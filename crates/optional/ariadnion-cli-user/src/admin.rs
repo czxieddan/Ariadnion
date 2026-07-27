@@ -88,8 +88,23 @@ impl CliAdminOutput {
     }
 }
 
+struct SuspendUserArguments<'arguments> {
+    user_id: &'arguments str,
+    command_id: &'arguments str,
+    decision_id: &'arguments str,
+    policy_version: &'arguments str,
+    reason_code: &'arguments str,
+}
+
 fn parse_suspend_user(arguments: &[&str]) -> Result<AdminExecutionRequest, AdminError> {
     validate_argument_bounds(arguments)?;
+    let arguments = parse_suspend_user_grammar(arguments)?;
+    build_suspend_user_request(arguments)
+}
+
+fn parse_suspend_user_grammar<'arguments>(
+    arguments: &[&'arguments str],
+) -> Result<SuspendUserArguments<'arguments>, AdminError> {
     let [
         domain,
         action,
@@ -114,13 +129,29 @@ fn parse_suspend_user(arguments: &[&str]) -> Result<AdminExecutionRequest, Admin
         policy_flag,
         reason_flag,
     )?;
-    AdminExecutionRequest::new(
-        AdminCommandId::parse(command_id)?,
-        DecisionId::parse(decision_id).map_err(|_| invalid_argument())?,
-        parse_policy_version(policy_version)?,
-        AdminActionKind::SuspendUser,
-        AdminTarget::User(UserId::parse(user_id).map_err(|_| invalid_argument())?),
+    Ok(SuspendUserArguments {
+        user_id,
+        command_id,
+        decision_id,
+        policy_version,
         reason_code,
+    })
+}
+
+fn build_suspend_user_request(
+    arguments: SuspendUserArguments<'_>,
+) -> Result<AdminExecutionRequest, AdminError> {
+    let command_id = AdminCommandId::parse(arguments.command_id)?;
+    let decision_id = DecisionId::parse(arguments.decision_id).map_err(|_| invalid_argument())?;
+    let policy_version = parse_policy_version(arguments.policy_version)?;
+    let user_id = UserId::parse(arguments.user_id).map_err(|_| invalid_argument())?;
+    AdminExecutionRequest::new(
+        command_id,
+        decision_id,
+        policy_version,
+        AdminActionKind::SuspendUser,
+        AdminTarget::User(user_id),
+        arguments.reason_code,
     )
 }
 

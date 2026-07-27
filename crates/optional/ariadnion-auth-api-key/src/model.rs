@@ -632,6 +632,15 @@ fn validate_snapshot_version(snapshot: &ApiKeySnapshot) -> Result<(), ApiKeyErro
         .ok_or_else(|| error(ApiKeyErrorCode::InvalidArgument))?;
     let active = version_with_cost(1, rotation_cost)?;
     let rotating = version_with_cost(2, rotation_cost)?;
+    validate_snapshot_state_version(snapshot, retired, active, rotating)
+}
+
+fn validate_snapshot_state_version(
+    snapshot: &ApiKeySnapshot,
+    retired: u64,
+    active: u64,
+    rotating: u64,
+) -> Result<(), ApiKeyError> {
     let valid = match snapshot.state {
         ApiKeyState::Active => snapshot.version.get() == active,
         ApiKeyState::Rotating => snapshot.version.get() == rotating,
@@ -639,10 +648,11 @@ fn validate_snapshot_version(snapshot: &ApiKeySnapshot) -> Result<(), ApiKeyErro
             valid_terminal_version(snapshot.version.get(), retired, active, rotating)
         }
     };
-    if !valid {
-        return Err(error(ApiKeyErrorCode::InvalidArgument));
+    if valid {
+        Ok(())
+    } else {
+        Err(error(ApiKeyErrorCode::InvalidArgument))
     }
-    Ok(())
 }
 
 fn version_with_cost(base: u64, cost: u64) -> Result<u64, ApiKeyError> {
