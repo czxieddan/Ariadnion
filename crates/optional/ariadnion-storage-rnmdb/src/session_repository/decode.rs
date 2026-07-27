@@ -189,6 +189,35 @@ fn decode_leaf(
     family: &SessionFamilyId,
     ordinal: usize,
 ) -> Result<SessionSnapshot, StorageError> {
+    let fields = leaf_fields(row)?;
+    validate_leaf_boundary(
+        fields.tenant,
+        fields.user,
+        fields.family,
+        tenant,
+        user,
+        family,
+    )?;
+    validate_ordinal(fields.ordinal, ordinal)?;
+    decode_leaf_fields(fields, tenant, user, family)
+}
+
+struct LeafFields<'a> {
+    tenant: &'a str,
+    user: &'a str,
+    family: &'a str,
+    session_id: &'a str,
+    ordinal: i64,
+    predecessor: &'a SqlValue,
+    token_digest: &'a str,
+    issued_at: i64,
+    last_seen_at: i64,
+    idle_expires_at: i64,
+    version: &'a str,
+    state: &'a str,
+}
+
+fn leaf_fields(row: &Row) -> Result<LeafFields<'_>, StorageError> {
     let [
         SqlValue::Text(found_tenant),
         SqlValue::Text(found_user),
@@ -206,19 +235,47 @@ fn decode_leaf(
     else {
         return Err(integrity_failure());
     };
-    validate_leaf_boundary(found_tenant, found_user, found_family, tenant, user, family)?;
-    validate_ordinal(*found_ordinal, ordinal)?;
+    Ok(LeafFields {
+        tenant: found_tenant,
+        user: found_user,
+        family: found_family,
+        session_id,
+        ordinal: *found_ordinal,
+        predecessor,
+        token_digest,
+        issued_at: *issued_at,
+        last_seen_at: *last_seen_at,
+        idle_expires_at: *idle_expires_at,
+        version,
+        state,
+    })
+}
+
+fn decode_leaf_fields(
+    fields: LeafFields<'_>,
+    tenant: &TenantId,
+    user: &UserId,
+    family: &SessionFamilyId,
+) -> Result<SessionSnapshot, StorageError> {
+    let id = parse_session_id(fields.session_id)?;
+    let token_digest = SessionTokenDigest::new(decode_digest(fields.token_digest)?);
+    let issued_at = UtcTimestamp::from_unix_seconds(fields.issued_at);
+    let last_seen_at = UtcTimestamp::from_unix_seconds(fields.last_seen_at);
+    let idle_expires_at = UtcTimestamp::from_unix_seconds(fields.idle_expires_at);
+    let version = parse_session_version(fields.version)?;
+    let state = parse_session_state(fields.state)?;
+    let predecessor_id = parse_optional_session_id(fields.predecessor)?;
     Ok(SessionSnapshot {
         family_id: family.clone(),
         subject: SessionSubject::new(tenant.clone(), user.clone()),
-        id: parse_session_id(session_id)?,
-        token_digest: SessionTokenDigest::new(decode_digest(token_digest)?),
-        issued_at: UtcTimestamp::from_unix_seconds(*issued_at),
-        last_seen_at: UtcTimestamp::from_unix_seconds(*last_seen_at),
-        idle_expires_at: UtcTimestamp::from_unix_seconds(*idle_expires_at),
-        version: parse_session_version(version)?,
-        state: parse_session_state(state)?,
-        predecessor_id: parse_optional_session_id(predecessor)?,
+        id,
+        token_digest,
+        issued_at,
+        last_seen_at,
+        idle_expires_at,
+        version,
+        state,
+        predecessor_id,
     })
 }
 
@@ -561,6 +618,23 @@ struct TokenOwner {
 }
 
 fn decode_token_owner(row: &Row, expected: SessionTokenDigest) -> Result<TokenOwner, StorageError> {
+    let fields = token_owner_fields(row)?;
+    validate_token_digest(fields.digest, expected)?;
+    Ok(TokenOwner {
+        user_id: UserId::parse(fields.user).map_err(|_| integrity_failure())?,
+        family_id: parse_family_id(fields.family)?,
+        session_id: parse_session_id(fields.session)?,
+    })
+}
+
+struct TokenOwnerFields<'a> {
+    user: &'a str,
+    family: &'a str,
+    session: &'a str,
+    digest: &'a str,
+}
+
+fn token_owner_fields(row: &Row) -> Result<TokenOwnerFields<'_>, StorageError> {
     let [
         SqlValue::Text(user),
         SqlValue::Text(family),
@@ -570,14 +644,19 @@ fn decode_token_owner(row: &Row, expected: SessionTokenDigest) -> Result<TokenOw
     else {
         return Err(integrity_failure());
     };
+    Ok(TokenOwnerFields {
+        user,
+        family,
+        session,
+        digest,
+    })
+}
+
+fn validate_token_digest(digest: &str, expected: SessionTokenDigest) -> Result<(), StorageError> {
     if decode_digest(digest)? != expected.bytes() {
         return Err(integrity_failure());
     }
-    Ok(TokenOwner {
-        user_id: UserId::parse(user).map_err(|_| integrity_failure())?,
-        family_id: parse_family_id(family)?,
-        session_id: parse_session_id(session)?,
-    })
+    Ok(())
 }
 
 fn family_contains(

@@ -248,6 +248,55 @@ fn decode_outbox_row(
     expected_event: &OutboxEventId,
     expected_key: &OutboxIdempotencyKey,
 ) -> Result<PersistedOutbox, StorageError> {
+    let fields = persisted_outbox_fields(row)?;
+    let identity = PersistedOutboxIdentity {
+        tenant: fields.tenant,
+        event_id: fields.event_id,
+        topic: fields.topic,
+        key: fields.key,
+    };
+    validate_outbox_identity(&identity, request, expected_event, expected_key)?;
+    let created = decode_timestamp(fields.created_at)?;
+    let available = decode_timestamp(fields.available_at)?;
+    validate_outbox_lifecycle(
+        fields.attempt,
+        fields.state,
+        created,
+        available,
+        &[
+            fields.lease_token,
+            fields.lease_worker,
+            fields.lease_expires_at,
+            fields.delivered_at,
+            fields.failed_at,
+        ],
+    )?;
+    let committed_at = decode_receipt_time(created)?;
+    let payload = decode_hex(fields.payload)?;
+    Ok(PersistedOutbox {
+        committed_at,
+        payload,
+    })
+}
+
+struct PersistedOutboxFields<'a> {
+    tenant: &'a str,
+    event_id: &'a str,
+    topic: &'a str,
+    key: &'a str,
+    payload: &'a str,
+    created_at: &'a SqlValue,
+    available_at: &'a SqlValue,
+    attempt: i64,
+    state: &'a str,
+    lease_token: &'a SqlValue,
+    lease_worker: &'a SqlValue,
+    lease_expires_at: &'a SqlValue,
+    delivered_at: &'a SqlValue,
+    failed_at: &'a SqlValue,
+}
+
+fn persisted_outbox_fields(row: &Row) -> Result<PersistedOutboxFields<'_>, StorageError> {
     let [
         SqlValue::Text(tenant),
         SqlValue::Text(event_id),
@@ -267,31 +316,21 @@ fn decode_outbox_row(
     else {
         return Err(integrity_failure());
     };
-    let identity = PersistedOutboxIdentity {
+    Ok(PersistedOutboxFields {
         tenant,
         event_id,
         topic,
         key,
-    };
-    validate_outbox_identity(&identity, request, expected_event, expected_key)?;
-    let created = decode_timestamp(created_at)?;
-    let available = decode_timestamp(available_at)?;
-    validate_outbox_lifecycle(
-        *attempt,
+        payload,
+        created_at,
+        available_at,
+        attempt: *attempt,
         state,
-        created,
-        available,
-        &[
-            lease_token,
-            lease_worker,
-            lease_expires_at,
-            delivered_at,
-            failed_at,
-        ],
-    )?;
-    Ok(PersistedOutbox {
-        committed_at: decode_receipt_time(created)?,
-        payload: decode_hex(payload)?,
+        lease_token,
+        lease_worker,
+        lease_expires_at,
+        delivered_at,
+        failed_at,
     })
 }
 

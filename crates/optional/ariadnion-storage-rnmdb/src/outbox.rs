@@ -389,6 +389,32 @@ fn validate_claim_columns(columns: &[ColumnSchema]) -> Result<(), StorageError> 
 }
 
 fn decode_claim_row(row: &Row, expected_tenant: &TenantId) -> Result<ClaimCandidate, StorageError> {
+    let fields = claim_row_fields(row)?;
+    validate_claim_tenant(fields.tenant, expected_tenant)?;
+    let event_id = OutboxEventId::parse(fields.event_id).map_err(|_| integrity_failure())?;
+    let topic = OutboxTopic::parse(fields.topic).map_err(|_| integrity_failure())?;
+    let payload = decode_payload(fields.payload_hex)?;
+    let created_at = decode_system_time(fields.created_at)?;
+    let attempt = next_attempt(fields.attempt)?;
+    Ok(ClaimCandidate {
+        event_id,
+        topic,
+        payload,
+        created_at,
+        attempt,
+    })
+}
+
+struct ClaimRowFields<'a> {
+    tenant: &'a str,
+    event_id: &'a str,
+    topic: &'a str,
+    payload_hex: &'a str,
+    created_at: &'a SqlValue,
+    attempt: i64,
+}
+
+fn claim_row_fields(row: &Row) -> Result<ClaimRowFields<'_>, StorageError> {
     let [
         SqlValue::Text(tenant),
         SqlValue::Text(event_id),
@@ -400,16 +426,21 @@ fn decode_claim_row(row: &Row, expected_tenant: &TenantId) -> Result<ClaimCandid
     else {
         return Err(integrity_failure());
     };
+    Ok(ClaimRowFields {
+        tenant,
+        event_id,
+        topic,
+        payload_hex,
+        created_at,
+        attempt: *attempt,
+    })
+}
+
+fn validate_claim_tenant(tenant: &str, expected_tenant: &TenantId) -> Result<(), StorageError> {
     if tenant != expected_tenant.as_str() {
         return Err(integrity_failure());
     }
-    Ok(ClaimCandidate {
-        event_id: OutboxEventId::parse(event_id).map_err(|_| integrity_failure())?,
-        topic: OutboxTopic::parse(topic).map_err(|_| integrity_failure())?,
-        payload: decode_payload(payload_hex)?,
-        created_at: decode_system_time(created_at)?,
-        attempt: next_attempt(*attempt)?,
-    })
+    Ok(())
 }
 
 fn next_attempt(current: i64) -> Result<NonZeroU32, StorageError> {

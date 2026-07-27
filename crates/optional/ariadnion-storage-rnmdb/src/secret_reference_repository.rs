@@ -270,6 +270,37 @@ fn decode_reference_row(
     expected_tenant: &TenantId,
     expected_reference: &SecretReferenceId,
 ) -> Result<SecretReference, StorageError> {
+    let fields = reference_row_fields(row)?;
+    let tenant_id = TenantId::parse(fields.tenant).map_err(|_| integrity_failure())?;
+    let reference_id =
+        SecretReferenceId::parse(fields.reference).map_err(|_| integrity_failure())?;
+    verify_decoded_identity(
+        &tenant_id,
+        &reference_id,
+        expected_tenant,
+        expected_reference,
+    )?;
+    let kind = SecretReferenceKind::parse(fields.kind).map_err(|_| integrity_failure())?;
+    let locator = SecretLocator::parse(fields.locator).map_err(|_| integrity_failure())?;
+    let key_version = SecretKeyVersion::new(fields.key_version).map_err(|_| integrity_failure())?;
+    Ok(SecretReference::from_persisted(
+        tenant_id,
+        reference_id,
+        kind,
+        locator,
+        key_version,
+    ))
+}
+
+struct ReferenceRowFields<'a> {
+    tenant: &'a str,
+    reference: &'a str,
+    kind: &'a str,
+    locator: &'a str,
+    key_version: i64,
+}
+
+fn reference_row_fields(row: &Row) -> Result<ReferenceRowFields<'_>, StorageError> {
     let [
         SqlValue::Text(tenant),
         SqlValue::Text(reference),
@@ -280,24 +311,13 @@ fn decode_reference_row(
     else {
         return Err(integrity_failure());
     };
-    let tenant_id = TenantId::parse(tenant).map_err(|_| integrity_failure())?;
-    let reference_id = SecretReferenceId::parse(reference).map_err(|_| integrity_failure())?;
-    verify_decoded_identity(
-        &tenant_id,
-        &reference_id,
-        expected_tenant,
-        expected_reference,
-    )?;
-    let kind = SecretReferenceKind::parse(kind).map_err(|_| integrity_failure())?;
-    let locator = SecretLocator::parse(locator).map_err(|_| integrity_failure())?;
-    let key_version = SecretKeyVersion::new(*key_version).map_err(|_| integrity_failure())?;
-    Ok(SecretReference::from_persisted(
-        tenant_id,
-        reference_id,
+    Ok(ReferenceRowFields {
+        tenant,
+        reference,
         kind,
         locator,
-        key_version,
-    ))
+        key_version: *key_version,
+    })
 }
 
 fn verify_decoded_identity(
