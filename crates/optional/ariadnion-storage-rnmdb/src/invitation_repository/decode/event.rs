@@ -105,6 +105,36 @@ fn decode_event(
     row: &Row,
     invitation: &Invitation,
 ) -> Result<PersistedInvitationEvent, StorageError> {
+    let fields = event_fields(row)?;
+    validate_identity(
+        fields.tenant,
+        fields.organization,
+        fields.invitation_id,
+        invitation,
+    )?;
+    Ok(PersistedInvitationEvent {
+        actor: PrincipalId::parse(fields.actor).map_err(|_| integrity_failure())?,
+        occurred_at: UtcTimestamp::from_unix_seconds(fields.occurred_at),
+        version: decode_version(fields.version)?,
+        kind: decode_kind(fields.kind)?,
+        request_id: RequestId::parse(fields.request_id).map_err(|_| integrity_failure())?,
+        user_id: decode_user(fields.user_id)?,
+    })
+}
+
+struct EventFields<'a> {
+    tenant: &'a str,
+    organization: &'a str,
+    invitation_id: &'a str,
+    version: &'a str,
+    kind: &'a str,
+    occurred_at: i64,
+    actor: &'a str,
+    request_id: &'a str,
+    user_id: &'a SqlValue,
+}
+
+fn event_fields(row: &Row) -> Result<EventFields<'_>, StorageError> {
     let [
         SqlValue::Text(tenant),
         SqlValue::Text(organization),
@@ -119,14 +149,16 @@ fn decode_event(
     else {
         return Err(integrity_failure());
     };
-    validate_identity(tenant, organization, invitation_id, invitation)?;
-    Ok(PersistedInvitationEvent {
-        actor: PrincipalId::parse(actor).map_err(|_| integrity_failure())?,
-        occurred_at: UtcTimestamp::from_unix_seconds(*occurred_at),
-        version: decode_version(version)?,
-        kind: decode_kind(kind)?,
-        request_id: RequestId::parse(request_id).map_err(|_| integrity_failure())?,
-        user_id: decode_user(user_id)?,
+    Ok(EventFields {
+        tenant,
+        organization,
+        invitation_id,
+        version,
+        kind,
+        occurred_at: *occurred_at,
+        actor,
+        request_id,
+        user_id,
     })
 }
 
@@ -157,10 +189,15 @@ fn verify_history(
     if events.len() != expected {
         return Err(integrity_failure());
     }
-    let [issued, remaining @ ..] = events else {
-        return Err(integrity_failure());
-    };
+    let (issued, remaining) = events.split_first().ok_or_else(integrity_failure)?;
     verify_issuance(invitation, issued)?;
+    verify_history_tail(invitation, remaining)
+}
+
+fn verify_history_tail(
+    invitation: &Invitation,
+    remaining: &[PersistedInvitationEvent],
+) -> Result<(), StorageError> {
     match remaining {
         [] if invitation.version() == InvitationVersion::initial() => Ok(()),
         [terminal] => verify_terminal(invitation, terminal),

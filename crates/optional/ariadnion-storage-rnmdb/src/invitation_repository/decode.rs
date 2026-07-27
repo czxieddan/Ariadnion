@@ -118,19 +118,24 @@ fn classify_collision_rows(
     rows: &[Row],
     request: &CommitRequest<'_>,
 ) -> Result<CreationCollision, StorageError> {
-    let mut exact_id = false;
+    let mut collision = CreationCollision::None;
     for row in rows {
-        match classify_collision_row(row, request)? {
-            CreationCollision::TokenDigest => return Ok(CreationCollision::TokenDigest),
-            CreationCollision::ExactId => exact_id = true,
-            CreationCollision::None => return Err(integrity_failure()),
-        }
+        collision = merge_creation_collision(collision, classify_collision_row(row, request)?)?;
     }
-    Ok(if exact_id {
-        CreationCollision::ExactId
-    } else {
-        CreationCollision::None
-    })
+    Ok(collision)
+}
+
+fn merge_creation_collision(
+    current: CreationCollision,
+    candidate: CreationCollision,
+) -> Result<CreationCollision, StorageError> {
+    match (current, candidate) {
+        (_, CreationCollision::None) => Err(integrity_failure()),
+        (CreationCollision::TokenDigest, _) | (_, CreationCollision::TokenDigest) => {
+            Ok(CreationCollision::TokenDigest)
+        }
+        (_, CreationCollision::ExactId) => Ok(CreationCollision::ExactId),
+    }
 }
 
 fn classify_collision_row(
