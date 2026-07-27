@@ -411,11 +411,18 @@ fn validate_migration_ledger(
     };
     validate_ledger_columns(batch.columns())?;
     let descriptors = definitions.ledger_descriptors(expected_version)?;
-    if batch.rows().len() != descriptors.len() {
+    validate_ledger_rows(batch.rows(), &descriptors)
+}
+
+fn validate_ledger_rows(
+    rows: &[Row],
+    descriptors: &[MigrationDescriptor],
+) -> Result<(), StorageError> {
+    if rows.len() != descriptors.len() {
         return Err(StorageError::new(StorageErrorCode::IntegrityFailure));
     }
-    for descriptor in &descriptors {
-        require_one_ledger_row(batch.rows(), descriptor)?;
+    for descriptor in descriptors {
+        require_one_ledger_row(rows, descriptor)?;
     }
     Ok(())
 }
@@ -466,16 +473,23 @@ fn ledger_row_matches(row: &Row, descriptor: &MigrationDescriptor) -> Result<boo
     else {
         return Err(StorageError::new(StorageErrorCode::IntegrityFailure));
     };
-    let expected_from = i64::try_from(descriptor.from().get())
-        .map_err(|_| StorageError::new(StorageErrorCode::IntegrityFailure))?;
-    let expected_to = i64::try_from(descriptor.to().get())
-        .map_err(|_| StorageError::new(StorageErrorCode::IntegrityFailure))?;
+    let (expected_from, expected_to) = descriptor_ledger_versions(descriptor)?;
     let expected_checksum = descriptor.checksum().to_string();
     Ok(id.as_str() == descriptor.id().as_str()
         && domain.as_str() == descriptor.domain().as_str()
         && *from == expected_from
         && *to == expected_to
         && checksum.as_str() == expected_checksum)
+}
+
+fn descriptor_ledger_versions(
+    descriptor: &MigrationDescriptor,
+) -> Result<(i64, i64), StorageError> {
+    let expected_from = i64::try_from(descriptor.from().get())
+        .map_err(|_| StorageError::new(StorageErrorCode::IntegrityFailure))?;
+    let expected_to = i64::try_from(descriptor.to().get())
+        .map_err(|_| StorageError::new(StorageErrorCode::IntegrityFailure))?;
+    Ok((expected_from, expected_to))
 }
 
 fn check_context(context: &RequestContext) -> Result<(), StorageError> {
