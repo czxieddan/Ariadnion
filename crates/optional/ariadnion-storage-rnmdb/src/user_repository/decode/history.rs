@@ -129,21 +129,26 @@ fn verify_history_row<'a>(
 }
 
 fn lifecycle_record(event: HistoryEvent<'_>) -> Result<LifecycleRecord, StorageError> {
-    let kind = match event.kind {
-        "activated" => "activated",
-        "suspended" => "suspended",
-        "resumed" => "resumed",
-        "deletion_requested" => "deletion_requested",
-        "deletion_recovered" => "deletion_recovered",
-        "deleted" => "deleted",
-        _ => return Err(integrity_failure()),
-    };
+    let kind = canonical_lifecycle_kind(event.kind)?;
+    let recovery_state = static_recovery_state(event.recovery_state)?;
     Ok(LifecycleRecord {
         kind,
         occurred_at: event.occurred_at,
         not_before: event.not_before,
-        recovery_state: static_recovery_state(event.recovery_state)?,
+        recovery_state,
     })
+}
+
+fn canonical_lifecycle_kind(value: &str) -> Result<&'static str, StorageError> {
+    match value {
+        "activated" => Ok("activated"),
+        "suspended" => Ok("suspended"),
+        "resumed" => Ok("resumed"),
+        "deletion_requested" => Ok("deletion_requested"),
+        "deletion_recovered" => Ok("deletion_recovered"),
+        "deleted" => Ok("deleted"),
+        _ => Err(integrity_failure()),
+    }
 }
 
 fn static_recovery_state(value: Option<&str>) -> Result<Option<&'static str>, StorageError> {
@@ -220,27 +225,30 @@ fn state_after_target_event(
     target: HistoryState,
 ) -> Result<HistoryState, StorageError> {
     let valid = match event.kind {
-        "activated" => target_is_active(target) && target_activation_is_valid(event),
-        "suspended" => target_is_suspended(target) && target_suspension_is_valid(event),
-        "resumed" => target_is_active(target) && target_resume_is_valid(event),
+        "activated" => target_activation_is_valid(target, event),
+        "suspended" => target_suspension_is_valid(target, event),
+        "resumed" => target_resume_is_valid(target, event),
         "deletion_requested" => target_pending_is_valid(target, event),
         "deletion_recovered" => target_recovery_is_valid(target, event),
-        "deleted" => target_is_deleted(target) && target_deleted_is_valid(event),
+        "deleted" => target_deleted_is_valid(target, event),
         _ => false,
     };
     require_event(valid, target)
 }
 
-fn target_activation_is_valid(event: HistoryEvent<'_>) -> bool {
-    event.version.get() == 2 && has_no_metadata(event)
+fn target_activation_is_valid(target: HistoryState, event: HistoryEvent<'_>) -> bool {
+    target_is_active(target) && event.version.get() == 2 && has_no_metadata(event)
 }
 
-fn target_suspension_is_valid(event: HistoryEvent<'_>) -> bool {
-    version_is_odd(event.version) && has_no_metadata(event)
+fn target_suspension_is_valid(target: HistoryState, event: HistoryEvent<'_>) -> bool {
+    target_is_suspended(target) && version_is_odd(event.version) && has_no_metadata(event)
 }
 
-fn target_resume_is_valid(event: HistoryEvent<'_>) -> bool {
-    version_is_even(event.version) && event.version.get() >= 4 && has_no_metadata(event)
+fn target_resume_is_valid(target: HistoryState, event: HistoryEvent<'_>) -> bool {
+    target_is_active(target)
+        && version_is_even(event.version)
+        && event.version.get() >= 4
+        && has_no_metadata(event)
 }
 
 fn target_pending_is_valid(target: HistoryState, event: HistoryEvent<'_>) -> bool {
@@ -254,6 +262,15 @@ fn target_pending_is_valid(target: HistoryState, event: HistoryEvent<'_>) -> boo
     let Some(event_not_before) = event.not_before else {
         return false;
     };
+    pending_target_matches_event(recovery, not_before, event_not_before, event)
+}
+
+fn pending_target_matches_event(
+    recovery: HistoryRecovery,
+    not_before: i64,
+    event_not_before: i64,
+    event: HistoryEvent<'_>,
+) -> bool {
     event.kind == "deletion_requested"
         && event_not_before == not_before
         && event.occurred_at < event_not_before
@@ -272,8 +289,8 @@ fn target_recovery_is_valid(target: HistoryState, event: HistoryEvent<'_>) -> bo
         && recovered_version_matches(event.version, recovery)
 }
 
-fn target_deleted_is_valid(event: HistoryEvent<'_>) -> bool {
-    has_no_metadata(event)
+fn target_deleted_is_valid(target: HistoryState, event: HistoryEvent<'_>) -> bool {
+    target_is_deleted(target) && has_no_metadata(event)
 }
 
 fn advance_history(
@@ -389,19 +406,23 @@ fn state_from_snapshot_record(snapshot: SnapshotRecord) -> Result<HistoryState, 
         "invited" => Ok(HistoryState::Invited),
         "active" => Ok(HistoryState::Active),
         "suspended" => Ok(HistoryState::Suspended),
-        "deletion_pending" => {
-            let Some(not_before) = snapshot.not_before else {
-                return Err(integrity_failure());
-            };
-            let recovery = decode_history_recovery(snapshot.recovery_state)?;
-            Ok(HistoryState::DeletionPending {
-                recovery,
-                not_before,
-            })
-        }
+        "deletion_pending" => pending_state_from_snapshot_record(snapshot),
         "deleted" => Ok(HistoryState::Deleted),
         _ => Err(integrity_failure()),
     }
+}
+
+fn pending_state_from_snapshot_record(
+    snapshot: SnapshotRecord,
+) -> Result<HistoryState, StorageError> {
+    let Some(not_before) = snapshot.not_before else {
+        return Err(integrity_failure());
+    };
+    let recovery = decode_history_recovery(snapshot.recovery_state)?;
+    Ok(HistoryState::DeletionPending {
+        recovery,
+        not_before,
+    })
 }
 
 fn validate_terminal_history_state(

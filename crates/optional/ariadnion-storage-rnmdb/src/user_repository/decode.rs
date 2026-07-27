@@ -491,6 +491,44 @@ fn decode_outbox_row(
     row: &Row,
     identity: &TransitionIdentity,
 ) -> Result<PersistedOutbox, StorageError> {
+    let fields = persisted_outbox_fields(row)?;
+    validate_outbox_identity(
+        fields.tenant,
+        fields.event_id,
+        fields.topic,
+        fields.key,
+        identity,
+    )?;
+    let created = decode_timestamp(fields.created_at)?;
+    let available = decode_timestamp(fields.available_at)?;
+    validate_outbox_lifecycle(
+        fields.attempt,
+        fields.state,
+        created,
+        available,
+        &fields.mutable,
+    )?;
+    let committed_at = decode_receipt_time(created)?;
+    Ok(PersistedOutbox {
+        committed_at,
+        payload: decode_hex_payload(fields.payload)?,
+    })
+}
+
+struct PersistedOutboxFields<'a> {
+    tenant: &'a str,
+    event_id: &'a str,
+    topic: &'a str,
+    key: &'a str,
+    payload: &'a str,
+    created_at: &'a SqlValue,
+    available_at: &'a SqlValue,
+    attempt: i64,
+    state: &'a str,
+    mutable: OutboxMutableFields<'a>,
+}
+
+fn persisted_outbox_fields(row: &Row) -> Result<PersistedOutboxFields<'_>, StorageError> {
     let [
         SqlValue::Text(tenant),
         SqlValue::Text(event_id),
@@ -510,21 +548,23 @@ fn decode_outbox_row(
     else {
         return Err(integrity_failure());
     };
-    validate_outbox_identity(tenant, event_id, topic, key, identity)?;
-    let created = decode_timestamp(created_at)?;
-    let available = decode_timestamp(available_at)?;
-    let mutable = OutboxMutableFields {
-        lease_token,
-        lease_worker,
-        lease_expires_at,
-        delivered_at,
-        failed_at,
-    };
-    validate_outbox_lifecycle(*attempt, state, created, available, &mutable)?;
-    let committed_at = decode_receipt_time(created)?;
-    Ok(PersistedOutbox {
-        committed_at,
-        payload: decode_hex_payload(payload)?,
+    Ok(PersistedOutboxFields {
+        tenant,
+        event_id,
+        topic,
+        key,
+        payload,
+        created_at,
+        available_at,
+        attempt: *attempt,
+        state,
+        mutable: OutboxMutableFields {
+            lease_token,
+            lease_worker,
+            lease_expires_at,
+            delivered_at,
+            failed_at,
+        },
     })
 }
 
@@ -699,17 +739,27 @@ fn validate_lease_fields(
 
 fn decode_lease_token(value: &SqlValue) -> Result<(), StorageError> {
     let value = required_text(value)?;
+    validate_lease_token_shape(value)?;
+    let bytes = decode_lease_token_bytes(value)?;
+    OutboxLeaseToken::new(&bytes).map_err(|_| integrity_failure())?;
+    Ok(())
+}
+
+fn validate_lease_token_shape(value: &str) -> Result<(), StorageError> {
     if value.len() > 512 || !value.len().is_multiple_of(2) {
         return Err(integrity_failure());
     }
+    Ok(())
+}
+
+fn decode_lease_token_bytes(value: &str) -> Result<Zeroizing<Vec<u8>>, StorageError> {
     let mut bytes = Zeroizing::new(Vec::with_capacity(value.len() / 2));
     for pair in value.as_bytes().chunks_exact(2) {
         let high = decode_hex_nibble(pair[0])?;
         let low = decode_hex_nibble(pair[1])?;
         bytes.push((high << 4) | low);
     }
-    OutboxLeaseToken::new(&bytes).map_err(|_| integrity_failure())?;
-    Ok(())
+    Ok(bytes)
 }
 
 fn require_all_null<const N: usize>(values: [&SqlValue; N]) -> Result<(), StorageError> {
