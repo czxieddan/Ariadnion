@@ -13,8 +13,8 @@ use crate::model::{
 };
 use crate::{
     AdminActionKind, AdminCommandExecution, AdminCommandReceipt, AdminCommandRepositoryPort,
-    AdminError, AdminErrorCode, AdminTarget, AuthoritativeAuthorizationSnapshot,
-    AuthoritativePolicyPort,
+    AdminError, AdminErrorCode, AdminExecutionPort, AdminTarget,
+    AuthoritativeAuthorizationSnapshot, AuthoritativePolicyPort,
 };
 
 /// Bounded caller intent that contains no reusable authorization decision.
@@ -244,6 +244,27 @@ where
         check_context(context)?;
         let execution = self.repository.execute_once(intent, command, context)?;
         validate_execution(execution, intent, command)
+    }
+}
+
+impl<P, R> crate::port::private::Sealed for AdminCommandExecutor<P, R>
+where
+    P: AuthoritativePolicyPort,
+    R: AdminCommandRepositoryPort,
+{
+}
+
+impl<P, R> AdminExecutionPort for AdminCommandExecutor<P, R>
+where
+    P: AuthoritativePolicyPort,
+    R: AdminCommandRepositoryPort,
+{
+    fn execute(
+        &self,
+        request: AdminExecutionRequest,
+        context: &RequestContext,
+    ) -> Result<AdminCommandReceipt, AdminError> {
+        AdminCommandExecutor::execute(self, request, context)
     }
 }
 

@@ -6,7 +6,33 @@ use ariadnion_rbac::{
 };
 use ariadnion_user_domain::UtcTimestamp;
 
-use crate::{AdminCommand, AdminCommandId, AdminCommandIntent, AdminError, AdminTarget};
+use crate::{
+    AdminCommand, AdminCommandId, AdminCommandIntent, AdminError, AdminExecutionRequest,
+    AdminTarget,
+};
+
+pub(crate) mod private {
+    pub trait Sealed {}
+}
+
+/// Shared object-safe entrypoint for authoritative administration execution.
+///
+/// Protocol adapters receive this facade instead of policy or repository ports,
+/// so they cannot evaluate roles locally or bypass durable command handling.
+/// Implementations are sealed to [`crate::AdminCommandExecutor`].
+pub trait AdminExecutionPort: private::Sealed + Send + Sync {
+    /// Evaluates current authoritative facts and durably executes one request.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same stable redacted failures as
+    /// [`crate::AdminCommandExecutor::execute`].
+    fn execute(
+        &self,
+        request: AdminExecutionRequest,
+        context: &RequestContext,
+    ) -> Result<AdminCommandReceipt, AdminError>;
+}
 
 /// One authoritative authorization snapshot loaded immediately before evaluation.
 ///
