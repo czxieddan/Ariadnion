@@ -1,0 +1,27 @@
+[package]
+name = "ariadnion-cli-user"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95.0"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[workspace]
+
+[dependencies]
+ariadnion-api-admin = { path = "../ariadnion-api-admin" }
+ariadnion-core = { path = "../../ariadnion-core" }
+ariadnion-rbac = { path = "../ariadnion-rbac" }
+ariadnion-user-domain = { path = "../ariadnion-user-domain" }
+
+[dev-dependencies]
+ariadnion-organization = { path = "../ariadnion-organization" }
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
