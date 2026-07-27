@@ -60,6 +60,34 @@ fn decode_event(
     tenant: &TenantId,
     index: usize,
 ) -> Result<PersistedPolicyEvent, StorageError> {
+    let fields = event_row_fields(row)?;
+    let version = decode_version(fields.version)?;
+    validate_identity(fields.tenant, tenant, version, index)?;
+    let tenant_id = TenantId::parse(fields.tenant).map_err(|_| integrity_failure())?;
+    let kind = decode_kind(fields.kind, version)?;
+    let occurred_at = UtcTimestamp::from_unix_seconds(fields.occurred_at);
+    let actor = PrincipalId::parse(fields.actor).map_err(|_| integrity_failure())?;
+    let request_id = RequestId::parse(fields.request).map_err(|_| integrity_failure())?;
+    Ok(PersistedPolicyEvent {
+        tenant_id,
+        version,
+        kind,
+        occurred_at,
+        actor,
+        request_id,
+    })
+}
+
+struct EventRowFields<'a> {
+    tenant: &'a str,
+    version: &'a str,
+    kind: &'a str,
+    occurred_at: i64,
+    actor: &'a str,
+    request: &'a str,
+}
+
+fn event_row_fields(row: &Row) -> Result<EventRowFields<'_>, StorageError> {
     let [
         SqlValue::Text(found_tenant),
         SqlValue::Text(version),
@@ -71,15 +99,13 @@ fn decode_event(
     else {
         return Err(integrity_failure());
     };
-    let version = decode_version(version)?;
-    validate_identity(found_tenant, tenant, version, index)?;
-    Ok(PersistedPolicyEvent {
-        tenant_id: TenantId::parse(found_tenant).map_err(|_| integrity_failure())?,
+    Ok(EventRowFields {
+        tenant: found_tenant,
         version,
-        kind: decode_kind(kind, version)?,
-        occurred_at: UtcTimestamp::from_unix_seconds(*occurred_at),
-        actor: PrincipalId::parse(actor).map_err(|_| integrity_failure())?,
-        request_id: RequestId::parse(request).map_err(|_| integrity_failure())?,
+        kind,
+        occurred_at: *occurred_at,
+        actor,
+        request,
     })
 }
 

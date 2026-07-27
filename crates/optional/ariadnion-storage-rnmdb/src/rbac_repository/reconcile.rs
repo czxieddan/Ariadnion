@@ -31,9 +31,6 @@ pub(super) fn reconcile_commit(
     )
     .map_err(map_reconciliation_load_error)?;
     let target = request.transition.policy();
-    if loaded.policy.version() < target.version() {
-        return Err(integrity_failure());
-    }
     validate_current_snapshot(target, &loaded.policy)?;
     let event = target_event(&loaded.events, target.version())?;
     validate_target_event(event, request)?;
@@ -57,6 +54,9 @@ fn validate_current_snapshot(
     target: &ariadnion_rbac::AuthorizationPolicy,
     current: &ariadnion_rbac::AuthorizationPolicy,
 ) -> Result<(), StorageError> {
+    if current.version() < target.version() {
+        return Err(integrity_failure());
+    }
     if current.version() == target.version() && current != target {
         return Err(integrity_failure());
     }

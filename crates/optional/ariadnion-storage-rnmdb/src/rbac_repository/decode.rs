@@ -68,11 +68,7 @@ pub(super) fn ensure_publication_empty(
     session: &mut LocalSession,
     tenant: &TenantId,
 ) -> Result<(), StorageError> {
-    match load_header(session, tenant) {
-        Ok(_) => return Err(sql::conflict()),
-        Err(error) if error.code() == StorageErrorCode::NotFound => {}
-        Err(error) => return Err(error),
-    }
+    ensure_publication_header_absent(session, tenant)?;
     for table in [
         "identity_rbac_roles",
         "identity_rbac_role_rules",
@@ -82,6 +78,17 @@ pub(super) fn ensure_publication_empty(
         reject_table_residue(session, tenant, table)?;
     }
     reject_outbox_residue(session, tenant)
+}
+
+fn ensure_publication_header_absent(
+    session: &mut LocalSession,
+    tenant: &TenantId,
+) -> Result<(), StorageError> {
+    match load_header(session, tenant) {
+        Ok(_) => Err(sql::conflict()),
+        Err(error) if error.code() == StorageErrorCode::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
 }
 
 fn reject_table_residue(
@@ -124,12 +131,7 @@ fn load_rules(
 ) -> Result<BTreeMap<String, Vec<PermissionRule>>, StorageError> {
     let batch = rows(sql::load_rules(session, tenant)?)?;
     validate_columns(batch.columns(), &rule_columns())?;
-    let maximum = MAX_ROLES
-        .checked_mul(MAX_RULES_PER_ROLE)
-        .ok_or_else(integrity_failure)?;
-    if batch.rows().len() > maximum {
-        return Err(StorageError::new(StorageErrorCode::ResourceExhausted));
-    }
+    validate_rule_row_count(batch.rows().len())?;
     let mut rules = BTreeMap::new();
     for row in batch.rows() {
         decode_rule(row, tenant, &mut rules)?;
@@ -137,11 +139,40 @@ fn load_rules(
     Ok(rules)
 }
 
+fn validate_rule_row_count(row_count: usize) -> Result<(), StorageError> {
+    let maximum = MAX_ROLES
+        .checked_mul(MAX_RULES_PER_ROLE)
+        .ok_or_else(integrity_failure)?;
+    if row_count > maximum {
+        return Err(StorageError::new(StorageErrorCode::ResourceExhausted));
+    }
+    Ok(())
+}
+
 fn decode_rule(
     row: &Row,
     tenant: &TenantId,
     rules: &mut BTreeMap<String, Vec<PermissionRule>>,
 ) -> Result<(), StorageError> {
+    let fields = rule_row_fields(row)?;
+    validate_tenant(fields.tenant, tenant)?;
+    RoleId::parse(fields.role).map_err(|_| integrity_failure())?;
+    let values = rule_slot(rules, fields.role, fields.ordinal)?;
+    let permission = PermissionId::parse(fields.permission).map_err(|_| integrity_failure())?;
+    let effect = decode_effect(fields.effect)?;
+    values.push(PermissionRule::new(permission, effect));
+    Ok(())
+}
+
+struct RuleRowFields<'a> {
+    tenant: &'a str,
+    role: &'a str,
+    ordinal: i64,
+    permission: &'a str,
+    effect: &'a str,
+}
+
+fn rule_row_fields(row: &Row) -> Result<RuleRowFields<'_>, StorageError> {
     let [
         SqlValue::Text(found_tenant),
         SqlValue::Text(role),
@@ -152,18 +183,26 @@ fn decode_rule(
     else {
         return Err(integrity_failure());
     };
-    validate_tenant(found_tenant, tenant)?;
-    RoleId::parse(role).map_err(|_| integrity_failure())?;
-    let values = rules.entry(role.clone()).or_default();
-    validate_ordinal(*ordinal, values.len())?;
+    Ok(RuleRowFields {
+        tenant: found_tenant,
+        role,
+        ordinal: *ordinal,
+        permission,
+        effect,
+    })
+}
+
+fn rule_slot<'a>(
+    rules: &'a mut BTreeMap<String, Vec<PermissionRule>>,
+    role: &str,
+    ordinal: i64,
+) -> Result<&'a mut Vec<PermissionRule>, StorageError> {
+    let values = rules.entry(role.to_owned()).or_default();
+    validate_ordinal(ordinal, values.len())?;
     if values.len() >= MAX_RULES_PER_ROLE {
         return Err(StorageError::new(StorageErrorCode::ResourceExhausted));
     }
-    values.push(PermissionRule::new(
-        PermissionId::parse(permission).map_err(|_| integrity_failure())?,
-        decode_effect(effect)?,
-    ));
-    Ok(())
+    Ok(values)
 }
 
 fn load_roles(
@@ -173,19 +212,31 @@ fn load_roles(
 ) -> Result<Vec<RoleDefinitionSnapshot>, StorageError> {
     let batch = rows(sql::load_roles(session, tenant)?)?;
     validate_columns(batch.columns(), &role_columns())?;
-    if batch.rows().len() > MAX_ROLES {
-        return Err(StorageError::new(StorageErrorCode::ResourceExhausted));
-    }
+    validate_role_row_count(batch.rows().len())?;
     let roles = batch
         .rows()
         .iter()
         .enumerate()
         .map(|(ordinal, row)| decode_role(row, tenant, ordinal, &mut rules))
         .collect::<Result<Vec<_>, _>>()?;
+    reject_residual_rules(&rules)?;
+    Ok(roles)
+}
+
+fn validate_role_row_count(row_count: usize) -> Result<(), StorageError> {
+    if row_count > MAX_ROLES {
+        return Err(StorageError::new(StorageErrorCode::ResourceExhausted));
+    }
+    Ok(())
+}
+
+fn reject_residual_rules(
+    rules: &BTreeMap<String, Vec<PermissionRule>>,
+) -> Result<(), StorageError> {
     if !rules.is_empty() {
         return Err(integrity_failure());
     }
-    Ok(roles)
+    Ok(())
 }
 
 fn decode_role(
@@ -389,13 +440,18 @@ pub(super) fn load_events(
     check_context(context)?;
     let batch = rows(output)?;
     validate_columns(batch.columns(), &event::event_columns())?;
-    let row_count = u64::try_from(batch.rows().len()).map_err(|_| resource_exhausted())?;
-    if row_count > maximum_rows {
-        return Err(resource_exhausted());
-    }
+    validate_event_row_count(batch.rows().len(), maximum_rows)?;
     #[cfg(feature = "test-hooks")]
     history_test_hooks.record_event_history_decode();
     event::decode_events(batch.rows(), tenant)
+}
+
+fn validate_event_row_count(row_count: usize, maximum_rows: u64) -> Result<(), StorageError> {
+    let row_count = u64::try_from(row_count).map_err(|_| resource_exhausted())?;
+    if row_count > maximum_rows {
+        return Err(resource_exhausted());
+    }
+    Ok(())
 }
 
 fn validate_history(

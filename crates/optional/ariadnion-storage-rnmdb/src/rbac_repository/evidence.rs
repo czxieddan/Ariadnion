@@ -884,10 +884,20 @@ fn decode_payload(value: &str) -> Result<(Zeroizing<Vec<u8>>, UtcTimestamp), Sto
     let identity = Zeroizing::new(reader.field()?.to_vec());
     let committed_at = UtcTimestamp::from_unix_seconds(reader.i64()?);
     reader.finish()?;
-    if canonical_payload(&identity, committed_at)?.as_slice() != bytes.as_slice() {
+    validate_canonical_payload(&bytes, &identity, committed_at)?;
+    Ok((identity, committed_at))
+}
+
+fn validate_canonical_payload(
+    bytes: &[u8],
+    identity: &[u8],
+    committed_at: UtcTimestamp,
+) -> Result<(), StorageError> {
+    let reconstructed = canonical_payload(identity, committed_at)?;
+    if reconstructed.as_slice() != bytes {
         return Err(integrity_failure());
     }
-    Ok((identity, committed_at))
+    Ok(())
 }
 
 struct CanonicalReader<'a> {

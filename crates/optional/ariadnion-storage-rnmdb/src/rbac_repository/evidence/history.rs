@@ -62,16 +62,25 @@ fn load_history_candidates(
     loop {
         let batch = load_history_page(session, tenant, history.cursor(), context)?;
         let page = validated_outbox_rows(&batch)?;
-        if page.is_empty() {
-            break;
-        }
-        history.retain_page(page, key, context)?;
-        if page.len() < sql::OUTBOX_HISTORY_PAGE_ROWS {
+        if retain_history_page(&mut history, page, key, context)? {
             break;
         }
     }
     check_context(context)?;
     Ok(history.into_candidates())
+}
+
+fn retain_history_page(
+    history: &mut HistoryLoad,
+    page: &[Row],
+    key: &AuditSubjectKeyMaterial,
+    context: &RequestContext,
+) -> Result<bool, StorageError> {
+    if page.is_empty() {
+        return Ok(true);
+    }
+    history.retain_page(page, key, context)?;
+    Ok(page.len() < sql::OUTBOX_HISTORY_PAGE_ROWS)
 }
 
 fn load_history_page(
@@ -228,15 +237,25 @@ fn match_history_candidates(
     let mut matched = Vec::with_capacity(events.len());
     for (index, event) in events.iter().enumerate() {
         let candidate = take_event_candidate(candidates, event)?;
-        if index + 1 == events.len() && candidate.identity.snapshot_digest != current_digest {
-            return Err(integrity_failure());
-        }
+        validate_current_digest(index, events.len(), &candidate, current_digest)?;
         matched.push(candidate);
     }
     if !candidates.is_empty() {
         return Err(integrity_failure());
     }
     Ok(matched)
+}
+
+fn validate_current_digest(
+    index: usize,
+    event_count: usize,
+    candidate: &TransitionEvidence,
+    current_digest: [u8; 32],
+) -> Result<(), StorageError> {
+    if index + 1 == event_count && candidate.identity.snapshot_digest != current_digest {
+        return Err(integrity_failure());
+    }
+    Ok(())
 }
 
 fn take_event_candidate(
