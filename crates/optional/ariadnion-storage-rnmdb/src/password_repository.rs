@@ -174,16 +174,21 @@ fn commit_transition(
     request: &CommitRequest<'_>,
     key: &AuditSubjectKeyMaterial,
 ) -> Result<PasswordCommitReceipt, StorageError> {
-    match request.commit {
-        PasswordResetCommit::Issuance(issuance) => persist_issuance(session, request, issuance)?,
-        PasswordResetCommit::ResetOnly(_) => persist_reset_update(session, request)?,
-        PasswordResetCommit::CredentialReplacement(_) => {
-            persist_consumption(session, request)?;
-        }
-    }
+    persist_commit_state(session, request)?;
     let committed_at = trusted_commit_time()?;
     evidence::persist_transition_evidence(session, request, key, committed_at)?;
     Ok(receipt(request, committed_at))
+}
+
+fn persist_commit_state(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+) -> Result<(), StorageError> {
+    match request.commit {
+        PasswordResetCommit::Issuance(issuance) => persist_issuance(session, request, issuance),
+        PasswordResetCommit::ResetOnly(_) => persist_reset_update(session, request),
+        PasswordResetCommit::CredentialReplacement(_) => persist_consumption(session, request),
+    }
 }
 
 fn persist_issuance(

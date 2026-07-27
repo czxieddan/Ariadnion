@@ -163,9 +163,28 @@ fn decode_reset_fields(
     tenant: &TenantId,
     user: &UserId,
 ) -> Result<ResetFields, StorageError> {
+    let fields = reset_row_fields(row)?;
+    validate_boundary(fields.tenant, fields.user, tenant, user)?;
+    decode_reset_values(fields, tenant, user)
+}
+
+struct ResetRowFields<'a> {
+    tenant: &'a str,
+    user: &'a str,
+    reset_id: &'a str,
+    token_digest: &'a str,
+    issued_at: i64,
+    expires_at: i64,
+    version: &'a str,
+    purpose: &'a str,
+    state: &'a str,
+    password_hash_digest: &'a SqlValue,
+}
+
+fn reset_row_fields(row: &Row) -> Result<ResetRowFields<'_>, StorageError> {
     let [
-        SqlValue::Text(found_tenant),
-        SqlValue::Text(found_user),
+        SqlValue::Text(tenant),
+        SqlValue::Text(user),
         SqlValue::Text(reset_id),
         SqlValue::Text(token_digest),
         SqlValue::Int64(issued_at),
@@ -178,18 +197,44 @@ fn decode_reset_fields(
     else {
         return Err(integrity_failure());
     };
-    validate_boundary(found_tenant, found_user, tenant, user)?;
+    Ok(ResetRowFields {
+        tenant,
+        user,
+        reset_id,
+        token_digest,
+        issued_at: *issued_at,
+        expires_at: *expires_at,
+        version,
+        purpose,
+        state,
+        password_hash_digest,
+    })
+}
+
+fn decode_reset_values(
+    fields: ResetRowFields<'_>,
+    tenant: &TenantId,
+    user: &UserId,
+) -> Result<ResetFields, StorageError> {
+    let reset_id = PasswordResetId::parse(fields.reset_id).map_err(|_| integrity_failure())?;
+    let token_digest = PasswordResetTokenDigest::from_bytes(decode_digest(fields.token_digest)?);
+    let issued_at = UtcTimestamp::from_unix_seconds(fields.issued_at);
+    let expires_at = UtcTimestamp::from_unix_seconds(fields.expires_at);
+    let version = decode_reset_version(fields.version)?;
+    let purpose = decode_purpose(fields.purpose)?;
+    let state = decode_state(fields.state)?;
+    let password_hash_digest = decode_optional_digest(fields.password_hash_digest)?;
     Ok(ResetFields {
         tenant: tenant.clone(),
         user: user.clone(),
-        reset_id: PasswordResetId::parse(reset_id).map_err(|_| integrity_failure())?,
-        token_digest: PasswordResetTokenDigest::from_bytes(decode_digest(token_digest)?),
-        issued_at: UtcTimestamp::from_unix_seconds(*issued_at),
-        expires_at: UtcTimestamp::from_unix_seconds(*expires_at),
-        version: decode_reset_version(version)?,
-        purpose: decode_purpose(purpose)?,
-        state: decode_state(state)?,
-        password_hash_digest: decode_optional_digest(password_hash_digest)?,
+        reset_id,
+        token_digest,
+        issued_at,
+        expires_at,
+        version,
+        purpose,
+        state,
+        password_hash_digest,
     })
 }
 
@@ -306,6 +351,24 @@ fn decode_events(
 }
 
 fn decode_event(row: &Row, reset: &PasswordReset) -> Result<PersistedEvent, StorageError> {
+    let fields = event_row_fields(row)?;
+    validate_reset_identity(fields.tenant, fields.user, fields.reset_id, reset)?;
+    decode_event_values(fields)
+}
+
+struct EventRowFields<'a> {
+    tenant: &'a str,
+    user: &'a str,
+    reset_id: &'a str,
+    version: &'a str,
+    kind: &'a str,
+    occurred_at: i64,
+    actor: &'a str,
+    purpose: &'a str,
+    password_hash_digest: &'a SqlValue,
+}
+
+fn event_row_fields(row: &Row) -> Result<EventRowFields<'_>, StorageError> {
     let [
         SqlValue::Text(tenant),
         SqlValue::Text(user),
@@ -320,14 +383,33 @@ fn decode_event(row: &Row, reset: &PasswordReset) -> Result<PersistedEvent, Stor
     else {
         return Err(integrity_failure());
     };
-    validate_reset_identity(tenant, user, reset_id, reset)?;
+    Ok(EventRowFields {
+        tenant,
+        user,
+        reset_id,
+        version,
+        kind,
+        occurred_at: *occurred_at,
+        actor,
+        purpose,
+        password_hash_digest,
+    })
+}
+
+fn decode_event_values(fields: EventRowFields<'_>) -> Result<PersistedEvent, StorageError> {
+    let version = decode_reset_version(fields.version)?;
+    let kind = decode_event_kind(fields.kind)?;
+    let occurred_at = UtcTimestamp::from_unix_seconds(fields.occurred_at);
+    let actor = PrincipalId::parse(fields.actor).map_err(|_| integrity_failure())?;
+    let purpose = decode_purpose(fields.purpose)?;
+    let password_hash_digest = decode_optional_digest(fields.password_hash_digest)?;
     Ok(PersistedEvent {
-        version: decode_reset_version(version)?,
-        kind: decode_event_kind(kind)?,
-        occurred_at: UtcTimestamp::from_unix_seconds(*occurred_at),
-        actor: PrincipalId::parse(actor).map_err(|_| integrity_failure())?,
-        purpose: decode_purpose(purpose)?,
-        password_hash_digest: decode_optional_digest(password_hash_digest)?,
+        version,
+        kind,
+        occurred_at,
+        actor,
+        purpose,
+        password_hash_digest,
     })
 }
 
@@ -456,18 +538,32 @@ fn verify_history_entry(
     event: &PersistedEvent,
     evidence: &PersistedCommitEvidence,
 ) -> Result<(), StorageError> {
-    let expected_version =
-        PasswordResetVersion::new(u64::try_from(index).map_err(|_| integrity_failure())? + 1)
-            .map_err(|_| integrity_failure())?;
+    let expected_version = expected_history_version(index)?;
+    verify_history_bindings(reset, expected_version, event, evidence)?;
+    verify_evidence_result(reset, event.kind, evidence)
+}
+
+fn expected_history_version(index: usize) -> Result<PasswordResetVersion, StorageError> {
+    let one_based = u64::try_from(index).map_err(|_| integrity_failure())? + 1;
+    PasswordResetVersion::new(one_based).map_err(|_| integrity_failure())
+}
+
+fn verify_history_bindings(
+    reset: &PasswordReset,
+    expected_version: PasswordResetVersion,
+    event: &PersistedEvent,
+    evidence: &PersistedCommitEvidence,
+) -> Result<(), StorageError> {
     let valid = event.version == expected_version
         && evidence.version == expected_version
         && event.purpose == PasswordResetPurpose::PasswordRecovery
         && evidence.issued_credential_version == reset.issued_credential_version()
         && event.password_hash_digest == evidence.password_hash_digest;
-    if !valid {
-        return Err(integrity_failure());
+    if valid {
+        Ok(())
+    } else {
+        Err(integrity_failure())
     }
-    verify_evidence_result(reset, event.kind, evidence)
 }
 
 fn verify_evidence_result(
@@ -516,17 +612,25 @@ fn verify_terminal_history(
     let Some(first) = events.first() else {
         return Err(integrity_failure());
     };
-    let issuance_valid = first.kind == PasswordResetEventKind::Issued
-        && first.occurred_at == reset.issued_at()
-        && first.password_hash_digest.is_none();
-    let terminal_valid = match events.get(1) {
-        None => reset.state() == PasswordResetState::Issued,
-        Some(event) => terminal_matches(reset, event),
-    };
+    let issuance_valid = issuance_history_matches(reset, first);
+    let terminal_valid = terminal_history_matches(reset, events.get(1));
     if issuance_valid && terminal_valid {
         Ok(())
     } else {
         Err(integrity_failure())
+    }
+}
+
+fn issuance_history_matches(reset: &PasswordReset, event: &PersistedEvent) -> bool {
+    event.kind == PasswordResetEventKind::Issued
+        && event.occurred_at == reset.issued_at()
+        && event.password_hash_digest.is_none()
+}
+
+fn terminal_history_matches(reset: &PasswordReset, event: Option<&PersistedEvent>) -> bool {
+    match event {
+        None => reset.state() == PasswordResetState::Issued,
+        Some(event) => terminal_matches(reset, event),
     }
 }
 
@@ -559,23 +663,52 @@ fn classify_collisions(
     request: &CommitRequest<'_>,
     rows: &[Row],
 ) -> Result<(), StorageError> {
-    let target = request.transition().reset();
-    let mut exact_id = false;
+    let mut scan = CollisionScan::default();
     for row in rows {
         let collision = decode_collision(row, request.tenant_id)?;
-        if collision.reset_id == *target.id() {
-            if collision.user_id != *request.user_id {
-                return Err(integrity_failure());
-            }
-            exact_id = true;
-            continue;
-        }
-        if collision.token_digest == target.token_digest() {
-            return Err(integrity_failure());
-        }
+        let classification = classify_collision_row(request, &collision);
+        merge_collision(&mut scan, classification);
+    }
+    if scan.integrity_failure {
         return Err(integrity_failure());
     }
-    classify_exact_id(session, request, exact_id)
+    classify_exact_id(session, request, scan.exact_id)
+}
+
+#[derive(Default)]
+struct CollisionScan {
+    exact_id: bool,
+    integrity_failure: bool,
+}
+
+enum CollisionClass {
+    ExactId,
+    CrossUserExactId,
+    TokenCollision,
+    Unexplained,
+}
+
+fn classify_collision_row(request: &CommitRequest<'_>, collision: &Collision) -> CollisionClass {
+    let target = request.transition().reset();
+    match (
+        collision.reset_id == *target.id(),
+        collision.user_id == *request.user_id,
+        collision.token_digest == target.token_digest(),
+    ) {
+        (true, true, _) => CollisionClass::ExactId,
+        (true, false, _) => CollisionClass::CrossUserExactId,
+        (false, _, true) => CollisionClass::TokenCollision,
+        (false, _, false) => CollisionClass::Unexplained,
+    }
+}
+
+fn merge_collision(scan: &mut CollisionScan, classification: CollisionClass) {
+    match classification {
+        CollisionClass::ExactId => scan.exact_id = true,
+        CollisionClass::CrossUserExactId
+        | CollisionClass::TokenCollision
+        | CollisionClass::Unexplained => scan.integrity_failure = true,
+    }
 }
 
 fn classify_exact_id(

@@ -409,6 +409,23 @@ struct PersistedOutbox {
     payload: Zeroizing<Vec<u8>>,
 }
 
+struct PersistedOutboxFields<'a> {
+    tenant: &'a str,
+    event_id: &'a str,
+    topic: &'a str,
+    key: &'a str,
+    payload: &'a str,
+    created_at: &'a SqlValue,
+    available_at: &'a SqlValue,
+    attempt: i64,
+    state: &'a str,
+    lease_token: &'a SqlValue,
+    lease_worker: &'a SqlValue,
+    lease_expires_at: &'a SqlValue,
+    delivered_at: &'a SqlValue,
+    failed_at: &'a SqlValue,
+}
+
 fn load_outbox(
     session: &mut LocalSession,
     identity: &EvidenceIdentity,
@@ -431,6 +448,38 @@ fn decode_outbox_row(
     row: &Row,
     identity: &EvidenceIdentity,
 ) -> Result<PersistedOutbox, StorageError> {
+    let fields = persisted_outbox_fields(row)?;
+    validate_outbox_identity(
+        fields.tenant,
+        fields.event_id,
+        fields.topic,
+        fields.key,
+        identity,
+    )?;
+    let created = decode_timestamp(fields.created_at)?;
+    let available = decode_timestamp(fields.available_at)?;
+    validate_outbox_lifecycle(
+        fields.attempt,
+        fields.state,
+        created,
+        available,
+        &[
+            fields.lease_token,
+            fields.lease_worker,
+            fields.lease_expires_at,
+            fields.delivered_at,
+            fields.failed_at,
+        ],
+    )?;
+    let committed_at = decode_receipt_time(created)?;
+    let payload = decode_hex(fields.payload)?;
+    Ok(PersistedOutbox {
+        committed_at,
+        payload,
+    })
+}
+
+fn persisted_outbox_fields(row: &Row) -> Result<PersistedOutboxFields<'_>, StorageError> {
     let [
         SqlValue::Text(tenant),
         SqlValue::Text(event_id),
@@ -450,25 +499,21 @@ fn decode_outbox_row(
     else {
         return Err(integrity_failure());
     };
-    validate_outbox_identity(tenant, event_id, topic, key, identity)?;
-    let created = decode_timestamp(created_at)?;
-    let available = decode_timestamp(available_at)?;
-    validate_outbox_lifecycle(
-        *attempt,
+    Ok(PersistedOutboxFields {
+        tenant,
+        event_id,
+        topic,
+        key,
+        payload,
+        created_at,
+        available_at,
+        attempt: *attempt,
         state,
-        created,
-        available,
-        &[
-            lease_token,
-            lease_worker,
-            lease_expires_at,
-            delivered_at,
-            failed_at,
-        ],
-    )?;
-    Ok(PersistedOutbox {
-        committed_at: decode_receipt_time(created)?,
-        payload: decode_hex(payload)?,
+        lease_token,
+        lease_worker,
+        lease_expires_at,
+        delivered_at,
+        failed_at,
     })
 }
 
