@@ -85,8 +85,13 @@ pub enum AdminTarget {
     User(UserId),
     /// An organization target.
     Organization(OrganizationId),
-    /// An invitation target.
-    Invitation(InvitationId),
+    /// An invitation target uniquely bound to its owning organization.
+    Invitation {
+        /// Organization that owns the invitation identity.
+        organization_id: OrganizationId,
+        /// Invitation identity within the organization.
+        invitation_id: InvitationId,
+    },
     /// An API-key target.
     ApiKey(ApiKeyId),
 }
@@ -98,7 +103,7 @@ impl AdminTarget {
         match self {
             Self::User(_) => AdminTargetKind::User,
             Self::Organization(_) => AdminTargetKind::Organization,
-            Self::Invitation(_) => AdminTargetKind::Invitation,
+            Self::Invitation { .. } => AdminTargetKind::Invitation,
             Self::ApiKey(_) => AdminTargetKind::ApiKey,
         }
     }
@@ -176,7 +181,7 @@ impl AdminCommand {
 
 /// Tenant-bound identity and expected authorization version for one command.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AdminCommandBinding {
+pub(crate) struct AdminCommandBinding {
     id: AdminCommandId,
     tenant_id: TenantId,
     actor: PrincipalId,
@@ -188,7 +193,7 @@ pub struct AdminCommandBinding {
 impl AdminCommandBinding {
     /// Creates command identity metadata bound to one authorization decision.
     #[must_use]
-    pub const fn new(
+    pub(crate) const fn new(
         id: AdminCommandId,
         tenant_id: TenantId,
         actor: PrincipalId,
@@ -213,7 +218,7 @@ impl AdminCommandBinding {
 /// snapshot and authenticated principal by the owning entrypoint. Protocol
 /// adapters must never deserialize or persist decisions as reusable grants.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AdminCommandRequest {
+pub(crate) struct AdminCommandRequest {
     binding: AdminCommandBinding,
     action: AdminActionKind,
     target: AdminTarget,
@@ -227,7 +232,7 @@ impl AdminCommandRequest {
     /// # Errors
     ///
     /// Returns [`AdminErrorCode::InvalidArgument`] for invalid reason codes.
-    pub fn new(
+    pub(crate) fn new(
         binding: AdminCommandBinding,
         action: AdminActionKind,
         target: AdminTarget,
@@ -253,7 +258,9 @@ impl AdminCommandRequest {
 ///
 /// Returns stable redacted failures for tenant mismatch, denied authorization,
 /// decision-binding mismatch, or incompatible action/target pairs.
-pub fn accept_admin_command(request: AdminCommandRequest) -> Result<AdminCommand, AdminError> {
+pub(crate) fn accept_admin_command(
+    request: AdminCommandRequest,
+) -> Result<AdminCommand, AdminError> {
     validate_action_target(request.action, &request.target)?;
     validate_decision(
         &request.binding,
@@ -329,7 +336,9 @@ fn validate_decision_result(
     Ok(())
 }
 
-fn expected_target_state(action: AdminActionKind) -> (AuthorizationIntent, ResourceState) {
+pub(crate) fn expected_target_state(
+    action: AdminActionKind,
+) -> (AuthorizationIntent, ResourceState) {
     match action {
         AdminActionKind::RestoreUser | AdminActionKind::UnfreezeOrganization => {
             (AuthorizationIntent::Recovery, ResourceState::Restricted)
@@ -354,7 +363,7 @@ fn validate_decision_target(
     Ok(())
 }
 
-fn action_permission(action: AdminActionKind) -> &'static str {
+pub(crate) fn action_permission(action: AdminActionKind) -> &'static str {
     match action {
         AdminActionKind::SuspendUser => "admin.user.suspend",
         AdminActionKind::RestoreUser => "admin.user.restore",
@@ -365,7 +374,7 @@ fn action_permission(action: AdminActionKind) -> &'static str {
     }
 }
 
-fn expected_scope(
+pub(crate) fn expected_scope(
     tenant_id: TenantId,
     target: &AdminTarget,
 ) -> Result<AuthorizationScope, AdminError> {
@@ -374,9 +383,19 @@ fn expected_scope(
             tenant_resource_scope(tenant_id, "organization", organization_id.as_str())
         }
         AdminTarget::User(user_id) => tenant_resource_scope(tenant_id, "user", user_id.as_str()),
-        AdminTarget::Invitation(invitation_id) => {
-            tenant_resource_scope(tenant_id, "invitation", invitation_id.as_str())
-        }
+        AdminTarget::Invitation {
+            organization_id,
+            invitation_id,
+        } => AuthorizationScope::resource(
+            tenant_id,
+            organization_id.clone(),
+            None,
+            ResourceKind::parse("invitation")
+                .map_err(|_| error(AdminErrorCode::InvalidArgument))?,
+            ResourceId::parse(invitation_id.as_str())
+                .map_err(|_| error(AdminErrorCode::InvalidArgument))?,
+        )
+        .map_err(|_| error(AdminErrorCode::InvalidArgument)),
         AdminTarget::ApiKey(api_key_id) => {
             tenant_resource_scope(tenant_id, "api-key", api_key_id.as_str())
         }
@@ -398,7 +417,10 @@ fn tenant_resource_scope(
     ))
 }
 
-fn validate_action_target(action: AdminActionKind, target: &AdminTarget) -> Result<(), AdminError> {
+pub(crate) fn validate_action_target(
+    action: AdminActionKind,
+    target: &AdminTarget,
+) -> Result<(), AdminError> {
     let compatible = matches!(
         (action, target.kind()),
         (
@@ -418,7 +440,7 @@ fn validate_action_target(action: AdminActionKind, target: &AdminTarget) -> Resu
     Ok(())
 }
 
-fn parse_reason_code(value: &str) -> Result<Box<str>, AdminError> {
+pub(crate) fn parse_reason_code(value: &str) -> Result<Box<str>, AdminError> {
     if value.is_empty()
         || value.len() > MAX_REASON_BYTES
         || !value.is_ascii()
