@@ -132,10 +132,22 @@ impl AuthorizationPolicyRepositoryErrorCode {
             Self::Conflict => "RBAC_POLICY_REPOSITORY_CONFLICT",
             Self::Cancelled => "RBAC_POLICY_REPOSITORY_CANCELLED",
             Self::DeadlineExceeded => "RBAC_POLICY_REPOSITORY_DEADLINE_EXCEEDED",
+            Self::ResourceExhausted
+            | Self::Unavailable
+            | Self::CommitIndeterminate
+            | Self::IntegrityFailure => self.durability_code(),
+        }
+    }
+
+    const fn durability_code(self) -> &'static str {
+        match self {
             Self::ResourceExhausted => "RBAC_POLICY_REPOSITORY_RESOURCE_EXHAUSTED",
             Self::Unavailable => "RBAC_POLICY_REPOSITORY_UNAVAILABLE",
             Self::CommitIndeterminate => "RBAC_POLICY_REPOSITORY_COMMIT_INDETERMINATE",
             Self::IntegrityFailure => "RBAC_POLICY_REPOSITORY_INTEGRITY_FAILURE",
+            Self::NotFound | Self::Conflict | Self::Cancelled | Self::DeadlineExceeded => {
+                self.as_str()
+            }
         }
     }
 }

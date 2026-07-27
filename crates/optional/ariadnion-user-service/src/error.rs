@@ -57,10 +57,22 @@ impl UserRepositoryErrorCode {
             Self::Conflict => "USER_REPOSITORY_CONFLICT",
             Self::Cancelled => "USER_REPOSITORY_CANCELLED",
             Self::DeadlineExceeded => "USER_REPOSITORY_DEADLINE_EXCEEDED",
+            Self::ResourceExhausted
+            | Self::Unavailable
+            | Self::CommitIndeterminate
+            | Self::IntegrityFailure => self.durability_code(),
+        }
+    }
+
+    const fn durability_code(self) -> &'static str {
+        match self {
             Self::ResourceExhausted => "USER_REPOSITORY_RESOURCE_EXHAUSTED",
             Self::Unavailable => "USER_REPOSITORY_UNAVAILABLE",
             Self::CommitIndeterminate => "USER_REPOSITORY_COMMIT_INDETERMINATE",
             Self::IntegrityFailure => "USER_REPOSITORY_INTEGRITY_FAILURE",
+            Self::NotFound | Self::Conflict | Self::Cancelled | Self::DeadlineExceeded => {
+                self.as_str()
+            }
         }
     }
 }
@@ -182,11 +194,26 @@ pub(crate) fn map_context_error(error: CoreError) -> UserServiceError {
 }
 
 pub(crate) fn map_repository_error(error: UserRepositoryError) -> UserServiceError {
-    let code = match error.code() {
+    UserServiceError::new(map_repository_error_code(error.code()))
+}
+
+const fn map_repository_error_code(code: UserRepositoryErrorCode) -> UserServiceErrorCode {
+    match code {
         UserRepositoryErrorCode::NotFound => UserServiceErrorCode::UserNotFound,
         UserRepositoryErrorCode::Conflict => UserServiceErrorCode::RepositoryConflict,
         UserRepositoryErrorCode::Cancelled => UserServiceErrorCode::Cancelled,
         UserRepositoryErrorCode::DeadlineExceeded => UserServiceErrorCode::DeadlineExceeded,
+        UserRepositoryErrorCode::ResourceExhausted
+        | UserRepositoryErrorCode::Unavailable
+        | UserRepositoryErrorCode::CommitIndeterminate
+        | UserRepositoryErrorCode::IntegrityFailure => map_repository_durability_error_code(code),
+    }
+}
+
+const fn map_repository_durability_error_code(
+    code: UserRepositoryErrorCode,
+) -> UserServiceErrorCode {
+    match code {
         UserRepositoryErrorCode::ResourceExhausted => {
             UserServiceErrorCode::RepositoryResourceExhausted
         }
@@ -197,8 +224,11 @@ pub(crate) fn map_repository_error(error: UserRepositoryError) -> UserServiceErr
         UserRepositoryErrorCode::IntegrityFailure => {
             UserServiceErrorCode::RepositoryIntegrityFailure
         }
-    };
-    UserServiceError::new(code)
+        UserRepositoryErrorCode::NotFound
+        | UserRepositoryErrorCode::Conflict
+        | UserRepositoryErrorCode::Cancelled
+        | UserRepositoryErrorCode::DeadlineExceeded => map_repository_error_code(code),
+    }
 }
 
 pub(crate) fn map_domain_error(error: UserDomainError) -> UserServiceError {
