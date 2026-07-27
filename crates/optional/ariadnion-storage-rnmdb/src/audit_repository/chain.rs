@@ -8,11 +8,11 @@ use ariadnion_core::{RequestContext, TenantId};
 use ariadnion_storage_domain::{StorageError, StorageErrorCode};
 use rnmdb_cli::LocalSession;
 
+use super::durable_read::{AuditReadQuery, ReadBoundary};
 use super::{
-    MAX_AUDIT_MEMBERSHIP_DISTANCE, decode_event_page, event_range_sql, execute, integrity_failure,
+    MAX_AUDIT_MEMBERSHIP_DISTANCE, decode_event_page, event_range_sql, integrity_failure,
     load_event_by_sequence, map_domain_error, map_store_error,
 };
-use crate::session::check_context;
 
 pub(super) fn validate_durable_membership(
     session: &mut LocalSession,
@@ -20,38 +20,48 @@ pub(super) fn validate_durable_membership(
     head: &AuditChainHead,
     target: &AuditEvent,
 ) -> Result<(), StorageError> {
-    let (last_sequence, mut scan) = prepare_membership_scan(session, context, head, target)?;
-    scan_membership_suffix(session, context, target, last_sequence, &mut scan)?;
-    check_context(context)?;
+    let boundary = ReadBoundary::unobserved(context);
+    validate_durable_membership_observed(session, &boundary, head, target)
+}
+
+pub(super) fn validate_durable_membership_observed(
+    session: &mut LocalSession,
+    boundary: &ReadBoundary<'_>,
+    head: &AuditChainHead,
+    target: &AuditEvent,
+) -> Result<(), StorageError> {
+    let (last_sequence, mut scan) = prepare_membership_scan(session, boundary, head, target)?;
+    scan_membership_suffix(session, boundary, target, last_sequence, &mut scan)?;
+    boundary.check()?;
     check_membership_result(scan.previous.as_ref(), head, scan.target_seen)
 }
 
 fn prepare_membership_scan(
     session: &mut LocalSession,
-    context: &RequestContext,
+    boundary: &ReadBoundary<'_>,
     head: &AuditChainHead,
     target: &AuditEvent,
 ) -> Result<(AuditSequence, MembershipScan), StorageError> {
-    check_context(context)?;
+    boundary.check()?;
     let last_sequence = head.last_sequence().ok_or_else(integrity_failure)?;
     validate_target_bound(head, target, last_sequence)?;
     let from_genesis = membership_starts_at_genesis(target.sequence(), last_sequence)?;
-    let scan = initialize_scan(session, target, from_genesis)?;
-    check_context(context)?;
+    let scan = initialize_scan(session, boundary, target, from_genesis)?;
+    boundary.check()?;
     Ok((last_sequence, scan))
 }
 
 fn scan_membership_suffix(
     session: &mut LocalSession,
-    context: &RequestContext,
+    boundary: &ReadBoundary<'_>,
     target: &AuditEvent,
     last_sequence: AuditSequence,
     scan: &mut MembershipScan,
 ) -> Result<(), StorageError> {
     while sequence_within_head(scan.next, last_sequence) {
-        check_context(context)?;
+        boundary.check()?;
         let cursor = membership_cursor(scan.next, last_sequence)?;
-        validate_membership_page(session, context, target.tenant_id(), cursor, target, scan)?;
+        validate_membership_page(session, boundary, target.tenant_id(), cursor, target, scan)?;
     }
     Ok(())
 }
@@ -109,6 +119,7 @@ struct MembershipScan {
 
 fn initialize_scan(
     session: &mut LocalSession,
+    boundary: &ReadBoundary<'_>,
     target: &AuditEvent,
     from_genesis: bool,
 ) -> Result<MembershipScan, StorageError> {
@@ -119,7 +130,7 @@ fn initialize_scan(
             target_seen: false,
         });
     }
-    validate_persisted_event_link(session, target)?;
+    validate_persisted_event_link_observed(session, boundary, target)?;
     Ok(MembershipScan {
         previous: Some(target.clone()),
         next: target.sequence().get().checked_add(1),
@@ -129,31 +140,32 @@ fn initialize_scan(
 
 fn validate_membership_page(
     session: &mut LocalSession,
-    context: &RequestContext,
+    boundary: &ReadBoundary<'_>,
     tenant_id: &TenantId,
     cursor: AuditExportCursor,
     target: &AuditEvent,
     scan: &mut MembershipScan,
 ) -> Result<(), StorageError> {
-    let events = load_membership_page(session, context, tenant_id, cursor)?;
+    let events = load_membership_page(session, boundary, tenant_id, cursor)?;
     if events.is_empty() {
         return Err(integrity_failure());
     }
     for candidate in events {
         apply_membership_candidate(candidate, target, scan)?;
     }
-    check_context(context)
+    boundary.check()
 }
 
 fn load_membership_page(
     session: &mut LocalSession,
-    context: &RequestContext,
+    boundary: &ReadBoundary<'_>,
     tenant_id: &TenantId,
     cursor: AuditExportCursor,
 ) -> Result<Vec<AuditEvent>, StorageError> {
-    check_context(context)?;
     let sql = event_range_sql(tenant_id, cursor)?;
-    decode_event_page(execute(session, &sql)?, tenant_id)
+    let output = boundary.execute(session, &sql, AuditReadQuery::Chain)?;
+    boundary.before_decode(AuditReadQuery::Chain);
+    decode_event_page(output, tenant_id)
 }
 
 fn apply_membership_candidate(
@@ -242,6 +254,17 @@ pub(super) fn validate_persisted_event_link(
         .map_err(map_store_error)
 }
 
+pub(super) fn validate_persisted_event_link_observed(
+    session: &mut LocalSession,
+    boundary: &ReadBoundary<'_>,
+    event: &AuditEvent,
+) -> Result<(), StorageError> {
+    let head = load_predecessor_head_observed(session, boundary, event)?;
+    verify_audit_batch(&head, std::slice::from_ref(event))
+        .map(|_| ())
+        .map_err(map_store_error)
+}
+
 fn load_predecessor_head(
     session: &mut LocalSession,
     event: &AuditEvent,
@@ -252,6 +275,27 @@ fn load_predecessor_head(
     let sequence = predecessor_sequence(event.sequence())?;
     let predecessor = load_event_by_sequence(session, event.tenant_id(), sequence)?
         .ok_or_else(integrity_failure)?;
+    AuditChainHead::from_event(&predecessor).map_err(map_store_error)
+}
+
+fn load_predecessor_head_observed(
+    session: &mut LocalSession,
+    boundary: &ReadBoundary<'_>,
+    event: &AuditEvent,
+) -> Result<AuditChainHead, StorageError> {
+    boundary.check()?;
+    if event.sequence() == AuditSequence::initial() {
+        return Ok(AuditChainHead::empty(event.tenant_id().clone()));
+    }
+    let sequence = predecessor_sequence(event.sequence())?;
+    let predecessor = super::durable_read::load_event_by_sequence(
+        session,
+        event.tenant_id(),
+        sequence,
+        AuditReadQuery::Chain,
+        boundary,
+    )?
+    .ok_or_else(integrity_failure)?;
     AuditChainHead::from_event(&predecessor).map_err(map_store_error)
 }
 

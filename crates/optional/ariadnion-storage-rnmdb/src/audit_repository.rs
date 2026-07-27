@@ -1,6 +1,10 @@
 //! Durable tenant-local identity audit repository.
 
 mod chain;
+mod durable_read;
+
+#[cfg(feature = "test-hooks")]
+pub(crate) use durable_read::{AuditReadObserver, AuditReadQuery};
 
 use std::sync::Arc;
 
@@ -390,10 +394,20 @@ pub(crate) fn load_durable_event_with_head(
     event_id: &AuditEventId,
     context: &RequestContext,
 ) -> Result<(AuditEvent, AuditChainHead), StorageError> {
-    let event = load_event_by_id(session, tenant_id, event_id)?.ok_or_else(not_found)?;
-    let head = load_head_from_session(session, tenant_id)?;
-    chain::validate_durable_membership(session, context, &head, &event)?;
-    Ok((event, head))
+    durable_read::load_durable_event_with_head(session, tenant_id, event_id, context)
+}
+
+#[cfg(feature = "test-hooks")]
+pub(crate) fn load_durable_event_with_head_observed(
+    session: &mut LocalSession,
+    tenant_id: &TenantId,
+    event_id: &AuditEventId,
+    context: &RequestContext,
+    observer: &dyn AuditReadObserver,
+) -> Result<(AuditEvent, AuditChainHead), StorageError> {
+    durable_read::load_durable_event_with_head_observed(
+        session, tenant_id, event_id, context, observer,
+    )
 }
 
 fn validate_export_bound(

@@ -25,6 +25,7 @@ mod organization_repository;
 mod outbox;
 mod password_repository;
 mod query;
+mod rbac_repository;
 mod restore;
 mod secret_reference;
 mod secret_reference_repository;
@@ -70,6 +71,9 @@ pub use query::{
     FixedRnmdbReadQuery, QueryPlanDiagnostic, QueryPlanFormat, RnmdbFixedQueryExecutor,
     RnmdbQueryDiagnostics,
 };
+pub use rbac_repository::{
+    MAX_AUTHORIZATION_POLICY_EVENT_HISTORY_ROWS, RnmdbAuthorizationPolicyRepository,
+};
 pub use restore::{
     RnmdbRestoreAdapter, RnmdbRestoreDomainVerification, RnmdbRestoreEnvironment,
     RnmdbShadowComparison,
@@ -80,6 +84,9 @@ pub use secret_reference::{
 };
 pub use secret_reference_repository::RnmdbSecretReferenceRepository;
 pub use security::{RnmdbColumnSecurity, SecretLocatorKeyMaterial};
+#[cfg(feature = "test-hooks")]
+#[doc(hidden)]
+pub use session::IdentityScopeEntryCounts;
 pub use session::{PageKeyMaterial, RnmdbSessionOwner, SessionOpenOptions};
 pub use session_repository::RnmdbSessionRepository;
 pub use transaction::RnmdbTransactionManager;

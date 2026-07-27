@@ -3,6 +3,8 @@
 use std::collections::BTreeSet;
 use std::fmt::{self, Debug, Formatter};
 use std::path::{Component, Path, PathBuf};
+#[cfg(feature = "test-hooks")]
+use std::sync::atomic::AtomicU64;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard};
 use std::time::SystemTime;
@@ -19,6 +21,30 @@ use rnmdb_storage::PageCryptoKey;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::RnmdbInstanceProfile;
+
+/// Test-only snapshot of identity session-scope entries owned by one session.
+#[cfg(feature = "test-hooks")]
+#[doc(hidden)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct IdentityScopeEntryCounts {
+    storage_scope_entries: u64,
+    transaction_scope_entries: u64,
+}
+
+#[cfg(feature = "test-hooks")]
+impl IdentityScopeEntryCounts {
+    /// Returns identity storage-scope entries observed by this owner.
+    #[must_use]
+    pub const fn storage_scope_entries(self) -> u64 {
+        self.storage_scope_entries
+    }
+
+    /// Returns identity transaction-scope entries observed by this owner.
+    #[must_use]
+    pub const fn transaction_scope_entries(self) -> u64 {
+        self.transaction_scope_entries
+    }
+}
 
 /// Secret page-key material that is redacted and cleared on drop.
 pub struct PageKeyMaterial {
@@ -106,6 +132,10 @@ pub struct RnmdbSessionOwner {
     tainted: AtomicBool,
     #[cfg(feature = "test-hooks")]
     inject_next_identity_commit_indeterminate: AtomicBool,
+    #[cfg(feature = "test-hooks")]
+    identity_storage_scope_entries: AtomicU64,
+    #[cfg(feature = "test-hooks")]
+    identity_transaction_scope_entries: AtomicU64,
     configured_columns: Mutex<BTreeSet<ColumnEncryptionTarget>>,
 }
 
@@ -122,6 +152,10 @@ impl RnmdbSessionOwner {
             tainted: AtomicBool::new(false),
             #[cfg(feature = "test-hooks")]
             inject_next_identity_commit_indeterminate: AtomicBool::new(false),
+            #[cfg(feature = "test-hooks")]
+            identity_storage_scope_entries: AtomicU64::new(0),
+            #[cfg(feature = "test-hooks")]
+            identity_transaction_scope_entries: AtomicU64::new(0),
             configured_columns: Mutex::new(BTreeSet::new()),
         })
     }
@@ -136,6 +170,19 @@ impl RnmdbSessionOwner {
     #[must_use]
     pub const fn profile(&self) -> &RnmdbInstanceProfile {
         &self.profile
+    }
+
+    /// Returns identity session-scope entry counts for contract tests.
+    #[cfg(feature = "test-hooks")]
+    #[doc(hidden)]
+    #[must_use]
+    pub fn identity_scope_entry_counts(&self) -> IdentityScopeEntryCounts {
+        IdentityScopeEntryCounts {
+            storage_scope_entries: self.identity_storage_scope_entries.load(Ordering::Relaxed),
+            transaction_scope_entries: self
+                .identity_transaction_scope_entries
+                .load(Ordering::Relaxed),
+        }
     }
 
     pub(crate) const fn transaction_scope(&self) -> &TransactionScope {
@@ -314,8 +361,15 @@ impl RnmdbSessionOwner {
         let mut session = lock_session(&self.session);
         check_context(context)?;
         self.ensure_usable()?;
-        let result = run_identity_tenant_scope(&mut session, tenant_id, operation);
-        self.finish_identity_storage_scope(&session, result)
+        let result = run_identity_tenant_scope(&mut session, tenant_id, |session| {
+            #[cfg(feature = "test-hooks")]
+            self.identity_storage_scope_entries
+                .fetch_add(1, Ordering::Relaxed);
+            operation(session)
+        });
+        let value = self.finish_identity_storage_scope(&session, result)?;
+        check_context(context)?;
+        Ok(value)
     }
 
     /// Runs one tenant-scoped storage operation with an injected cleanup failure.
@@ -332,9 +386,18 @@ impl RnmdbSessionOwner {
         let mut session = lock_session(&self.session);
         check_context(context)?;
         self.ensure_usable()?;
-        let result =
-            run_identity_tenant_scope_injected_cleanup_failure(&mut session, tenant_id, operation);
-        self.finish_identity_storage_scope(&session, result)
+        let result = run_identity_tenant_scope_injected_cleanup_failure(
+            &mut session,
+            tenant_id,
+            |session| {
+                self.identity_storage_scope_entries
+                    .fetch_add(1, Ordering::Relaxed);
+                operation(session)
+            },
+        );
+        let value = self.finish_identity_storage_scope(&session, result)?;
+        check_context(context)?;
+        Ok(value)
     }
 
     pub(crate) fn with_identity_transaction_session<T>(
@@ -355,6 +418,9 @@ impl RnmdbSessionOwner {
         }
         let mut operation_tainted = false;
         let result = run_identity_tenant_scope(&mut session, tenant_id, |session| {
+            #[cfg(feature = "test-hooks")]
+            self.identity_transaction_scope_entries
+                .fetch_add(1, Ordering::Relaxed);
             let result = operation(session);
             #[cfg(feature = "test-hooks")]
             let result = self.inject_commit_indeterminate_after_success(result);
