@@ -51,6 +51,11 @@ rnmdb-cli = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "013
 sha2 = "0.10.9"
 zeroize = "1.9.0"
 
+[dev-dependencies]
+ariadnion-api-http = { path = "../ariadnion-api-http" }
+ariadnion-cli-user = { path = "../ariadnion-cli-user" }
+ariadnion-job-runner = { path = "../ariadnion-job-runner" }
+
 [lints.rust]
 unsafe_code = "forbid"
 missing_docs = "deny"

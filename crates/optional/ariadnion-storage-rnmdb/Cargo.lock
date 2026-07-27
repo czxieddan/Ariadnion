@@ -65,6 +65,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ariadnion-api-http"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-api-admin",
+ "ariadnion-core",
+ "ariadnion-rbac",
+ "ariadnion-user-domain",
+]
+
+[[package]]
 name = "ariadnion-audit-domain"
 version = "0.1.0"
 dependencies = [
@@ -115,6 +125,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ariadnion-cli-user"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-api-admin",
+ "ariadnion-core",
+ "ariadnion-rbac",
+ "ariadnion-user-domain",
+]
+
+[[package]]
 name = "ariadnion-core"
 version = "0.1.0"
 dependencies = [
@@ -128,6 +148,14 @@ dependencies = [
  "ariadnion-core",
  "ariadnion-organization",
  "ariadnion-user-domain",
+]
+
+[[package]]
+name = "ariadnion-job-runner"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-api-admin",
+ "ariadnion-core",
 ]
 
 [[package]]
@@ -200,13 +228,16 @@ name = "ariadnion-storage-rnmdb"
 version = "0.1.0"
 dependencies = [
  "ariadnion-api-admin",
+ "ariadnion-api-http",
  "ariadnion-audit-domain",
  "ariadnion-audit-store",
  "ariadnion-auth-api-key",
  "ariadnion-auth-password",
  "ariadnion-auth-session",
+ "ariadnion-cli-user",
  "ariadnion-core",
  "ariadnion-invitation",
+ "ariadnion-job-runner",
  "ariadnion-organization",
  "ariadnion-rbac",
  "ariadnion-storage-backup",
