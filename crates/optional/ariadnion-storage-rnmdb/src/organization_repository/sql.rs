@@ -208,7 +208,12 @@ fn delete_rows(
     let mut sql = format!("DELETE FROM {table}");
     push_scope(&mut sql, tenant, organization);
     sql.push(';');
-    let changed = match execute(session, &finish(sql)?)? {
+    let output = execute(session, &finish(sql)?)?;
+    require_exact_rows_affected(output, expected)
+}
+
+fn require_exact_rows_affected(output: CommandOutput, expected: usize) -> Result<(), StorageError> {
+    let changed = match output {
         CommandOutput::RowsAffected(value) => {
             usize::try_from(value).map_err(|_| integrity_failure())?
         }

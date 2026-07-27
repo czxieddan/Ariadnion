@@ -200,13 +200,8 @@ fn persist_update(
     previous: &ariadnion_organization::OrganizationSnapshot,
 ) -> Result<(), StorageError> {
     validate_update(request)?;
+    validate_exact_durable_previous(session, request, previous)?;
     let organization = request.transition.organization();
-    let durable = decode::load_organization(session, request.tenant_id, organization.id())?;
-    if durable.version() != request.expected_previous_version
-        || durable.snapshot_state() != *previous
-    {
-        return Err(sql::conflict());
-    }
     sql::update_header(
         session,
         request.tenant_id,
@@ -230,6 +225,21 @@ fn persist_update(
     )?;
     persist_snapshot_rows(session, organization)?;
     persist_event(session, request)
+}
+
+fn validate_exact_durable_previous(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    previous: &ariadnion_organization::OrganizationSnapshot,
+) -> Result<(), StorageError> {
+    let organization = request.transition.organization();
+    let durable = decode::load_organization(session, request.tenant_id, organization.id())?;
+    if durable.version() != request.expected_previous_version
+        || durable.snapshot_state() != *previous
+    {
+        return Err(sql::conflict());
+    }
+    Ok(())
 }
 
 fn persist_creation(
@@ -505,19 +515,42 @@ impl<'a> EventFacts<'a> {
 }
 
 fn validate_commit_request(request: &CommitRequest<'_>) -> Result<(), StorageError> {
-    validate_authenticated_tenant(request.context, request.tenant_id)?;
-    let principal = authenticated_principal(request.context)?;
+    let principal = validate_authenticated_tenant(request.context, request.tenant_id)?;
+    validate_organization_binding(request)?;
+    validate_event_binding(request, principal)?;
+    validate_history_capacity(request.transition.organization().version())
+}
+
+fn validate_organization_binding(request: &CommitRequest<'_>) -> Result<(), StorageError> {
     let organization = request.transition.organization();
-    let event = request.transition.event();
-    let valid = organization.tenant_id() == request.tenant_id
-        && event.tenant_id() == request.tenant_id
-        && event.organization_id() == organization.id()
-        && event.version() == organization.version()
-        && event.actor() == principal.principal_id();
-    if !valid {
+    if organization.tenant_id() != request.tenant_id {
         return Err(integrity_failure());
     }
-    validate_history_capacity(organization.version())
+    Ok(())
+}
+
+fn validate_event_binding(
+    request: &CommitRequest<'_>,
+    principal: &PrincipalContext,
+) -> Result<(), StorageError> {
+    let organization = request.transition.organization();
+    let event = request.transition.event();
+    let actual = (
+        event.tenant_id(),
+        event.organization_id(),
+        event.version(),
+        event.actor(),
+    );
+    let expected = (
+        request.tenant_id,
+        organization.id(),
+        organization.version(),
+        principal.principal_id(),
+    );
+    if actual != expected {
+        return Err(integrity_failure());
+    }
+    Ok(())
 }
 
 fn validate_history_capacity(version: OrganizationVersion) -> Result<(), StorageError> {
@@ -557,14 +590,15 @@ fn validate_update(request: &CommitRequest<'_>) -> Result<(), StorageError> {
     Ok(())
 }
 
-fn validate_authenticated_tenant(
-    context: &RequestContext,
+fn validate_authenticated_tenant<'context>(
+    context: &'context RequestContext,
     tenant: &TenantId,
-) -> Result<(), StorageError> {
-    if authenticated_principal(context)?.tenant_id() != tenant {
+) -> Result<&'context PrincipalContext, StorageError> {
+    let principal = authenticated_principal(context)?;
+    if principal.tenant_id() != tenant {
         return Err(integrity_failure());
     }
-    Ok(())
+    Ok(principal)
 }
 
 fn authenticated_principal(context: &RequestContext) -> Result<&PrincipalContext, StorageError> {

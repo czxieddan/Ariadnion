@@ -88,9 +88,26 @@ pub(super) fn reconcile_transition_evidence(
     let identity = EvidenceIdentity::new(request, key)?;
     let outbox = load_outbox(session, &identity)?;
     let evidence = TransitionEvidence::from_identity(identity, outbox.committed_at)?;
+    validate_outbox_payload(&outbox, &evidence)?;
+    reconcile_chain_bound_audit(session, request, &evidence)?;
+    Ok(outbox.committed_at)
+}
+
+fn validate_outbox_payload(
+    outbox: &PersistedOutbox,
+    evidence: &TransitionEvidence,
+) -> Result<(), StorageError> {
     if outbox.payload.as_slice() != evidence.payload.as_slice() {
         return Err(integrity_failure());
     }
+    Ok(())
+}
+
+fn reconcile_chain_bound_audit(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    evidence: &TransitionEvidence,
+) -> Result<(), StorageError> {
     let (persisted, _) = crate::audit_repository::load_durable_event_with_head(
         session,
         request.tenant_id,
@@ -102,7 +119,7 @@ pub(super) fn reconcile_transition_evidence(
     if persisted != expected {
         return Err(integrity_failure());
     }
-    Ok(outbox.committed_at)
+    Ok(())
 }
 
 pub(super) fn verify_later_transition_evidence(
@@ -344,6 +361,55 @@ fn decode_outbox_row(
     row: &Row,
     identity: &EvidenceIdentity,
 ) -> Result<PersistedOutbox, StorageError> {
+    let fields = persisted_outbox_fields(row)?;
+    let created = decode_timestamp(fields.created_at)?;
+    let available = decode_timestamp(fields.available_at)?;
+    validate_outbox_identity(
+        fields.tenant,
+        fields.event_id,
+        fields.topic,
+        fields.key,
+        identity,
+    )?;
+    validate_outbox_lifecycle(
+        fields.attempt,
+        fields.state,
+        created,
+        available,
+        &OutboxMutableFields {
+            lease_token: fields.lease_token,
+            lease_worker: fields.lease_worker,
+            lease_expires_at: fields.lease_expires_at,
+            delivered_at: fields.delivered_at,
+            failed_at: fields.failed_at,
+        },
+    )?;
+    let committed_at = decode_receipt_time(created)?;
+    let payload = decode_hex(fields.payload)?;
+    Ok(PersistedOutbox {
+        committed_at,
+        payload,
+    })
+}
+
+struct PersistedOutboxFields<'a> {
+    tenant: &'a str,
+    event_id: &'a str,
+    topic: &'a str,
+    key: &'a str,
+    payload: &'a str,
+    created_at: &'a SqlValue,
+    available_at: &'a SqlValue,
+    attempt: i64,
+    state: &'a str,
+    lease_token: &'a SqlValue,
+    lease_worker: &'a SqlValue,
+    lease_expires_at: &'a SqlValue,
+    delivered_at: &'a SqlValue,
+    failed_at: &'a SqlValue,
+}
+
+fn persisted_outbox_fields(row: &Row) -> Result<PersistedOutboxFields<'_>, StorageError> {
     let [
         SqlValue::Text(tenant),
         SqlValue::Text(event_id),
@@ -363,25 +429,21 @@ fn decode_outbox_row(
     else {
         return Err(integrity_failure());
     };
-    let created = decode_timestamp(created_at)?;
-    let available = decode_timestamp(available_at)?;
-    validate_outbox_identity(tenant, event_id, topic, key, identity)?;
-    validate_outbox_lifecycle(
-        *attempt,
+    Ok(PersistedOutboxFields {
+        tenant,
+        event_id,
+        topic,
+        key,
+        payload,
+        created_at,
+        available_at,
+        attempt: *attempt,
         state,
-        created,
-        available,
-        &OutboxMutableFields {
-            lease_token,
-            lease_worker,
-            lease_expires_at,
-            delivered_at,
-            failed_at,
-        },
-    )?;
-    Ok(PersistedOutbox {
-        committed_at: decode_receipt_time(created)?,
-        payload: decode_hex(payload)?,
+        lease_token,
+        lease_worker,
+        lease_expires_at,
+        delivered_at,
+        failed_at,
     })
 }
 
@@ -600,21 +662,35 @@ fn hex_nibble(value: u8) -> Result<u8, StorageError> {
 }
 
 fn canonical_identity(request: &CommitRequest<'_>) -> Result<Zeroizing<Vec<u8>>, StorageError> {
-    let organization = request.transition.organization();
-    let event = request.transition.event();
     let mut output = Zeroizing::new(IDENTITY_DOMAIN.to_vec());
-    push_text(&mut output, request.tenant_id.as_str())?;
-    push_text(&mut output, organization.id().as_str())?;
-    push_u64(&mut output, request.expected_previous_version.get())?;
-    push_u64(&mut output, organization.version().get())?;
-    push_text(&mut output, event.actor().as_str())?;
-    push_text(&mut output, request.context.request_id().as_str())?;
-    push_i64(&mut output, event.occurred_at().unix_seconds())?;
-    push_event_kind(&mut output, event.kind())?;
+    push_identity_boundary(&mut output, request)?;
+    push_identity_transition(&mut output, request)?;
     push_optional_snapshot_digest(&mut output, request.transition.previous_snapshot())?;
-    let snapshot = organization.snapshot_state();
+    let snapshot = request.transition.organization().snapshot_state();
     push_snapshot_digest(&mut output, &snapshot)?;
     Ok(output)
+}
+
+fn push_identity_boundary(
+    output: &mut Vec<u8>,
+    request: &CommitRequest<'_>,
+) -> Result<(), StorageError> {
+    push_text(output, request.tenant_id.as_str())?;
+    push_text(output, request.transition.organization().id().as_str())
+}
+
+fn push_identity_transition(
+    output: &mut Vec<u8>,
+    request: &CommitRequest<'_>,
+) -> Result<(), StorageError> {
+    let organization = request.transition.organization();
+    let event = request.transition.event();
+    push_u64(output, request.expected_previous_version.get())?;
+    push_u64(output, organization.version().get())?;
+    push_text(output, event.actor().as_str())?;
+    push_text(output, request.context.request_id().as_str())?;
+    push_i64(output, event.occurred_at().unix_seconds())?;
+    push_event_kind(output, event.kind())
 }
 
 fn push_optional_snapshot_digest(

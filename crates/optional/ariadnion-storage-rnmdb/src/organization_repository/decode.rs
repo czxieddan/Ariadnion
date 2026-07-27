@@ -229,20 +229,37 @@ fn load_memberships(
     if batch.rows().len() > MAX_MEMBERSHIPS {
         return Err(StorageError::new(StorageErrorCode::ResourceExhausted));
     }
-    let mut memberships = Vec::with_capacity(batch.rows().len());
-    for (ordinal, row) in batch.rows().iter().enumerate() {
+    let memberships = decode_membership_rows(batch.rows(), tenant, organization, &mut assignments)?;
+    reject_residual_assignments(&assignments)?;
+    Ok(memberships)
+}
+
+fn decode_membership_rows(
+    rows: &[Row],
+    tenant: &TenantId,
+    organization: &OrganizationId,
+    assignments: &mut HashMap<MembershipId, Vec<TeamId>>,
+) -> Result<Vec<MembershipSnapshot>, StorageError> {
+    let mut memberships = Vec::with_capacity(rows.len());
+    for (ordinal, row) in rows.iter().enumerate() {
         memberships.push(decode_membership(
             row,
             tenant,
             organization,
             ordinal,
-            &mut assignments,
+            assignments,
         )?);
     }
+    Ok(memberships)
+}
+
+fn reject_residual_assignments(
+    assignments: &HashMap<MembershipId, Vec<TeamId>>,
+) -> Result<(), StorageError> {
     if !assignments.is_empty() {
         return Err(integrity_failure());
     }
-    Ok(memberships)
+    Ok(())
 }
 
 fn decode_membership(
