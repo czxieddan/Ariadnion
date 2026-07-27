@@ -331,13 +331,22 @@ struct ParsedRegistration {
 }
 
 fn validate_name(name: &str) -> Result<(), StorageError> {
-    if name.is_empty() || name.len() > MAX_FIXED_UDF_NAME_BYTES {
-        return Err(invalid_argument());
-    }
+    validate_name_length(name)?;
     let Some((first, tail)) = name.as_bytes().split_first() else {
         return Err(invalid_argument());
     };
-    if !is_name_start(*first) || tail.iter().copied().any(|byte| !is_name_continue(byte)) {
+    validate_name_bytes(*first, tail)
+}
+
+fn validate_name_length(name: &str) -> Result<(), StorageError> {
+    if name.is_empty() || name.len() > MAX_FIXED_UDF_NAME_BYTES {
+        return Err(invalid_argument());
+    }
+    Ok(())
+}
+
+fn validate_name_bytes(first: u8, tail: &[u8]) -> Result<(), StorageError> {
+    if !is_name_start(first) || tail.iter().copied().any(|byte| !is_name_continue(byte)) {
         return Err(invalid_argument());
     }
     Ok(())
@@ -388,12 +397,21 @@ fn validate_positive_limits(limits: FixedUdfResourceLimits) -> Result<(), Storag
 }
 
 fn validate_adapter_maxima(limits: FixedUdfResourceLimits) -> Result<(), StorageError> {
+    validate_adapter_byte_maxima(limits)?;
+    validate_adapter_execution_maxima(limits)
+}
+
+fn validate_adapter_byte_maxima(limits: FixedUdfResourceLimits) -> Result<(), StorageError> {
     if limits.max_module_bytes() > MAX_FIXED_UDF_MODULE_BYTES {
         return Err(invalid_argument());
     }
     if limits.max_memory_bytes() > MAX_FIXED_UDF_MEMORY_BYTES {
         return Err(invalid_argument());
     }
+    Ok(())
+}
+
+fn validate_adapter_execution_maxima(limits: FixedUdfResourceLimits) -> Result<(), StorageError> {
     if limits.max_instructions() > MAX_FIXED_UDF_INSTRUCTIONS {
         return Err(invalid_argument());
     }

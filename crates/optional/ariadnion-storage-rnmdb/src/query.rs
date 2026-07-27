@@ -10,8 +10,8 @@ use ariadnion_storage_domain::{
 };
 use ariadnion_storage_query::{
     FixedQueryExecutorPort, QueryArgument, QueryBinding, QueryBytes, QueryContractError,
-    QueryContractErrorCode, QueryOperation, QueryParameterRole, QueryResult, QueryTemplate,
-    QueryText, QueryValue, QueryValueType,
+    QueryContractErrorCode, QueryOperation, QueryParameterName, QueryParameterRole, QueryResult,
+    QueryTemplate, QueryText, QueryValue, QueryValueType,
 };
 use rnmdb_cli::CommandOutput;
 use rnmdb_common::{ErrorKind, RnovError};
@@ -255,6 +255,14 @@ fn validate_tenant_binding(
     else {
         return Ok(None);
     };
+    validate_present_tenant_binding(parameter.name(), binding, context).map(Some)
+}
+
+fn validate_present_tenant_binding(
+    parameter_name: &QueryParameterName,
+    binding: &QueryBinding,
+    context: &RequestContext,
+) -> Result<TenantId, StorageError> {
     let tenant = context
         .principal()
         .map(|principal| principal.tenant_id())
@@ -262,15 +270,22 @@ fn validate_tenant_binding(
     let argument = binding
         .arguments()
         .iter()
-        .find(|argument| argument.name() == parameter.name())
+        .find(|argument| argument.name() == parameter_name)
         .ok_or_else(integrity_failure)?;
+    validate_bound_tenant_argument(argument, tenant)
+}
+
+fn validate_bound_tenant_argument(
+    argument: &QueryArgument,
+    tenant: &TenantId,
+) -> Result<TenantId, StorageError> {
     let QueryValue::TenantId(bound_tenant) = argument.value() else {
         return Err(integrity_failure());
     };
     if bound_tenant != tenant {
         return Err(integrity_failure());
     }
-    Ok(Some(tenant.clone()))
+    Ok(tenant.clone())
 }
 
 fn render_query(

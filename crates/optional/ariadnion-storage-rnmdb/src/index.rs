@@ -157,13 +157,18 @@ fn validate_definition_identifiers(
     table: &str,
     columns: &[&str],
 ) -> Result<(), StorageError> {
-    if !valid_identifier(name) || !valid_identifier(table) {
-        return Err(StorageError::new(StorageErrorCode::InvalidArgument));
-    }
+    validate_index_and_table(name, table)?;
     if columns.is_empty() || columns.len() > MAX_INDEX_COLUMNS {
         return Err(StorageError::new(StorageErrorCode::InvalidArgument));
     }
     if columns.iter().any(|column| !valid_identifier(column)) {
+        return Err(StorageError::new(StorageErrorCode::InvalidArgument));
+    }
+    Ok(())
+}
+
+fn validate_index_and_table(name: &str, table: &str) -> Result<(), StorageError> {
+    if !valid_identifier(name) || !valid_identifier(table) {
         return Err(StorageError::new(StorageErrorCode::InvalidArgument));
     }
     Ok(())
