@@ -5,6 +5,7 @@ mod fingerprint;
 mod sql;
 
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use ariadnion_api_admin::{
     AdminActionKind, AdminCommand, AdminCommandExecution, AdminCommandIntent, AdminCommandReceipt,
@@ -21,6 +22,10 @@ use ariadnion_invitation::{
 use ariadnion_organization::{
     OrganizationAction, OrganizationCommand, OrganizationState, OrganizationTransition,
     OrganizationVersion, transition as transition_organization,
+};
+use ariadnion_rbac::{
+    AuthorizationPolicy, AuthorizationSubject, MembershipAuthorizationContext,
+    MembershipAuthorizationIdentity,
 };
 use ariadnion_storage_domain::{StorageError, StorageErrorCode};
 use ariadnion_user_domain::UtcTimestamp;
@@ -155,8 +160,8 @@ fn execute_new_command(
     context: &RequestContext,
     key: &AuditSubjectKeyMaterial,
 ) -> Result<AdminCommandExecution, StorageError> {
-    recheck_policy(session, command, context, key)?;
     let mutation = prepare_mutation(session, command)?;
+    recheck_authorization(session, command, context, key)?;
     check_context(context)?;
     match insert_pending_or_replay(session, intent, command, context)? {
         Some(receipt) => Ok(AdminCommandExecution::replayed(receipt)),
@@ -201,22 +206,136 @@ fn insert_pending_or_replay(
     }
 }
 
-fn recheck_policy(
+fn recheck_authorization(
     session: &mut LocalSession,
     command: &AdminCommand,
     context: &RequestContext,
     key: &AuditSubjectKeyMaterial,
 ) -> Result<(), StorageError> {
     check_context(context)?;
-    let policy = load_authenticated_policy_in_session(session, command.tenant_id(), context, key)?;
+    let facts = load_current_authorization_facts(session, command, context, key)?;
     check_context(context)?;
-    if policy.tenant_id() != command.tenant_id() {
+    validate_current_authorization(command, facts)
+}
+
+struct CurrentAuthorizationFacts {
+    policy: AuthorizationPolicy,
+    subject: AuthorizationSubject,
+    evaluated_at: UtcTimestamp,
+}
+
+fn load_current_authorization_facts(
+    session: &mut LocalSession,
+    command: &AdminCommand,
+    context: &RequestContext,
+    key: &AuditSubjectKeyMaterial,
+) -> Result<CurrentAuthorizationFacts, StorageError> {
+    let policy = load_authenticated_policy_in_session(session, command.tenant_id(), context, key)?;
+    let evaluated_at = trusted_authorization_time()?;
+    let subject = load_current_subject(session, command.authorization_subject(), evaluated_at)?;
+    Ok(CurrentAuthorizationFacts {
+        policy,
+        subject,
+        evaluated_at,
+    })
+}
+
+fn validate_current_authorization(
+    command: &AdminCommand,
+    facts: CurrentAuthorizationFacts,
+) -> Result<(), StorageError> {
+    if facts.policy.tenant_id() != command.tenant_id() {
         return Err(integrity_failure());
     }
-    if policy.version() != command.policy_version() {
+    if !command.remains_authorized(&facts.policy, facts.subject, facts.evaluated_at) {
         return Err(conflict());
     }
     Ok(())
+}
+
+fn load_current_subject(
+    session: &mut LocalSession,
+    witness: &AuthorizationSubject,
+    evaluated_at: UtcTimestamp,
+) -> Result<AuthorizationSubject, StorageError> {
+    let user = load_user_in_session(session, witness.principal().tenant_id(), witness.user_id())?;
+    let membership = load_current_membership(session, witness, evaluated_at)?;
+    Ok(AuthorizationSubject::new(
+        witness.principal().clone(),
+        witness.user_id().clone(),
+        user.lifecycle_state(),
+        membership,
+    ))
+}
+
+fn load_current_membership(
+    session: &mut LocalSession,
+    witness: &AuthorizationSubject,
+    evaluated_at: UtcTimestamp,
+) -> Result<Option<MembershipAuthorizationContext>, StorageError> {
+    match witness.membership() {
+        Some(expected) => {
+            load_present_membership(session, witness, expected, evaluated_at).map(Some)
+        }
+        None => Ok(None),
+    }
+}
+
+fn load_present_membership(
+    session: &mut LocalSession,
+    witness: &AuthorizationSubject,
+    expected: &MembershipAuthorizationContext,
+    evaluated_at: UtcTimestamp,
+) -> Result<MembershipAuthorizationContext, StorageError> {
+    validate_expected_membership(witness, expected)?;
+    let organization =
+        load_organization_in_session(session, expected.tenant_id(), expected.organization_id())?;
+    let membership = organization
+        .membership(expected.membership_id())
+        .ok_or_else(conflict)?;
+    validate_current_membership(witness, membership)?;
+    let identity = MembershipAuthorizationIdentity::new(
+        expected.tenant_id().clone(),
+        expected.organization_id().clone(),
+        expected.membership_id().clone(),
+        witness.user_id().clone(),
+    );
+    MembershipAuthorizationContext::new(
+        identity,
+        organization.state(),
+        membership.state(),
+        membership.expires_at(),
+        membership.active_team_ids_at(evaluated_at).to_vec(),
+    )
+    .map_err(|_| integrity_failure())
+}
+
+fn validate_expected_membership(
+    witness: &AuthorizationSubject,
+    expected: &MembershipAuthorizationContext,
+) -> Result<(), StorageError> {
+    if expected.user_id() != witness.user_id() {
+        return Err(integrity_failure());
+    }
+    Ok(())
+}
+
+fn validate_current_membership(
+    witness: &AuthorizationSubject,
+    membership: &ariadnion_organization::Membership,
+) -> Result<(), StorageError> {
+    if membership.user_id() != witness.user_id() {
+        return Err(conflict());
+    }
+    Ok(())
+}
+
+fn trusted_authorization_time() -> Result<UtcTimestamp, StorageError> {
+    let duration = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| integrity_failure())?;
+    let seconds = i64::try_from(duration.as_secs()).map_err(|_| integrity_failure())?;
+    Ok(UtcTimestamp::from_unix_seconds(seconds))
 }
 
 enum PreparedMutation {
@@ -429,7 +548,7 @@ fn validate_command_binding(
     intent: &AdminCommandIntent,
     command: &AdminCommand,
 ) -> Result<(), AdminError> {
-    let matches = (
+    let stable_fields_match = (
         command.id(),
         command.tenant_id(),
         command.actor(),
@@ -448,6 +567,9 @@ fn validate_command_binding(
         intent.target(),
         intent.reason_code(),
     );
+    let matches = stable_fields_match
+        && command.authorization_subject().principal().tenant_id() == command.tenant_id()
+        && command.authorization_subject().principal().principal_id() == command.actor();
     matches
         .then_some(())
         .ok_or_else(|| AdminError::new(AdminErrorCode::IntegrityFailure))

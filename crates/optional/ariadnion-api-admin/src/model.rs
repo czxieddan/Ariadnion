@@ -7,8 +7,9 @@ use ariadnion_core::{PrincipalId, TenantId};
 use ariadnion_invitation::InvitationId;
 use ariadnion_organization::OrganizationId;
 use ariadnion_rbac::{
-    AuthorizationDecision, AuthorizationIntent, AuthorizationScope, DecisionId, PolicyVersion,
-    ResourceId, ResourceKind, ResourceState,
+    AuthorizationDecision, AuthorizationIntent, AuthorizationPolicy, AuthorizationRequest,
+    AuthorizationScope, AuthorizationSubject, AuthorizationTarget, DecisionId, PermissionId,
+    PolicyVersion, ResourceId, ResourceKind, ResourceState, evaluate,
 };
 use ariadnion_user_domain::{UserId, UtcTimestamp};
 
@@ -121,6 +122,7 @@ pub struct AdminCommand {
     reason_code: Box<str>,
     decision_id: DecisionId,
     policy_version: PolicyVersion,
+    authorization_subject: AuthorizationSubject,
 }
 
 impl AdminCommand {
@@ -177,6 +179,51 @@ impl AdminCommand {
     pub const fn policy_version(&self) -> PolicyVersion {
         self.policy_version
     }
+
+    /// Returns the trusted subject identity used for transactional fact reloads.
+    ///
+    /// Mutable lifecycle, membership, and team facts in this witness are not a
+    /// reusable grant. Durable adapters must reload them inside the mutation
+    /// transaction before calling [`Self::remains_authorized`].
+    #[must_use]
+    pub const fn authorization_subject(&self) -> &AuthorizationSubject {
+        &self.authorization_subject
+    }
+
+    /// Evaluates this exact command against freshly loaded authorization facts.
+    ///
+    /// `subject` and `evaluated_at` must come from trusted adapters inside the
+    /// same transaction that validates the current target and applies the
+    /// mutation. The immutable principal, user, organization, and membership
+    /// identities must match the accepted command witness. Policy changes,
+    /// lifecycle changes, assignment expiry, and membership expiry fail closed.
+    #[must_use]
+    pub fn remains_authorized(
+        &self,
+        policy: &AuthorizationPolicy,
+        subject: AuthorizationSubject,
+        evaluated_at: UtcTimestamp,
+    ) -> bool {
+        if !same_subject_identity(&self.authorization_subject, &subject) {
+            return false;
+        }
+        let Ok(target) = authorization_target(
+            self.action,
+            self.tenant_id.clone(),
+            &self.target,
+            expected_target_state(self.action).1,
+        ) else {
+            return false;
+        };
+        let request = AuthorizationRequest::new(
+            self.decision_id.clone(),
+            self.policy_version,
+            subject,
+            target,
+            evaluated_at,
+        );
+        evaluate(policy, &request).allowed()
+    }
 }
 
 /// Tenant-bound identity and expected authorization version for one command.
@@ -223,6 +270,7 @@ pub(crate) struct AdminCommandRequest {
     action: AdminActionKind,
     target: AdminTarget,
     reason_code: Box<str>,
+    authorization_subject: AuthorizationSubject,
     decision: AuthorizationDecision,
 }
 
@@ -237,6 +285,7 @@ impl AdminCommandRequest {
         action: AdminActionKind,
         target: AdminTarget,
         reason_code: &str,
+        authorization_subject: AuthorizationSubject,
         decision: AuthorizationDecision,
     ) -> Result<Self, AdminError> {
         Ok(Self {
@@ -244,6 +293,7 @@ impl AdminCommandRequest {
             action,
             target,
             reason_code: parse_reason_code(reason_code)?,
+            authorization_subject,
             decision,
         })
     }
@@ -268,6 +318,7 @@ pub(crate) fn accept_admin_command(
         &request.target,
         &request.decision,
     )?;
+    validate_subject_binding(&request.binding, &request.authorization_subject)?;
     Ok(AdminCommand {
         id: request.binding.id,
         tenant_id: request.binding.tenant_id,
@@ -278,7 +329,51 @@ pub(crate) fn accept_admin_command(
         reason_code: request.reason_code,
         decision_id: request.binding.decision_id,
         policy_version: request.binding.policy_version,
+        authorization_subject: request.authorization_subject,
     })
+}
+
+fn validate_subject_binding(
+    binding: &AdminCommandBinding,
+    subject: &AuthorizationSubject,
+) -> Result<(), AdminError> {
+    let principal = subject.principal();
+    if principal.tenant_id() != &binding.tenant_id {
+        return Err(error(AdminErrorCode::TenantMismatch));
+    }
+    if principal.principal_id() != &binding.actor {
+        return Err(error(AdminErrorCode::DecisionMismatch));
+    }
+    Ok(())
+}
+
+fn same_subject_identity(expected: &AuthorizationSubject, actual: &AuthorizationSubject) -> bool {
+    expected.principal() == actual.principal()
+        && expected.user_id() == actual.user_id()
+        && same_membership_identity(expected, actual)
+}
+
+fn same_membership_identity(
+    expected: &AuthorizationSubject,
+    actual: &AuthorizationSubject,
+) -> bool {
+    match (expected.membership(), actual.membership()) {
+        (None, None) => true,
+        (Some(expected), Some(actual)) => {
+            (
+                expected.tenant_id(),
+                expected.organization_id(),
+                expected.membership_id(),
+                expected.user_id(),
+            ) == (
+                actual.tenant_id(),
+                actual.organization_id(),
+                actual.membership_id(),
+                actual.user_id(),
+            )
+        }
+        _ => false,
+    }
 }
 
 fn validate_decision(
@@ -345,6 +440,22 @@ pub(crate) fn expected_target_state(
         }
         _ => (AuthorizationIntent::Access, ResourceState::Active),
     }
+}
+
+pub(crate) fn authorization_target(
+    action: AdminActionKind,
+    tenant: TenantId,
+    target: &AdminTarget,
+    state: ResourceState,
+) -> Result<AuthorizationTarget, AdminError> {
+    let permission = PermissionId::parse(action_permission(action))
+        .map_err(|_| error(AdminErrorCode::IntegrityFailure))?;
+    let scope = expected_scope(tenant, target)?;
+    let (intent, _) = expected_target_state(action);
+    if matches!(intent, AuthorizationIntent::Recovery) {
+        return Ok(AuthorizationTarget::for_recovery(permission, scope));
+    }
+    Ok(AuthorizationTarget::new(permission, scope, state))
 }
 
 fn validate_decision_target(

@@ -1,15 +1,12 @@
 //! Authoritative just-in-time administration command execution.
 
 use ariadnion_core::{ErrorCode, PrincipalContext, RequestContext};
-use ariadnion_rbac::{
-    AuthorizationRequest, AuthorizationTarget, DecisionId, PermissionId, PolicyVersion,
-    ResourceState, evaluate,
-};
+use ariadnion_rbac::{AuthorizationRequest, DecisionId, PolicyVersion, ResourceState, evaluate};
 
 use crate::error::error;
 use crate::model::{
-    AdminCommandBinding, AdminCommandRequest, accept_admin_command, action_permission,
-    expected_scope, expected_target_state, parse_reason_code, validate_action_target,
+    AdminCommandBinding, AdminCommandRequest, accept_admin_command, authorization_target,
+    expected_target_state, parse_reason_code, validate_action_target,
 };
 use crate::{
     AdminActionKind, AdminCommandExecution, AdminCommandReceipt, AdminCommandRepositoryPort,
@@ -279,6 +276,7 @@ fn authorize_command(
     principal: &PrincipalContext,
 ) -> Result<crate::AdminCommand, AdminError> {
     validate_resource_state(request.action, snapshot.resource_state())?;
+    let subject = snapshot.subject().clone();
     let target = authorization_target(
         request.action,
         principal.tenant_id().clone(),
@@ -288,7 +286,7 @@ fn authorize_command(
     let authorization = AuthorizationRequest::new(
         request.decision_id.clone(),
         request.expected_policy_version,
-        snapshot.subject().clone(),
+        subject.clone(),
         target,
         snapshot.evaluated_at(),
     );
@@ -306,25 +304,10 @@ fn authorize_command(
         request.action,
         request.target,
         &request.reason_code,
+        subject,
         decision,
     )?;
     accept_admin_command(command)
-}
-
-fn authorization_target(
-    action: AdminActionKind,
-    tenant: ariadnion_core::TenantId,
-    target: &AdminTarget,
-    state: ResourceState,
-) -> Result<AuthorizationTarget, AdminError> {
-    let permission = PermissionId::parse(action_permission(action))
-        .map_err(|_| error(AdminErrorCode::IntegrityFailure))?;
-    let scope = expected_scope(tenant, target)?;
-    let (intent, _) = expected_target_state(action);
-    if matches!(intent, ariadnion_rbac::AuthorizationIntent::Recovery) {
-        return Ok(AuthorizationTarget::for_recovery(permission, scope));
-    }
-    Ok(AuthorizationTarget::new(permission, scope, state))
 }
 
 fn validate_snapshot(
