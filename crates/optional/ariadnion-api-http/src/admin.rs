@@ -298,15 +298,28 @@ fn check_context(context: &RequestContext) -> Result<(), AdminError> {
 }
 
 const fn status_for(code: AdminErrorCode) -> u16 {
+    match client_error_status(code) {
+        Some(status) => status,
+        None => server_error_status(code),
+    }
+}
+
+const fn client_error_status(code: AdminErrorCode) -> Option<u16> {
     match code {
-        AdminErrorCode::InvalidArgument => 400,
-        AdminErrorCode::Unauthenticated => 401,
+        AdminErrorCode::InvalidArgument => Some(400),
+        AdminErrorCode::Unauthenticated => Some(401),
         AdminErrorCode::AuthorizationDenied
         | AdminErrorCode::TenantMismatch
-        | AdminErrorCode::DecisionMismatch => 403,
-        AdminErrorCode::Cancelled => 499,
+        | AdminErrorCode::DecisionMismatch => Some(403),
+        AdminErrorCode::Cancelled => Some(499),
+        AdminErrorCode::Conflict => Some(409),
+        _ => None,
+    }
+}
+
+const fn server_error_status(code: AdminErrorCode) -> u16 {
+    match code {
         AdminErrorCode::DeadlineExceeded => 504,
-        AdminErrorCode::Conflict => 409,
         AdminErrorCode::Unavailable | AdminErrorCode::CommitIndeterminate => 503,
         _ => 500,
     }
