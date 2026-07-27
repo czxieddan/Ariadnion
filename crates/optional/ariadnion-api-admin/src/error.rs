@@ -41,12 +41,28 @@ impl AdminErrorCode {
             Self::TenantMismatch => "ADMIN_TENANT_MISMATCH",
             Self::DecisionMismatch => "ADMIN_DECISION_MISMATCH",
             Self::Unauthenticated => "ADMIN_UNAUTHENTICATED",
+            Self::Cancelled
+            | Self::DeadlineExceeded
+            | Self::Conflict
+            | Self::Unavailable
+            | Self::CommitIndeterminate
+            | Self::IntegrityFailure => self.execution_code(),
+        }
+    }
+
+    const fn execution_code(self) -> &'static str {
+        match self {
             Self::Cancelled => "ADMIN_CANCELLED",
             Self::DeadlineExceeded => "ADMIN_DEADLINE_EXCEEDED",
             Self::Conflict => "ADMIN_CONFLICT",
             Self::Unavailable => "ADMIN_UNAVAILABLE",
             Self::CommitIndeterminate => "ADMIN_COMMIT_INDETERMINATE",
             Self::IntegrityFailure => "ADMIN_INTEGRITY_FAILURE",
+            Self::InvalidArgument
+            | Self::AuthorizationDenied
+            | Self::TenantMismatch
+            | Self::DecisionMismatch
+            | Self::Unauthenticated => self.as_str(),
         }
     }
 }
