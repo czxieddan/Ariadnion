@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use ariadnion_api_admin::migrations::IDENTITY_ADMIN_COMMAND_MIGRATION_ID;
 use ariadnion_audit_domain::migrations::IDENTITY_AUDIT_MIGRATION_ID;
 use ariadnion_auth_api_key::migrations::IDENTITY_API_KEYS_MIGRATION_ID;
 use ariadnion_auth_password::migrations::{
@@ -235,6 +236,14 @@ pub fn identity_password_commit_evidence_migration() -> Result<MigrationDescript
 /// version-fourteen to version-fifteen transition explicitly through the registry.
 pub fn identity_tenant_enforcement_migration() -> Result<MigrationDescriptor, StorageError> {
     compiled_migration_definitions()?.descriptor(IDENTITY_TENANT_ENFORCEMENT_MIGRATION_ID)
+}
+
+/// Returns the administration command-ledger migration after digest verification.
+///
+/// The migration remains outside module startup. Callers must request the
+/// version-fifteen to version-sixteen transition explicitly through the registry.
+pub fn identity_admin_command_migration() -> Result<MigrationDescriptor, StorageError> {
+    compiled_migration_definitions()?.descriptor(IDENTITY_ADMIN_COMMAND_MIGRATION_ID)
 }
 
 fn migration_insert(

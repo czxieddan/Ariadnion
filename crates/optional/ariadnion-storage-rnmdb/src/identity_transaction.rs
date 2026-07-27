@@ -66,6 +66,15 @@ pub(crate) fn run_identity_transaction<T>(
     finish_identity_transaction(session, context, result)
 }
 
+pub(crate) fn require_active_identity_transaction(
+    session: &LocalSession,
+) -> Result<(), StorageError> {
+    if !session.in_transaction() {
+        return Err(integrity_failure());
+    }
+    Ok(())
+}
+
 fn finish_identity_transaction<T>(
     session: &mut LocalSession,
     context: &RequestContext,

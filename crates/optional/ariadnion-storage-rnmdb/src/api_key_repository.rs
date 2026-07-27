@@ -17,7 +17,7 @@ use ariadnion_storage_domain::{StorageError, StorageErrorCode};
 use ariadnion_user_domain::{UserId, UtcTimestamp};
 use rnmdb_cli::LocalSession;
 
-use crate::identity_transaction::run_identity_transaction;
+use crate::identity_transaction::{require_active_identity_transaction, run_identity_transaction};
 use crate::{AuditSubjectKeyMaterial, RnmdbSessionOwner, SessionOpenOptions};
 
 pub(super) const MAX_API_KEY_EVENT_ROWS: usize = MAX_RETIRED_SECRETS * 2 + 2;
@@ -151,6 +151,36 @@ pub(super) struct CommitRequest<'a> {
     pub(super) expected_previous_version: ApiKeyVersion,
     pub(super) transition: &'a ApiKeyTransition,
     pub(super) context: &'a RequestContext,
+}
+
+pub(crate) fn load_api_key_in_session(
+    session: &mut LocalSession,
+    tenant_id: &TenantId,
+    api_key_id: &ApiKeyId,
+) -> Result<ApiKey, StorageError> {
+    decode::load_key_by_id(session, tenant_id, api_key_id)
+}
+
+pub(crate) fn commit_api_key_in_session(
+    session: &mut LocalSession,
+    expected_previous_version: ApiKeyVersion,
+    transition: &ApiKeyTransition,
+    context: &RequestContext,
+    key: &AuditSubjectKeyMaterial,
+) -> Result<ApiKeyCommitReceipt, StorageError> {
+    require_active_identity_transaction(session)?;
+    let api_key = transition.key();
+    let request = CommitRequest {
+        tenant_id: api_key.tenant_id(),
+        user_id: api_key.user_id(),
+        expected_previous_version,
+        transition,
+        context,
+    };
+    validate_commit_binding(&request)?;
+    let kind = commit_kind(&request)?;
+    validate_commit_shape(&request, kind)?;
+    commit_transition(session, &request, key, kind)
 }
 
 #[derive(Clone, Copy)]

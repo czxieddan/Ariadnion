@@ -24,7 +24,7 @@ use self::evidence::{
     TransitionIdentityRecord, identity_from_record,
 };
 use crate::audit_repository::{append_in_transaction, load_event_by_id, load_head_from_session};
-use crate::identity_transaction::run_identity_transaction;
+use crate::identity_transaction::{require_active_identity_transaction, run_identity_transaction};
 use crate::outbox::enqueue_message;
 use crate::{RnmdbSessionOwner, SessionOpenOptions};
 
@@ -165,6 +165,33 @@ pub(super) struct CommitRequest<'a> {
     expected_previous_version: UserVersion,
     transition: &'a UserTransition,
     context: &'a RequestContext,
+}
+
+pub(crate) fn load_user_in_session(
+    session: &mut LocalSession,
+    tenant_id: &TenantId,
+    user_id: &UserId,
+) -> Result<User, StorageError> {
+    decode::load_user(session, tenant_id, user_id)
+}
+
+pub(crate) fn commit_user_in_session(
+    session: &mut LocalSession,
+    tenant_id: &TenantId,
+    expected_previous_version: UserVersion,
+    transition: &UserTransition,
+    context: &RequestContext,
+    key: &AuditSubjectKeyMaterial,
+) -> Result<UserCommitReceipt, StorageError> {
+    require_active_identity_transaction(session)?;
+    let request = CommitRequest {
+        tenant_id,
+        expected_previous_version,
+        transition,
+        context,
+    };
+    validate_commit_request(&request)?;
+    commit_in_transaction(session, &request, key)
 }
 
 fn commit_in_transaction(

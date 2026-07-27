@@ -5,6 +5,12 @@ mod canonical;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
+use ariadnion_api_admin::migrations::{
+    IDENTITY_ADMIN_COMMAND_MIGRATION_CANONICAL_V1_SHA256, IDENTITY_ADMIN_COMMAND_MIGRATION_DOMAIN,
+    IDENTITY_ADMIN_COMMAND_MIGRATION_FROM_VERSION, IDENTITY_ADMIN_COMMAND_MIGRATION_ID,
+    IDENTITY_ADMIN_COMMAND_MIGRATION_REQUIRES_BACKUP, IDENTITY_ADMIN_COMMAND_MIGRATION_STATEMENTS,
+    IDENTITY_ADMIN_COMMAND_MIGRATION_TO_VERSION,
+};
 use ariadnion_audit_domain::migrations::{
     IDENTITY_AUDIT_MIGRATION_CANONICAL_V1_SHA256, IDENTITY_AUDIT_MIGRATION_DOMAIN,
     IDENTITY_AUDIT_MIGRATION_FROM_VERSION, IDENTITY_AUDIT_MIGRATION_ID,
@@ -395,6 +401,7 @@ fn compile_identity_security_followup_definitions(
         compile_identity_organization_event_replay_definition()?,
         compile_identity_password_commit_evidence_definition()?,
         compile_identity_tenant_enforcement_definition()?,
+        compile_identity_admin_command_definition()?,
     ] {
         insert_definition(definitions, definition)?;
     }
@@ -654,6 +661,19 @@ fn compile_identity_organization_event_replay_definition()
         statements: IDENTITY_ORGANIZATION_EVENT_REPLAY_MIGRATION_STATEMENTS,
         expected_checksum: IDENTITY_ORGANIZATION_EVENT_REPLAY_MIGRATION_CANONICAL_V1_SHA256,
         requires_backup: IDENTITY_ORGANIZATION_EVENT_REPLAY_MIGRATION_REQUIRES_BACKUP,
+    };
+    compile_migration_definition(input, CanonicalAstV1)
+}
+
+fn compile_identity_admin_command_definition() -> Result<RnmdbMigrationDefinition, StorageError> {
+    let input = CanonicalMigrationDefinitionInput {
+        id: IDENTITY_ADMIN_COMMAND_MIGRATION_ID,
+        domain: IDENTITY_ADMIN_COMMAND_MIGRATION_DOMAIN,
+        from: IDENTITY_ADMIN_COMMAND_MIGRATION_FROM_VERSION,
+        to: IDENTITY_ADMIN_COMMAND_MIGRATION_TO_VERSION,
+        statements: IDENTITY_ADMIN_COMMAND_MIGRATION_STATEMENTS,
+        expected_checksum: IDENTITY_ADMIN_COMMAND_MIGRATION_CANONICAL_V1_SHA256,
+        requires_backup: IDENTITY_ADMIN_COMMAND_MIGRATION_REQUIRES_BACKUP,
     };
     compile_migration_definition(input, CanonicalAstV1)
 }

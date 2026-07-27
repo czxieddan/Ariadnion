@@ -18,7 +18,7 @@ use ariadnion_storage_domain::{StorageError, StorageErrorCode};
 use ariadnion_user_domain::UtcTimestamp;
 use rnmdb_cli::LocalSession;
 
-use crate::identity_transaction::run_identity_transaction;
+use crate::identity_transaction::{require_active_identity_transaction, run_identity_transaction};
 use crate::{AuditSubjectKeyMaterial, RnmdbSessionOwner, SessionOpenOptions};
 
 /// Maximum number of organization events verified by one bounded read.
@@ -145,6 +145,32 @@ struct CommitRequest<'a> {
     expected_previous_version: OrganizationVersion,
     transition: &'a OrganizationTransition,
     context: &'a RequestContext,
+}
+
+pub(crate) fn load_organization_in_session(
+    session: &mut LocalSession,
+    tenant_id: &TenantId,
+    organization_id: &OrganizationId,
+) -> Result<Organization, StorageError> {
+    decode::load_organization(session, tenant_id, organization_id)
+}
+
+pub(crate) fn commit_organization_in_session(
+    session: &mut LocalSession,
+    tenant_id: &TenantId,
+    expected_previous_version: OrganizationVersion,
+    transition: &OrganizationTransition,
+    context: &RequestContext,
+    key: &AuditSubjectKeyMaterial,
+) -> Result<OrganizationCommitReceipt, StorageError> {
+    require_active_identity_transaction(session)?;
+    let request = CommitRequest {
+        tenant_id,
+        expected_previous_version,
+        transition,
+        context,
+    };
+    commit_in_transaction(session, &request, key)
 }
 
 fn commit_in_transaction(

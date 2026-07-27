@@ -30,6 +30,19 @@ pub(super) fn load_key(
     assemble_key(session, fields)
 }
 
+pub(super) fn load_key_by_id(
+    session: &mut LocalSession,
+    tenant: &TenantId,
+    key: &ApiKeyId,
+) -> Result<ApiKey, StorageError> {
+    let batch = rows(sql::load_key_by_id(session, tenant, key)?)?;
+    let fields = decode_key_row(one_row(&batch, key_columns())?, tenant, None)?;
+    if fields.id != *key {
+        return Err(integrity_failure());
+    }
+    assemble_key(session, fields)
+}
+
 pub(super) fn load_key_by_prefix(
     session: &mut LocalSession,
     tenant: &TenantId,

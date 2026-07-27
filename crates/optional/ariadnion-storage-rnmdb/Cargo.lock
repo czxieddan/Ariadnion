@@ -53,6 +53,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ariadnion-api-admin"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-auth-api-key",
+ "ariadnion-core",
+ "ariadnion-invitation",
+ "ariadnion-organization",
+ "ariadnion-rbac",
+ "ariadnion-user-domain",
+]
+
+[[package]]
 name = "ariadnion-audit-domain"
 version = "0.1.0"
 dependencies = [
@@ -187,6 +199,7 @@ dependencies = [
 name = "ariadnion-storage-rnmdb"
 version = "0.1.0"
 dependencies = [
+ "ariadnion-api-admin",
  "ariadnion-audit-domain",
  "ariadnion-audit-store",
  "ariadnion-auth-api-key",

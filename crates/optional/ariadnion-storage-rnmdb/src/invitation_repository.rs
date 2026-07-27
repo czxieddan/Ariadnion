@@ -18,7 +18,7 @@ use ariadnion_storage_domain::{StorageError, StorageErrorCode};
 use ariadnion_user_domain::UtcTimestamp;
 use rnmdb_cli::LocalSession;
 
-use crate::identity_transaction::run_identity_transaction;
+use crate::identity_transaction::{require_active_identity_transaction, run_identity_transaction};
 use crate::{AuditSubjectKeyMaterial, RnmdbSessionOwner, SessionOpenOptions};
 
 /// Persists invitation snapshots and immutable issuance evidence in RNMDB.
@@ -146,6 +146,35 @@ pub(super) struct CommitRequest<'a> {
     pub(super) expected_previous_version: InvitationVersion,
     pub(super) transition: &'a InvitationTransition,
     pub(super) context: &'a RequestContext,
+}
+
+pub(crate) fn load_invitation_in_session(
+    session: &mut LocalSession,
+    tenant_id: &TenantId,
+    organization_id: &OrganizationId,
+    invitation_id: &InvitationId,
+) -> Result<Invitation, StorageError> {
+    decode::load_invitation(session, tenant_id, organization_id, invitation_id)
+}
+
+pub(crate) fn commit_invitation_in_session(
+    session: &mut LocalSession,
+    expected_previous_version: InvitationVersion,
+    transition: &InvitationTransition,
+    context: &RequestContext,
+    key: &AuditSubjectKeyMaterial,
+) -> Result<InvitationCommitReceipt, StorageError> {
+    require_active_identity_transaction(session)?;
+    let invitation = transition.invitation();
+    let request = CommitRequest {
+        tenant_id: invitation.tenant_id(),
+        organization_id: invitation.organization_id(),
+        expected_previous_version,
+        transition,
+        context,
+    };
+    validate_commit_request(&request)?;
+    commit_transition(session, &request, key)
 }
 
 fn commit_transition(

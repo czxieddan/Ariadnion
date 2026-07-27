@@ -10,6 +10,8 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod migrations;
+
 mod error;
 mod executor;
 mod model;

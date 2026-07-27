@@ -566,6 +566,25 @@ fn load_authenticated_policy(
     Ok(loaded)
 }
 
+pub(crate) fn load_authenticated_policy_in_session(
+    session: &mut LocalSession,
+    tenant: &TenantId,
+    context: &RequestContext,
+    key: &AuditSubjectKeyMaterial,
+) -> Result<AuthorizationPolicy, StorageError> {
+    #[cfg(feature = "test-hooks")]
+    let history_test_hooks = HistoryTestHooks::new();
+    load_authenticated_policy(
+        session,
+        tenant,
+        context,
+        key,
+        #[cfg(feature = "test-hooks")]
+        &history_test_hooks,
+    )
+    .map(|loaded| loaded.policy)
+}
+
 fn effective_event_history_row_limit(
     #[cfg(feature = "test-hooks")] history_test_hooks: &HistoryTestHooks,
 ) -> u64 {

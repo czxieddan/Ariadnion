@@ -35,6 +35,19 @@ pub(super) fn load_key(
     execute(session, finish(sql)?)
 }
 
+pub(super) fn load_key_by_id(
+    session: &mut LocalSession,
+    tenant: &TenantId,
+    key: &ApiKeyId,
+) -> Result<CommandOutput, StorageError> {
+    let mut sql = format!("SELECT {KEY_PROJECTION} FROM identity_api_keys WHERE tenant_id = ");
+    push_text(&mut sql, tenant.as_str());
+    sql.push_str(" AND api_key_id = ");
+    push_text(&mut sql, key.as_str());
+    sql.push_str(" LIMIT 2;");
+    execute(session, finish(sql)?)
+}
+
 pub(super) fn load_key_by_prefix(
     session: &mut LocalSession,
     tenant: &TenantId,
