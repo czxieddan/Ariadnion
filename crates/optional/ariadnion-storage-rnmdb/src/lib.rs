@@ -5,6 +5,7 @@
 
 use std::any::type_name;
 
+mod admin_repository;
 mod api_key_repository;
 mod audit_repository;
 mod backup;
@@ -37,6 +38,7 @@ mod udf;
 mod upgrade;
 mod user_repository;
 
+pub use admin_repository::RnmdbAdminCommandRepository;
 pub use api_key_repository::RnmdbApiKeyRepository;
 pub use audit_repository::{MAX_AUDIT_MEMBERSHIP_DISTANCE, RnmdbAuditRepository};
 pub use backup::{RnmdbBackupAdapter, RnmdbBackupEnvironment};
@@ -51,8 +53,8 @@ pub use maintenance::{
     VerificationSummary,
 };
 pub use migration::{
-    MigrationApplyStatus, RnmdbMigrationRunner, identity_api_key_migration,
-    identity_audit_migration, identity_invitation_migration,
+    MigrationApplyStatus, RnmdbMigrationRunner, identity_admin_command_migration,
+    identity_api_key_migration, identity_audit_migration, identity_invitation_migration,
     identity_organization_event_replay_migration, identity_organization_migration,
     identity_password_commit_evidence_migration, identity_password_migration,
     identity_rbac_migration, identity_session_migration, identity_tenant_enforcement_migration,
