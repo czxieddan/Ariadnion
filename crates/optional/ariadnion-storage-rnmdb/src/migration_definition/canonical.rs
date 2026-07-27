@@ -1,39 +1,28 @@
 //! Bounded canonical AST V1 encoding for migration checksums.
 
+mod scalar_encoding;
+mod source_validation;
+
 use ariadnion_storage_domain::{MigrationChecksum, StorageError, StorageErrorCode};
 use rnmdb_catalog::{IndexMethod, Privilege};
 use rnmdb_sql::ast::{
     CaseWhen, ColumnDef, ColumnReference, Expr, GeneratedColumn, Ident, IndexKeyDef, ObjectName,
     Statement,
 };
-use rnmdb_sql::lexer::{Token, TokenKind, lex};
-use rnmdb_sql::parser::parse_statement;
 use rnmdb_types::SqlType;
 use sha2::{Digest, Sha256};
 
+use self::scalar_encoding::{
+    encode_atom_expr, encode_scalar_sql_type_one, encode_scalar_sql_type_two,
+};
+use self::source_validation::{parse_migration_statement, validate_migration_sources};
+
 const CANONICAL_FORMAT: &[u8] = b"ariadnion-migration-ast";
 const CANONICAL_VERSION: [u8; 2] = 1_u16.to_be_bytes();
-const MAX_MIGRATION_STATEMENTS: usize = 1_024;
-const MAX_MIGRATION_SOURCE_BYTES: usize = 1_048_576;
-const MAX_TOTAL_MIGRATION_SOURCE_BYTES: usize = 4_194_304;
 const MAX_CANONICAL_BYTES: usize = 8_388_608;
 const MAX_CANONICAL_COLLECTION_ITEMS: usize = 1_024;
 const MAX_EXPRESSION_DEPTH: usize = 64;
 const MAX_SQL_TYPE_DEPTH: usize = 16;
-
-#[derive(Clone, Copy, Eq, PartialEq)]
-enum Delimiter {
-    Parenthesis,
-    Bracket,
-}
-
-struct PreparseBudget {
-    delimiters: Vec<Delimiter>,
-    expression_tokens: usize,
-    type_wrappers: usize,
-    collection_items: usize,
-    saw_comma: bool,
-}
 
 #[derive(Clone, Copy)]
 pub(crate) struct CanonicalAstV1;
@@ -75,248 +64,6 @@ fn encode_one_statement(encoder: &mut CanonicalEncoder, source: &str) -> Result<
     let statement = parse_migration_statement(source)?;
     let encoded = encode_statement(&statement)?;
     encoder.nested(4, encoded)
-}
-
-fn validate_migration_sources(statements: &[&str]) -> Result<(), StorageError> {
-    if statements.is_empty() {
-        return Err(invalid_argument());
-    }
-    if statements.len() > MAX_MIGRATION_STATEMENTS {
-        return Err(resource_exhausted());
-    }
-    let mut total = 0_usize;
-    for source in statements {
-        if source.len() > MAX_MIGRATION_SOURCE_BYTES {
-            return Err(resource_exhausted());
-        }
-        total = total
-            .checked_add(source.len())
-            .ok_or_else(resource_exhausted)?;
-        if total > MAX_TOTAL_MIGRATION_SOURCE_BYTES {
-            return Err(resource_exhausted());
-        }
-    }
-    Ok(())
-}
-
-fn parse_migration_statement(source: &str) -> Result<Statement, StorageError> {
-    validate_preparse_statement(source)?;
-    parse_statement(source).map_err(|_| integrity_failure())
-}
-
-fn validate_preparse_statement(source: &str) -> Result<(), StorageError> {
-    // RNMDB's iterative lexer omits comments and emits each string as one token.
-    let tokens = lex(source).map_err(|_| integrity_failure())?;
-    validate_preparse_budgets(&tokens)?;
-    validate_statement_surface(&tokens)
-}
-
-fn validate_preparse_budgets(tokens: &[Token]) -> Result<(), StorageError> {
-    let mut budget = PreparseBudget::new();
-    for index in 0..tokens.len() {
-        budget.observe(tokens, index)?;
-    }
-    budget.finish()
-}
-
-impl PreparseBudget {
-    const fn new() -> Self {
-        Self {
-            delimiters: Vec::new(),
-            expression_tokens: 0,
-            type_wrappers: 0,
-            collection_items: 0,
-            saw_comma: false,
-        }
-    }
-
-    fn observe(&mut self, tokens: &[Token], index: usize) -> Result<(), StorageError> {
-        update_delimiters(&mut self.delimiters, tokens[index].kind())?;
-        self.expression_tokens = increment_if(
-            self.expression_tokens,
-            increases_expression_depth(tokens, index),
-        )?;
-        self.type_wrappers =
-            increment_if(self.type_wrappers, increases_sql_type_depth(tokens, index))?;
-        self.observe_collection_growth(tokens[index].kind())?;
-        enforce_preparse_recursion_budget(self.delimiters.len(), self.expression_tokens)?;
-        enforce_sql_type_budget(self.type_wrappers)
-    }
-
-    fn observe_collection_growth(&mut self, token: &TokenKind) -> Result<(), StorageError> {
-        let growth = collection_growth(token, self.saw_comma);
-        self.saw_comma |= matches!(token, TokenKind::Comma);
-        self.collection_items = increment_by(self.collection_items, growth)?;
-        enforce_collection_budget(self.collection_items)
-    }
-
-    fn finish(self) -> Result<(), StorageError> {
-        if !self.delimiters.is_empty() {
-            return Err(integrity_failure());
-        }
-        Ok(())
-    }
-}
-
-fn update_delimiters(
-    delimiters: &mut Vec<Delimiter>,
-    token: &TokenKind,
-) -> Result<(), StorageError> {
-    match token {
-        TokenKind::LeftParen => delimiters.push(Delimiter::Parenthesis),
-        TokenKind::LeftBracket => delimiters.push(Delimiter::Bracket),
-        TokenKind::RightParen => pop_delimiter(delimiters, Delimiter::Parenthesis)?,
-        TokenKind::RightBracket => pop_delimiter(delimiters, Delimiter::Bracket)?,
-        _ => {}
-    }
-    Ok(())
-}
-
-fn pop_delimiter(delimiters: &mut Vec<Delimiter>, expected: Delimiter) -> Result<(), StorageError> {
-    if delimiters.pop() != Some(expected) {
-        return Err(integrity_failure());
-    }
-    Ok(())
-}
-
-fn increases_expression_depth(tokens: &[Token], index: usize) -> bool {
-    match tokens[index].kind() {
-        TokenKind::Not => !next_token_is_null(tokens, index),
-        TokenKind::And
-        | TokenKind::Or
-        | TokenKind::Union
-        | TokenKind::Intersect
-        | TokenKind::Except
-        | TokenKind::Case
-        | TokenKind::Is
-        | TokenKind::Between
-        | TokenKind::In
-        | TokenKind::Like
-        | TokenKind::Operator(_)
-        | TokenKind::Star => true,
-        _ => false,
-    }
-}
-
-const fn collection_growth(token: &TokenKind, saw_comma: bool) -> usize {
-    // The first comma proves two collection items; each later comma adds one.
-    match token {
-        TokenKind::Comma if saw_comma => 1,
-        TokenKind::Comma => 2,
-        TokenKind::When => 1,
-        _ => 0,
-    }
-}
-
-fn next_token_is_null(tokens: &[Token], index: usize) -> bool {
-    next_token_kind(tokens, index) == Some(&TokenKind::Null)
-}
-
-fn increases_sql_type_depth(tokens: &[Token], index: usize) -> bool {
-    match tokens[index].kind() {
-        TokenKind::LeftBracket => next_token_kind(tokens, index) == Some(&TokenKind::RightBracket),
-        TokenKind::Identifier(name) if name == "range" => {
-            matches!(next_token_kind(tokens, index), Some(TokenKind::Operator(value)) if value == "<")
-        }
-        _ => false,
-    }
-}
-
-fn next_token_kind(tokens: &[Token], index: usize) -> Option<&TokenKind> {
-    index
-        .checked_add(1)
-        .and_then(|next| tokens.get(next))
-        .map(Token::kind)
-}
-
-fn increment_if(value: usize, condition: bool) -> Result<usize, StorageError> {
-    if condition {
-        return increment_by(value, 1);
-    }
-    Ok(value)
-}
-
-fn increment_by(value: usize, amount: usize) -> Result<usize, StorageError> {
-    value.checked_add(amount).ok_or_else(resource_exhausted)
-}
-
-fn enforce_preparse_recursion_budget(
-    delimiter_depth: usize,
-    expression_tokens: usize,
-) -> Result<(), StorageError> {
-    let recursion_budget = delimiter_depth
-        .checked_add(expression_tokens)
-        .ok_or_else(resource_exhausted)?;
-    if recursion_budget > MAX_EXPRESSION_DEPTH {
-        return Err(resource_exhausted());
-    }
-    Ok(())
-}
-
-fn enforce_sql_type_budget(type_wrappers: usize) -> Result<(), StorageError> {
-    if type_wrappers > MAX_SQL_TYPE_DEPTH {
-        return Err(resource_exhausted());
-    }
-    Ok(())
-}
-
-fn enforce_collection_budget(collection_items: usize) -> Result<(), StorageError> {
-    if collection_items > MAX_CANONICAL_COLLECTION_ITEMS {
-        return Err(resource_exhausted());
-    }
-    Ok(())
-}
-
-fn validate_statement_surface(tokens: &[Token]) -> Result<(), StorageError> {
-    if !has_supported_statement_prefix(tokens) {
-        return Err(integrity_failure());
-    }
-    if contains_nested_query(tokens) {
-        return Err(integrity_failure());
-    }
-    Ok(())
-}
-
-fn has_supported_statement_prefix(tokens: &[Token]) -> bool {
-    match token_kind(tokens, 0) {
-        Some(TokenKind::Create) => has_supported_create_prefix(tokens),
-        Some(TokenKind::Grant) => true,
-        Some(TokenKind::Alter) => token_kind(tokens, 1) == Some(&TokenKind::Table),
-        _ => false,
-    }
-}
-
-fn has_supported_create_prefix(tokens: &[Token]) -> bool {
-    match token_kind(tokens, 1) {
-        Some(TokenKind::Unique) => token_kind(tokens, 2) == Some(&TokenKind::Index),
-        Some(TokenKind::Table | TokenKind::Index | TokenKind::Role | TokenKind::Policy) => true,
-        _ => false,
-    }
-}
-
-fn contains_nested_query(tokens: &[Token]) -> bool {
-    for (index, token) in tokens.iter().enumerate() {
-        if is_nested_query_token(tokens, index, token.kind()) {
-            return true;
-        }
-    }
-    false
-}
-
-fn is_nested_query_token(tokens: &[Token], index: usize, token: &TokenKind) -> bool {
-    match token {
-        TokenKind::With => true,
-        TokenKind::Select => !is_grant_select(tokens, index),
-        _ => false,
-    }
-}
-
-fn is_grant_select(tokens: &[Token], index: usize) -> bool {
-    index == 1 && token_kind(tokens, 0) == Some(&TokenKind::Grant)
-}
-
-fn token_kind(tokens: &[Token], index: usize) -> Option<&TokenKind> {
-    tokens.get(index).map(Token::kind)
 }
 
 fn encode_statement(statement: &Statement) -> Result<Vec<u8>, StorageError> {
@@ -588,31 +335,6 @@ fn encode_sql_type(data_type: &SqlType, depth: usize) -> Result<Vec<u8>, Storage
     }
 }
 
-fn encode_scalar_sql_type_one(data_type: &SqlType) -> Result<Vec<u8>, StorageError> {
-    let tag = match data_type {
-        SqlType::Bool => 2,
-        SqlType::Int64 => 3,
-        SqlType::UInt64 => 4,
-        SqlType::Float64 => 5,
-        SqlType::Uuid => 6,
-        _ => return Err(integrity_failure()),
-    };
-    encode_variant_only(tag)
-}
-
-fn encode_scalar_sql_type_two(data_type: &SqlType) -> Result<Vec<u8>, StorageError> {
-    let tag = match data_type {
-        SqlType::Timestamp => 7,
-        SqlType::Json => 8,
-        SqlType::Text => 9,
-        SqlType::Bytes => 10,
-        SqlType::HStore => 11,
-        SqlType::TextVector => 12,
-        _ => return Err(integrity_failure()),
-    };
-    encode_variant_only(tag)
-}
-
 fn encode_nested_sql_type(
     tag: u8,
     element: &SqlType,
@@ -654,44 +376,6 @@ fn encode_expr(expression: &Expr, depth: usize) -> Result<Vec<u8>, StorageError>
         | Expr::Call { .. } => encode_function_expr(expression, depth),
         _ => Err(integrity_failure()),
     }
-}
-
-fn encode_atom_expr(expression: &Expr) -> Result<Vec<u8>, StorageError> {
-    match expression {
-        Expr::Identifier(_)
-        | Expr::QualifiedIdentifier { .. }
-        | Expr::Integer(_)
-        | Expr::Float64(_) => encode_atom_expr_one(expression),
-        Expr::String(_) | Expr::Bool(_) | Expr::Null => encode_atom_expr_two(expression),
-        _ => Err(integrity_failure()),
-    }
-}
-
-fn encode_atom_expr_one(expression: &Expr) -> Result<Vec<u8>, StorageError> {
-    let mut encoder = CanonicalEncoder::new();
-    match expression {
-        Expr::Identifier(value) => encode_ident_atom(&mut encoder, 1, value)?,
-        Expr::QualifiedIdentifier { qualifier, name } => {
-            encoder.variant(1, 2)?;
-            encoder.text(2, qualifier.as_str())?;
-            encoder.text(3, name.as_str())?;
-        }
-        Expr::Integer(value) => encode_integer_atom(&mut encoder, 3, *value)?,
-        Expr::Float64(value) => encode_u64_atom(&mut encoder, 4, value.to_bits())?,
-        _ => return Err(integrity_failure()),
-    }
-    Ok(encoder.finish())
-}
-
-fn encode_atom_expr_two(expression: &Expr) -> Result<Vec<u8>, StorageError> {
-    let mut encoder = CanonicalEncoder::new();
-    match expression {
-        Expr::String(value) => encode_text_atom(&mut encoder, 5, value)?,
-        Expr::Bool(value) => encode_bool_atom(&mut encoder, 6, *value)?,
-        Expr::Null => encoder.variant(1, 7)?,
-        _ => return Err(integrity_failure()),
-    }
-    Ok(encoder.finish())
 }
 
 fn encode_collection_expr(expression: &Expr, depth: usize) -> Result<Vec<u8>, StorageError> {
@@ -933,51 +617,6 @@ fn encode_call_expr(
     let mut encoder = CanonicalEncoder::new();
     encode_call(&mut encoder, bound, name, args, next_depth(depth)?)?;
     Ok(encoder.finish())
-}
-
-fn encode_ident_atom(
-    encoder: &mut CanonicalEncoder,
-    tag: u8,
-    value: &Ident,
-) -> Result<(), StorageError> {
-    encoder.variant(1, tag)?;
-    encoder.text(2, value.as_str())
-}
-
-fn encode_integer_atom(
-    encoder: &mut CanonicalEncoder,
-    tag: u8,
-    value: i64,
-) -> Result<(), StorageError> {
-    encoder.variant(1, tag)?;
-    encoder.field(2, &value.to_be_bytes())
-}
-
-fn encode_u64_atom(
-    encoder: &mut CanonicalEncoder,
-    tag: u8,
-    value: u64,
-) -> Result<(), StorageError> {
-    encoder.variant(1, tag)?;
-    encoder.field(2, &value.to_be_bytes())
-}
-
-fn encode_text_atom(
-    encoder: &mut CanonicalEncoder,
-    tag: u8,
-    value: &str,
-) -> Result<(), StorageError> {
-    encoder.variant(1, tag)?;
-    encoder.text(2, value)
-}
-
-fn encode_bool_atom(
-    encoder: &mut CanonicalEncoder,
-    tag: u8,
-    value: bool,
-) -> Result<(), StorageError> {
-    encoder.variant(1, tag)?;
-    encoder.boolean(2, value)
 }
 
 fn encode_hstore_entries(entries: &[(String, Option<String>)]) -> Result<Vec<u8>, StorageError> {
