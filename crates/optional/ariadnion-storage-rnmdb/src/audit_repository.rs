@@ -31,6 +31,7 @@
 
 mod chain;
 mod durable_read;
+mod error;
 
 #[cfg(feature = "test-hooks")]
 pub(crate) use durable_read::{AuditReadObserver, AuditReadQuery};
@@ -38,16 +39,16 @@ pub(crate) use durable_read::{AuditReadObserver, AuditReadQuery};
 use std::sync::Arc;
 
 use ariadnion_audit_domain::{
-    AuditChainDigest, AuditError, AuditEvent, AuditEventBinding, AuditEventContent, AuditEventId,
+    AuditChainDigest, AuditEvent, AuditEventBinding, AuditEventContent, AuditEventId,
     AuditEventKind, AuditEventRequest, AuditPayloadDigest, AuditSequence, AuditSubject,
     AuditSubjectDigest, AuditSubjectKind, rehydrate_audit_event,
 };
 use ariadnion_audit_store::{
-    AuditChainHead, AuditExportCursor, AuditStoreError, AuditStoreErrorCode,
-    MAX_AUDIT_EXPORT_EVENTS, export_audit_batch, verify_audit_batch,
+    AuditChainHead, AuditExportCursor, MAX_AUDIT_EXPORT_EVENTS, export_audit_batch,
+    verify_audit_batch,
 };
 use ariadnion_core::{PrincipalContext, PrincipalId, RequestContext, TenantId};
-use ariadnion_storage_domain::{StorageError, StorageErrorCode};
+use ariadnion_storage_domain::StorageError;
 use ariadnion_user_domain::UtcTimestamp;
 use rnmdb_cli::{CommandOutput, LocalSession};
 use rnmdb_executor::vector::{ColumnSchema, Row, VectorBatch};
@@ -56,6 +57,8 @@ use rnmdb_types::{SqlType, SqlValue};
 use crate::RnmdbSessionOwner;
 use crate::identity_transaction::run_identity_transaction;
 use crate::session::map_rnmdb_error;
+
+use self::error::{conflict, integrity_failure, map_domain_error, map_store_error, not_found};
 
 const EVENT_TABLE: &str = "identity_audit_events";
 const HEAD_TABLE: &str = "identity_audit_heads";
@@ -138,8 +141,8 @@ impl RnmdbAuditRepository {
     ///
     /// # Errors
     ///
-    /// Returns [`StorageErrorCode::NotFound`] when the event is absent, or a
-    /// stable storage error for authentication, integrity, or I/O failures.
+    /// Returns [`ariadnion_storage_domain::StorageErrorCode::NotFound`] when the event is absent,
+    /// or a stable storage error for authentication, integrity, or I/O failures.
     pub fn load_event(
         &self,
         tenant_id: &TenantId,
@@ -1171,31 +1174,4 @@ fn finish_sql(sql: String) -> Result<String, StorageError> {
         return Err(integrity_failure());
     }
     Ok(sql)
-}
-
-fn map_domain_error(_error: AuditError) -> StorageError {
-    integrity_failure()
-}
-
-fn map_store_error(error: AuditStoreError) -> StorageError {
-    let code = match error.code() {
-        AuditStoreErrorCode::EmptyRange | AuditStoreErrorCode::IncompleteRange => {
-            StorageErrorCode::NotFound
-        }
-        AuditStoreErrorCode::ResourceLimitExceeded => StorageErrorCode::ResourceExhausted,
-        _ => StorageErrorCode::IntegrityFailure,
-    };
-    StorageError::new(code)
-}
-
-const fn conflict() -> StorageError {
-    StorageError::new(StorageErrorCode::Conflict)
-}
-
-const fn not_found() -> StorageError {
-    StorageError::new(StorageErrorCode::NotFound)
-}
-
-const fn integrity_failure() -> StorageError {
-    StorageError::new(StorageErrorCode::IntegrityFailure)
 }
