@@ -1,20 +1,21 @@
-# Proposed Additional Restriction ARIADNION-AR-2026-002
+# Additional Restriction ARIADNION-AR-2026-002
 
 ## Status
 
-Pending owner signature; not yet effective under AHCL Section 11.2(c).
+Effective under AHCL Section 11.2 as of `2026-07-29T11:14:32Z`.
 
 ## Required metadata
 
 - Unique identifier: `ARIADNION-AR-2026-002`
-- Restriction Author: `czxieddan`, the identifiable owner of the canonical Ariadnion repository and sole recorded Git author through the corresponding source revision
+- Restriction Author: `czxieddan`, the identifiable owner of the canonical Ariadnion repository and sole recorded Git author through the corresponding revision
 - Contact or service method: `czxieddan@gmail.com`
-- Recorded-at time (UTC): `2026-07-29T06:45:48Z`
-- Effective time (UTC): Not established. No effective time exists until a qualifying owner signature or equivalent verification instrument records one.
-- Corresponding source revision: `3828d6101719cd001a3e0c84ed8c65e5f20d581c`, the canonical revision to which this prospective condition is being added
-- Prospective scope: The first canonical Ariadnion revision after the corresponding source revision that contains this complete record, its verified digest, and a verification instrument satisfying AHCL Section 11.2(c), together with downstream derivatives and its distribution chain from the recorded effective time
+- Initial record time (UTC): `2026-07-29T06:45:48Z`
+- Effective time (UTC): `2026-07-29T11:14:32Z`
+- Corresponding revision: `a84297005c16a55886248e1b4aa06e37f575298e` (restricted-copy baseline)
+- Scope: The Restriction Author's Ariadnion `master` working copy derived from the corresponding baseline revision at the effective time, the first canonical revision that publishes the activation instrument and this record, and subsequent derivatives and the distribution chain originating from that restricted copy
 - Text digest algorithm: SHA-256 over the UTF-8 bytes of the complete terms block below, with LF line endings and one final LF
 - Text digest: `E8BDC5A4762719433EC845DB7AE1970E43CBCB07EC8A2998F12F1842F31A0A1C`
+- Activation instrument: `AHCL/AHCL-RESTRICTIONS/ACTIVATION-2026-07-29.md` (`ARIADNION-AR-ACTIVATION-2026-07-29`)
 
 ## Complete terms
 
@@ -35,6 +36,8 @@ RNovModularDB.
 
 ## Effect boundary
 
-This proposal regulates only use of the configured dependency set through the prospective restricted Ariadnion distribution chain. It does not modify or replace the separate commercial authorization on which Ariadnion relies, and it does not grant, relicense, narrow, or dispose of any independently obtained right in RNovModularDB.
+This restriction regulates only use of the configured dependency set through the restricted Ariadnion distribution chain. It does not modify or replace the separate commercial authorization on which Ariadnion relies, and it does not grant, relicense, narrow, or dispose of any independently obtained right in RNovModularDB.
 
-No signature, signed commit, trusted timestamp, electronic-signature file, or written verification instrument is currently recorded. See `AHCL/AHCL-RESTRICTIONS/VERIFICATION.md`.
+Only the complete terms block is within the recorded text-digest scope. Status, activation metadata, and this effect-boundary explanation are outside that scope and do not alter the terms or their digest.
+
+The electronically signed written activation instrument bears `/s/ czxieddan`. Its nature, SHA-256 digest, and verification evidence are recorded in `AHCL/AHCL-RESTRICTIONS/VERIFICATION.md`.
