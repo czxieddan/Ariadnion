@@ -440,18 +440,7 @@ impl RestorePort for RnmdbRestoreAdapter {
         let _maintenance = lock_maintenance(&self.maintenance)?;
         self.require_current_active(request.active(), context)?;
         let comparison = self.environment.compare_shadow(request, limit, context)?;
-        if comparison.observed > limit.get() {
-            return Err(integrity_failure());
-        }
-        ShadowSampleEvidence::new(
-            request.active().clone(),
-            request.target().clone(),
-            request.source().digest(),
-            comparison.mode,
-            limit,
-            comparison.observed,
-            comparison.mismatches,
-        )
+        build_shadow_sample_evidence(request, comparison, limit)
     }
 
     fn atomic_switch(
@@ -476,6 +465,25 @@ struct PreparedRestore {
     locations: ResolvedRestoreLocations,
     source: VerificationSummary,
     dry_run: crate::RestorePreflight,
+}
+
+fn build_shadow_sample_evidence(
+    request: &RestoreRequest,
+    comparison: RnmdbShadowComparison,
+    limit: ShadowSampleLimit,
+) -> Result<ShadowSampleEvidence, StorageError> {
+    if comparison.observed > limit.get() {
+        return Err(integrity_failure());
+    }
+    ShadowSampleEvidence::new(
+        request.active().clone(),
+        request.target().clone(),
+        request.source().digest(),
+        comparison.mode,
+        limit,
+        comparison.observed,
+        comparison.mismatches,
+    )
 }
 
 fn build_verification_evidence(

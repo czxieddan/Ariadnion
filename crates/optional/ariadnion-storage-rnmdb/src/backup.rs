@@ -312,10 +312,11 @@ fn validate_copy(
     let slots_match = source.page_record_slots() == copy.page_record_slots()
         && target.page_record_slots() == copy.page_record_slots();
     let format_matches = source.format_version() == target.format_version();
-    if !(bytes_match && pages_match && slots_match && format_matches) {
-        return Err(integrity_failure());
+    if bytes_match && pages_match && slots_match && format_matches {
+        Ok(())
+    } else {
+        Err(integrity_failure())
     }
-    Ok(())
 }
 
 fn finish_or_remove_incomplete<T>(
