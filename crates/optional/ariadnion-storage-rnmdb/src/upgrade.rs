@@ -517,20 +517,7 @@ fn extract_physical_plan(plan: &UpgradePlan) -> Result<PhysicalUpgradePlan, Stor
     let mut format = None;
     let mut rotates_key = false;
     for step in plan.steps() {
-        match step {
-            UpgradeStep::DatabaseFormat(window) => {
-                if format.replace(*window).is_some() {
-                    return Err(migration_required());
-                }
-            }
-            UpgradeStep::ApplicationSchema(_) => return Err(migration_required()),
-            UpgradeStep::KeyRotation(_) => {
-                if rotates_key {
-                    return Err(migration_required());
-                }
-                rotates_key = true;
-            }
-        }
+        apply_physical_step(step, &mut format, &mut rotates_key)?;
     }
     let format = format.ok_or_else(migration_required)?;
     Ok(PhysicalUpgradePlan {
@@ -539,10 +526,45 @@ fn extract_physical_plan(plan: &UpgradePlan) -> Result<PhysicalUpgradePlan, Stor
     })
 }
 
+fn apply_physical_step(
+    step: &UpgradeStep,
+    format: &mut Option<DatabaseFormatWindow>,
+    rotates_key: &mut bool,
+) -> Result<(), StorageError> {
+    match step {
+        UpgradeStep::DatabaseFormat(window) => record_format_step(format, *window),
+        UpgradeStep::ApplicationSchema(_) => Err(migration_required()),
+        UpgradeStep::KeyRotation(_) => record_key_rotation(rotates_key),
+    }
+}
+
+fn record_format_step(
+    format: &mut Option<DatabaseFormatWindow>,
+    window: DatabaseFormatWindow,
+) -> Result<(), StorageError> {
+    if format.replace(window).is_some() {
+        return Err(migration_required());
+    }
+    Ok(())
+}
+
+fn record_key_rotation(rotates_key: &mut bool) -> Result<(), StorageError> {
+    if *rotates_key {
+        return Err(migration_required());
+    }
+    *rotates_key = true;
+    Ok(())
+}
+
 fn validate_format_window(
     plan: &UpgradePlan,
     format: DatabaseFormatWindow,
 ) -> Result<(), StorageError> {
+    validate_supported_format_window(format)?;
+    validate_format_state_binding(plan, format)
+}
+
+fn validate_supported_format_window(format: DatabaseFormatWindow) -> Result<(), StorageError> {
     let target_format = u32::from(SINGLE_FILE_FORMAT_VERSION);
     let Some(source_format) = target_format.checked_sub(1) else {
         return Err(migration_required());
@@ -550,6 +572,13 @@ fn validate_format_window(
     if format.from().get() != source_format || format.to().get() != target_format {
         return Err(migration_required());
     }
+    Ok(())
+}
+
+fn validate_format_state_binding(
+    plan: &UpgradePlan,
+    format: DatabaseFormatWindow,
+) -> Result<(), StorageError> {
     if plan.source().state.format != format.from() {
         return Err(integrity_failure());
     }
@@ -572,12 +601,28 @@ fn validate_upgrade_summary(
     physical: PhysicalUpgradePlan,
     summary: UpgradeSummary,
 ) -> Result<(), StorageError> {
+    validate_summary_formats(physical, &summary)?;
+    validate_summary_progress(physical, &summary)?;
+    validate_reported_state(plan, summary)
+}
+
+fn validate_summary_formats(
+    physical: PhysicalUpgradePlan,
+    summary: &UpgradeSummary,
+) -> Result<(), StorageError> {
     if u32::from(summary.source_format_version()) != physical.format.from().get() {
         return Err(integrity_failure());
     }
     if u32::from(summary.target_format_version()) != physical.format.to().get() {
         return Err(integrity_failure());
     }
+    Ok(())
+}
+
+fn validate_summary_progress(
+    physical: PhysicalUpgradePlan,
+    summary: &UpgradeSummary,
+) -> Result<(), StorageError> {
     if physical.rotates_key && summary.pages_upgraded() == 0 {
         return Err(migration_required());
     }
@@ -587,7 +632,7 @@ fn validate_upgrade_summary(
     if summary.bytes_written() == 0 {
         return Err(integrity_failure());
     }
-    validate_reported_state(plan, summary)
+    Ok(())
 }
 
 fn validate_reported_state(
@@ -640,17 +685,39 @@ fn validate_retained_observation(
     inspection: &RnmdbRetainedSourceInspection,
     context: &RequestContext,
 ) -> Result<(), StorageError> {
+    validate_retained_identity(receipt, inspection)?;
+    validate_retained_checks(inspection)?;
+    let file_len = source_file_len(location)?;
+    let digest = digest_location(location, file_len, context)?;
+    validate_retained_digest(inspection, digest)
+}
+
+fn validate_retained_identity(
+    receipt: &SwitchReceipt,
+    inspection: &RnmdbRetainedSourceInspection,
+) -> Result<(), StorageError> {
     if inspection.observed.instance != *receipt.previous_active() {
         return Err(integrity_failure());
     }
+    Ok(())
+}
+
+fn validate_retained_checks(
+    inspection: &RnmdbRetainedSourceInspection,
+) -> Result<(), StorageError> {
     if !inspection.checks.authentication_passed || !inspection.checks.structure_valid {
         return Err(integrity_failure());
     }
     if !inspection.key_available {
         return Err(integrity_failure());
     }
-    let file_len = source_file_len(location)?;
-    let digest = digest_location(location, file_len, context)?;
+    Ok(())
+}
+
+fn validate_retained_digest(
+    inspection: &RnmdbRetainedSourceInspection,
+    digest: [u8; 32],
+) -> Result<(), StorageError> {
     if digest != inspection.observed.digest.0 {
         return Err(integrity_failure());
     }
