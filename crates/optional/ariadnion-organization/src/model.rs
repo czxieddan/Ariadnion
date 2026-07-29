@@ -30,6 +30,7 @@
 //! Immutable organization aggregate state, evidence, and audit event models.
 
 mod reachability;
+mod transfer_validation;
 
 use std::collections::HashSet;
 
@@ -39,6 +40,8 @@ use ariadnion_user_domain::{UserId, UtcTimestamp};
 use crate::error::{OrganizationError, OrganizationErrorCode, error};
 use crate::ids::{MembershipId, OrganizationId, OrganizationVersion, OwnershipTransferId, TeamId};
 
+use self::transfer_validation::validate_transfer_evidence_input;
+
 /// Maximum memberships retained by one organization aggregate.
 pub const MAX_MEMBERSHIPS: usize = 1_024;
 /// Maximum teams retained by one organization aggregate.
@@ -46,7 +49,6 @@ pub const MAX_TEAMS: usize = 256;
 /// Maximum team assignments retained by one membership.
 pub const MAX_TEAM_ASSIGNMENTS: usize = 64;
 pub(crate) const MAX_REAUTHENTICATION_AGE_SECONDS: i64 = 300;
-const MAX_TRANSFER_LIFETIME_SECONDS: i64 = 900;
 
 /// The operational state of an organization independent of user state.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -1169,51 +1171,4 @@ impl OrganizationTransition {
     pub fn into_parts(self) -> (Organization, OrganizationEvent) {
         (self.organization, self.event)
     }
-}
-
-fn validate_transfer_evidence_input(
-    input: &OwnershipTransferEvidenceInput,
-) -> Result<(), OrganizationError> {
-    validate_transfer_principals(input)?;
-    if input.initiating_owner_id == input.recipient_id {
-        return Err(error(OrganizationErrorCode::TransferEvidenceInvalid));
-    }
-    let reauthentication = input
-        .recipient_reauthentication
-        .authenticated_at()
-        .unix_seconds();
-    let not_before = input.not_before.unix_seconds();
-    let expires_at = input.expires_at.unix_seconds();
-    let delay = not_before.checked_sub(reauthentication);
-    let lifetime = expires_at.checked_sub(not_before);
-    if delay.is_none_or(|seconds| seconds <= 0) || !valid_transfer_lifetime(lifetime) {
-        return Err(error(OrganizationErrorCode::TransferEvidenceInvalid));
-    }
-    Ok(())
-}
-
-fn validate_transfer_principals(
-    input: &OwnershipTransferEvidenceInput,
-) -> Result<(), OrganizationError> {
-    let initiator_tenant_matches =
-        input.initiating_user.principal().tenant_id() == &input.tenant_id;
-    let recipient_tenant_matches = input
-        .recipient_reauthentication
-        .authenticated_user()
-        .principal()
-        .tenant_id()
-        == &input.tenant_id;
-    let approver_tenant_matches = input.approving_principal.tenant_id() == &input.tenant_id;
-    if !initiator_tenant_matches || !recipient_tenant_matches || !approver_tenant_matches {
-        return Err(error(OrganizationErrorCode::TransferOrganizationMismatch));
-    }
-    if input.initiating_user.principal().principal_id() == input.approving_principal.principal_id()
-    {
-        return Err(error(OrganizationErrorCode::TransferApproverConflict));
-    }
-    Ok(())
-}
-
-fn valid_transfer_lifetime(lifetime: Option<i64>) -> bool {
-    lifetime.is_some_and(|seconds| seconds > 0 && seconds <= MAX_TRANSFER_LIFETIME_SECONDS)
 }
