@@ -1,4 +1,35 @@
+// tools/ariadnion-xtask/src/main.rs - Rust source for Ariadnion.
+//
+// Copyright (C) 2026 czxieddan
+//
+// This file is part of Ariadnion and is provided under version 1.0 of the
+// Aperip Heimdall Commons License (AHCL). The applicable version is also subject
+// to the AHCL provisions concerning Continuous AHCL Licensing Segments and
+// migration to later official versions.
+//
+// After having a reasonable opportunity to read AHCL, all applicable Additional
+// Restrictions, and all version notices, a person accepts the corresponding terms,
+// to the extent permitted by applicable law, by using, copying, modifying, building,
+// using this file as a dependency, deploying, distributing, or operating this file
+// over a network.
+//
+// Official AHCL English text and public notices: https://ahcl.aperip.com
+// Repository verbatim AHCL copy:                 AHCL/AHCL-1.0.md
+// Project canonical repository:                  https://github.com/czxieddan/Ariadnion
+// AHCL origin and project notice:                AHCL/AHCL-PROJECT-NOTICE.md
+// AHCL Version Adoption records:                 AHCL/AHCL-VERSION-ADOPTION.md
+// Complete Corresponding Source and history:     AHCL/AHCL-SOURCE.md
+// Dependencies, Referenced Materials, and licenses:
+//                                                   AHCL/AHCL-DEPENDENCIES.md
+// Additional Restrictions:                       Proposed only; not effective under AHCL 11.2(c):
+//                                                   AHCL/AHCL-RESTRICTIONS/ARIADNION-AR-2026-001.md (ARIADNION-AR-2026-001)
+//                                                   AHCL/AHCL-RESTRICTIONS/ARIADNION-AR-2026-002.md (ARIADNION-AR-2026-002)
+//
+// SPDX-License-Identifier: LicenseRef-AHCL-1.0
+//
 //! Repository composition commands for independently resolved bundles.
+
+mod rnmdb_policy;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::env;
@@ -13,6 +44,60 @@ const MAX_CAPABILITIES: usize = 256;
 const MAX_POLICY_BYTES: u64 = 65_536;
 const MAX_LOCK_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_LOCK_FILES: usize = 512;
+const FIRST_PARTY_LICENSE: &str = "LicenseRef-AHCL-1.0";
+const RNMDB_AUTHORIZATION: &str = "special-commercial-authorization-from-project-owner";
+const RNMDB_AUTHORIZATION_SCOPE: &str = "ariadnion-and-reasonable-functional-forks";
+const RNMDB_AUTHORIZATION_NOTICE: &str = "AHCL/AHCL-SPECIAL-AUTHORIZATIONS.md";
+const RNMDB_REPOSITORY: &str = "https://github.com/czxieddan/RNovModularDB.git";
+const RNMDB_COMMIT: &str = "013ec2f48a1dab89997430d72c2b176be2c29d47";
+const RNMDB_PACKAGE_PREFIX: &str = "rnmdb-";
+const RNMDB_PACKAGES: [&str; 15] = [
+    "rnmdb-catalog",
+    "rnmdb-cli",
+    "rnmdb-common",
+    "rnmdb-executor",
+    "rnmdb-fts",
+    "rnmdb-index",
+    "rnmdb-instance",
+    "rnmdb-planner",
+    "rnmdb-security",
+    "rnmdb-server",
+    "rnmdb-sql",
+    "rnmdb-storage",
+    "rnmdb-txn",
+    "rnmdb-types",
+    "rnmdb-udf",
+];
+const RNMDB_AUTHORIZATION_NOTICE_TEXT: &str = r#"# Ariadnion Special Authorization Information
+
+## RNovModularDB dependency authorization
+
+The RNovModularDB packages fixed by Ariadnion's dependency policy are used under special commercial authorization from the RNovModularDB project owner. RNMDB is not treated as AGPL for this project. The authorization is limited to the recorded repository, commit, and package set, and to Ariadnion itself plus forks or extensions that retain and provide a material part of Ariadnion's service-gateway or operations-platform functionality. It excludes unrelated projects, products, and services and standalone or general-purpose RNMDB reuse.
+
+The following record is the complete public boundary of this dependency authorization. No other text in this notice broadens it.
+
+```text
+record=ariadnion-rnmdb-authorization-boundary-v1
+authorization=special-commercial-authorization-from-project-owner
+license_basis=special-commercial-authorization-from-project-owner-not-AGPL
+repository=https://github.com/czxieddan/RNovModularDB.git
+commit=013ec2f48a1dab89997430d72c2b176be2c29d47
+package_prefix=rnmdb-
+packages=rnmdb-common,rnmdb-types,rnmdb-sql,rnmdb-planner,rnmdb-executor,rnmdb-txn,rnmdb-index,rnmdb-fts,rnmdb-catalog,rnmdb-storage,rnmdb-udf,rnmdb-security,rnmdb-instance,rnmdb-server,rnmdb-cli
+scope=ariadnion-and-reasonable-functional-forks
+included_scope=ariadnion-and-forks-or-extensions-retaining-material-ariadnion-service-gateway-or-operations-platform-functionality
+excluded_scope=unrelated-projects-products-or-services-and-standalone-or-general-purpose-rnmdb-reuse
+public_notice=AHCL/AHCL-SPECIAL-AUTHORIZATIONS.md
+```
+
+This public notice is not the authorization instrument, grants no rights to any third party, and does not disclose confidential commercial terms. No authorization-document identifier, cryptographic signature, public authorization evidence, fee term, territory term, dispute clause, or other confidential term is asserted here.
+
+## Channel for Ariadnion Special Authorization applications
+
+Requests for a separate non-AHCL Special Authorization for Ariadnion may be sent to `licensing@aperip.com`. This address is retained from the repository's prior tracked licensing materials.
+
+The channel above is solely for applying for or obtaining a separate Special Authorization. Channel information does not itself constitute a Special Authorization, modify AHCL 1.0, or waive or reduce an AHCL obligation not expressly covered by a valid written Special Authorization.
+"#;
 
 fn main() -> ExitCode {
     match run(env::args_os().skip(1)) {
@@ -126,10 +211,26 @@ struct AbiVersion {
 
 struct DependencyPolicy {
     core_abi: AbiVersion,
+    rnmdb_authorization: String,
+    rnmdb_authorization_scope: String,
+    rnmdb_public_notice: String,
     rnmdb_repository: String,
     rnmdb_commit: String,
     rnmdb_package_prefix: String,
     rnmdb_packages: BTreeSet<String>,
+}
+
+struct RnmdbAuthorizationFields {
+    authorization: String,
+    scope: String,
+    public_notice: String,
+}
+
+struct RnmdbSourceFields {
+    repository: String,
+    commit: String,
+    package_prefix: String,
+    packages: BTreeSet<String>,
 }
 
 struct CrateManifestIdentity {
@@ -210,20 +311,116 @@ fn load_dependency_policy(root: &Path) -> Result<DependencyPolicy, String> {
         .join("dependency-policy")
         .join("versions.toml");
     let content = read_bounded_text(&path, MAX_POLICY_BYTES, "dependency policy")?;
-    parse_dependency_policy(&content)
+    let policy = parse_dependency_policy(&content)?;
+    validate_rnmdb_commercial_authorization(root, &policy)?;
+    Ok(policy)
 }
 
 fn parse_dependency_policy(content: &str) -> Result<DependencyPolicy, String> {
     let abi = parse_string_field(content, "abi")?;
+    let core_abi = parse_abi_value(&abi)?;
+    let rnmdb = rnmdb_policy::canonical_authorization_table(content)?;
+    let authorization = parse_rnmdb_authorization_fields(rnmdb)?;
+    let source = parse_rnmdb_source_fields(rnmdb)?;
     Ok(DependencyPolicy {
-        core_abi: parse_abi_value(&abi)?,
-        rnmdb_repository: parse_string_field(content, "repository")?,
-        rnmdb_commit: parse_string_field(content, "commit")?,
-        rnmdb_package_prefix: parse_string_field(content, "package_prefix")?,
-        rnmdb_packages: parse_string_array(content, "packages")?
-            .into_iter()
-            .collect(),
+        core_abi,
+        rnmdb_authorization: authorization.authorization,
+        rnmdb_authorization_scope: authorization.scope,
+        rnmdb_public_notice: authorization.public_notice,
+        rnmdb_repository: source.repository,
+        rnmdb_commit: source.commit,
+        rnmdb_package_prefix: source.package_prefix,
+        rnmdb_packages: source.packages,
     })
+}
+
+fn parse_rnmdb_authorization_fields(content: &str) -> Result<RnmdbAuthorizationFields, String> {
+    Ok(RnmdbAuthorizationFields {
+        authorization: parse_string_field(content, "authorization")?,
+        scope: parse_string_field(content, "scope")?,
+        public_notice: parse_string_field(content, "public_notice")?,
+    })
+}
+
+fn parse_rnmdb_source_fields(content: &str) -> Result<RnmdbSourceFields, String> {
+    Ok(RnmdbSourceFields {
+        repository: parse_string_field(content, "repository")?,
+        commit: parse_string_field(content, "commit")?,
+        package_prefix: parse_string_field(content, "package_prefix")?,
+        packages: parse_rnmdb_package_set(content)?,
+    })
+}
+
+fn parse_rnmdb_package_set(content: &str) -> Result<BTreeSet<String>, String> {
+    let mut packages = BTreeSet::new();
+    for package in parse_string_array(content, "packages")? {
+        if !packages.insert(package) {
+            return Err("RNovModularDB package policy contains a duplicate".into());
+        }
+    }
+    Ok(packages)
+}
+
+fn validate_rnmdb_commercial_authorization(
+    root: &Path,
+    policy: &DependencyPolicy,
+) -> Result<(), String> {
+    validate_rnmdb_authorization_declaration(policy)?;
+    validate_rnmdb_source_identity(policy)?;
+    validate_rnmdb_package_set(policy)?;
+    validate_rnmdb_authorization_notice(root, policy)?;
+    Ok(())
+}
+
+fn validate_rnmdb_authorization_declaration(policy: &DependencyPolicy) -> Result<(), String> {
+    if policy.rnmdb_authorization != RNMDB_AUTHORIZATION
+        || policy.rnmdb_authorization_scope != RNMDB_AUTHORIZATION_SCOPE
+    {
+        return Err("RNovModularDB commercial authorization policy is invalid".into());
+    }
+    if policy.rnmdb_public_notice != RNMDB_AUTHORIZATION_NOTICE {
+        return Err("RNovModularDB public authorization notice path is invalid".into());
+    }
+    Ok(())
+}
+
+fn validate_rnmdb_source_identity(policy: &DependencyPolicy) -> Result<(), String> {
+    let actual = (
+        policy.rnmdb_repository.as_str(),
+        policy.rnmdb_commit.as_str(),
+        policy.rnmdb_package_prefix.as_str(),
+    );
+    let expected = (RNMDB_REPOSITORY, RNMDB_COMMIT, RNMDB_PACKAGE_PREFIX);
+    if actual != expected {
+        return Err("RNovModularDB canonical source policy is invalid".into());
+    }
+    Ok(())
+}
+
+fn validate_rnmdb_package_set(policy: &DependencyPolicy) -> Result<(), String> {
+    if !rnmdb_package_set_matches(&policy.rnmdb_packages) {
+        return Err("RNovModularDB authorized package set is invalid".into());
+    }
+    Ok(())
+}
+
+fn rnmdb_package_set_matches(packages: &BTreeSet<String>) -> bool {
+    packages.iter().map(String::as_str).eq(RNMDB_PACKAGES)
+}
+
+fn validate_rnmdb_authorization_notice(
+    root: &Path,
+    policy: &DependencyPolicy,
+) -> Result<(), String> {
+    let notice = read_bounded_text(
+        &root.join(&policy.rnmdb_public_notice),
+        MAX_POLICY_BYTES,
+        "RNovModularDB public authorization notice",
+    )?;
+    if notice != RNMDB_AUTHORIZATION_NOTICE_TEXT {
+        return Err("RNovModularDB public authorization notice is inconsistent".into());
+    }
+    Ok(())
 }
 
 fn parse_string_array(content: &str, key: &str) -> Result<Vec<String>, String> {
@@ -243,11 +440,33 @@ fn parse_string_array(content: &str, key: &str) -> Result<Vec<String>, String> {
 }
 
 fn validate_rnmdb_lock_sources(root: &Path, policy: &DependencyPolicy) -> Result<(), String> {
+    let mut resolved = BTreeSet::new();
     for lock in collect_lock_files(root)? {
         let content = read_bounded_text(&lock, MAX_LOCK_BYTES, "Cargo lock file")?;
-        for package in content.split("[[package]]").skip(1) {
-            validate_rnmdb_package(package, policy)?;
+        resolved.extend(collect_rnmdb_lock_packages(&content, policy)?);
+    }
+    validate_rnmdb_resolved_package_set(&resolved)
+}
+
+fn collect_rnmdb_lock_packages(
+    content: &str,
+    policy: &DependencyPolicy,
+) -> Result<BTreeSet<String>, String> {
+    let mut packages = BTreeSet::new();
+    for package in content.split("[[package]]").skip(1) {
+        let Some(name) = validate_rnmdb_package(package, policy)? else {
+            continue;
+        };
+        if !packages.insert(name) {
+            return Err("Cargo lock file contains a duplicate RNovModularDB package".into());
         }
+    }
+    Ok(packages)
+}
+
+fn validate_rnmdb_resolved_package_set(packages: &BTreeSet<String>) -> Result<(), String> {
+    if !rnmdb_package_set_matches(packages) {
+        return Err("resolved RNovModularDB package set is incomplete".into());
     }
     Ok(())
 }
@@ -284,31 +503,118 @@ fn add_lock_if_present(path: &Path, locks: &mut Vec<PathBuf>) -> Result<(), Stri
     Ok(())
 }
 
-fn validate_rnmdb_package(package: &str, policy: &DependencyPolicy) -> Result<(), String> {
+fn validate_rnmdb_package(
+    package: &str,
+    policy: &DependencyPolicy,
+) -> Result<Option<String>, String> {
     let name = parse_string_field(package, "name")?;
     if !name.starts_with(&policy.rnmdb_package_prefix) {
-        return Ok(());
+        return Ok(None);
     }
     if !policy.rnmdb_packages.contains(&name) {
         return Err("unapproved RNovModularDB package".into());
     }
     let source = parse_string_field(package, "source")
         .map_err(|_| "RNovModularDB package is not pinned to Git".to_owned())?;
-    validate_rnmdb_git_source(&source, policy)
+    validate_rnmdb_git_source(&source, policy)?;
+    Ok(Some(name))
 }
 
 fn validate_declared_rnmdb_sources(root: &Path, policy: &DependencyPolicy) -> Result<(), String> {
+    let adapter = root
+        .join("crates")
+        .join("optional")
+        .join("ariadnion-storage-rnmdb")
+        .join("Cargo.toml");
+    let mut declared = BTreeSet::new();
     for manifest in first_party_manifests(root)? {
-        let content = read_bounded_text(&manifest, MAX_MANIFEST_BYTES, "crate manifest")?;
-        for line in content.lines() {
-            validate_rnmdb_dependency_line(line, policy)?;
+        let packages = read_rnmdb_manifest_packages(&manifest, policy)?;
+        record_rnmdb_manifest_packages(&manifest, &adapter, packages, &mut declared)?;
+    }
+    validate_rnmdb_declared_package_set(&declared)
+}
+
+fn read_rnmdb_manifest_packages(
+    manifest: &Path,
+    policy: &DependencyPolicy,
+) -> Result<BTreeSet<String>, String> {
+    let content = read_bounded_text(manifest, MAX_MANIFEST_BYTES, "crate manifest")?;
+    rnmdb_policy::validate_manifest_dependency_aliases(&content)?;
+    collect_rnmdb_dependency_lines(&content, policy)
+}
+
+fn record_rnmdb_manifest_packages(
+    manifest: &Path,
+    adapter: &Path,
+    packages: BTreeSet<String>,
+    declared: &mut BTreeSet<String>,
+) -> Result<(), String> {
+    if manifest == adapter {
+        *declared = packages;
+        return Ok(());
+    }
+    if !packages.is_empty() {
+        return Err("RNovModularDB dependency is declared outside its storage adapter".into());
+    }
+    Ok(())
+}
+
+fn collect_rnmdb_dependency_lines(
+    content: &str,
+    policy: &DependencyPolicy,
+) -> Result<BTreeSet<String>, String> {
+    let mut declared = BTreeSet::new();
+    let mut in_dependencies = false;
+    for line in content.lines() {
+        if update_manifest_section(line, &mut in_dependencies) {
+            continue;
         }
+        record_rnmdb_dependency(line, in_dependencies, policy, &mut declared)?;
+    }
+    Ok(declared)
+}
+
+fn update_manifest_section(line: &str, in_dependencies: &mut bool) -> bool {
+    let line = line.trim_start();
+    if !line.starts_with('[') {
+        return false;
+    }
+    *in_dependencies = line.trim() == "[dependencies]";
+    true
+}
+
+fn record_rnmdb_dependency(
+    line: &str,
+    in_dependencies: bool,
+    policy: &DependencyPolicy,
+    declared: &mut BTreeSet<String>,
+) -> Result<(), String> {
+    let Some(package) = validate_rnmdb_dependency_line(line, policy)? else {
+        return Ok(());
+    };
+    if !in_dependencies {
+        return Err("RNovModularDB dependency is outside the canonical dependencies table".into());
+    }
+    if !declared.insert(package) {
+        return Err("duplicate RNovModularDB dependency declaration".into());
+    }
+    Ok(())
+}
+
+fn validate_rnmdb_declared_package_set(packages: &BTreeSet<String>) -> Result<(), String> {
+    if !rnmdb_package_set_matches(packages) {
+        return Err("declared RNovModularDB package set is incomplete".into());
     }
     Ok(())
 }
 
 fn first_party_manifests(root: &Path) -> Result<Vec<PathBuf>, String> {
-    let mut manifests = vec![root.join("Cargo.toml")];
+    let mut manifests = vec![
+        root.join("Cargo.toml"),
+        root.join("crates")
+            .join("ariadnion-core")
+            .join("Cargo.toml"),
+    ];
     collect_child_manifests(&root.join("crates").join("optional"), &mut manifests)?;
     collect_child_manifests(&root.join("bundles"), &mut manifests)?;
     collect_child_manifests(&root.join("tools"), &mut manifests)?;
@@ -330,18 +636,22 @@ fn collect_child_manifests(parent: &Path, manifests: &mut Vec<PathBuf>) -> Resul
     Ok(())
 }
 
-fn validate_rnmdb_dependency_line(line: &str, policy: &DependencyPolicy) -> Result<(), String> {
+fn validate_rnmdb_dependency_line(
+    line: &str,
+    policy: &DependencyPolicy,
+) -> Result<Option<String>, String> {
     let Some((candidate, declaration)) = line.split_once('=') else {
-        return Ok(());
+        return Ok(None);
     };
     let package = candidate.trim();
     if !package.starts_with(&policy.rnmdb_package_prefix) {
-        return Ok(());
+        return Ok(None);
     }
     if !policy.rnmdb_packages.contains(package) {
         return Err("unapproved RNovModularDB dependency declaration".into());
     }
-    validate_rnmdb_git_declaration(package, declaration, policy)
+    validate_rnmdb_git_declaration(package, declaration, policy)?;
+    Ok(Some(package.to_owned()))
 }
 
 fn validate_rnmdb_git_declaration(
@@ -349,24 +659,12 @@ fn validate_rnmdb_git_declaration(
     declaration: &str,
     policy: &DependencyPolicy,
 ) -> Result<(), String> {
-    let compact = declaration
-        .chars()
-        .filter(|value| !value.is_ascii_whitespace())
-        .collect::<String>();
-    let required = [
-        format!("git=\"{}\"", policy.rnmdb_repository),
-        format!("rev=\"{}\"", policy.rnmdb_commit),
-        format!("package=\"{package}\""),
-    ];
-    for field in required {
-        if !compact.contains(&field) {
-            return Err("RNovModularDB dependency is not pinned to the approved Git source".into());
-        }
-    }
-    for field in ["path=", "branch=", "tag="] {
-        if compact.contains(field) {
-            return Err("RNovModularDB dependency uses a forbidden source selector".into());
-        }
+    let expected = format!(
+        "{{ git = \"{}\", rev = \"{}\", package = \"{package}\" }}",
+        policy.rnmdb_repository, policy.rnmdb_commit,
+    );
+    if declaration.trim() != expected {
+        return Err("RNovModularDB dependency is not the canonical Git declaration".into());
     }
     Ok(())
 }
@@ -396,8 +694,7 @@ fn parse_rnmdb_git_source(source: &str) -> Result<ResolvedGitSource<'_>, String>
 }
 
 fn validate_rnmdb_repository(repository: &str, policy: &DependencyPolicy) -> Result<(), String> {
-    let expected = policy.rnmdb_repository.trim_end_matches('/');
-    if repository.trim_end_matches('/') != expected {
+    if repository != policy.rnmdb_repository {
         return Err("RNovModularDB repository is not approved".into());
     }
     Ok(())
@@ -405,14 +702,14 @@ fn validate_rnmdb_repository(repository: &str, policy: &DependencyPolicy) -> Res
 
 fn validate_rnmdb_revision(query: &str, policy: &DependencyPolicy) -> Result<(), String> {
     let revision = format!("rev={}", policy.rnmdb_commit);
-    if !query.split('&').any(|part| part == revision) {
+    if query != revision {
         return Err("RNovModularDB revision is not approved".into());
     }
     Ok(())
 }
 
 fn validate_rnmdb_resolution(resolved: &str, policy: &DependencyPolicy) -> Result<(), String> {
-    if !resolved.starts_with(&policy.rnmdb_commit) {
+    if resolved != policy.rnmdb_commit {
         return Err("RNovModularDB resolved commit is not approved".into());
     }
     Ok(())
@@ -624,7 +921,7 @@ fn validate_first_party_module(module: &ModuleMetadata) -> Result<(), String> {
     if !module.crate_name.starts_with("ariadnion-") {
         return Err("module crate is not first-party".into());
     }
-    if module.license != "AGPL-3.0-or-later" {
+    if module.license != FIRST_PARTY_LICENSE {
         return Err("first-party module license is inconsistent".into());
     }
     Ok(())

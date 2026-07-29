@@ -1,3 +1,32 @@
+// crates/optional/ariadnion-storage-rnmdb/src/module.rs - Rust source for Ariadnion.
+//
+// Copyright (C) 2026 czxieddan
+//
+// This file is part of Ariadnion and is provided under version 1.0 of the
+// Aperip Heimdall Commons License (AHCL). The applicable version is also subject
+// to the AHCL provisions concerning Continuous AHCL Licensing Segments and
+// migration to later official versions.
+//
+// After having a reasonable opportunity to read AHCL, all applicable Additional
+// Restrictions, and all version notices, a person accepts the corresponding terms,
+// to the extent permitted by applicable law, by using, copying, modifying, building,
+// using this file as a dependency, deploying, distributing, or operating this file
+// over a network.
+//
+// Official AHCL English text and public notices: https://ahcl.aperip.com
+// Repository verbatim AHCL copy:                 AHCL/AHCL-1.0.md
+// Project canonical repository:                  https://github.com/czxieddan/Ariadnion
+// AHCL origin and project notice:                AHCL/AHCL-PROJECT-NOTICE.md
+// AHCL Version Adoption records:                 AHCL/AHCL-VERSION-ADOPTION.md
+// Complete Corresponding Source and history:     AHCL/AHCL-SOURCE.md
+// Dependencies, Referenced Materials, and licenses:
+//                                                   AHCL/AHCL-DEPENDENCIES.md
+// Additional Restrictions:                       Proposed only; not effective under AHCL 11.2(c):
+//                                                   AHCL/AHCL-RESTRICTIONS/ARIADNION-AR-2026-001.md (ARIADNION-AR-2026-001)
+//                                                   AHCL/AHCL-RESTRICTIONS/ARIADNION-AR-2026-002.md (ARIADNION-AR-2026-002)
+//
+// SPDX-License-Identifier: LicenseRef-AHCL-1.0
+//
 //! RNMDB relational-storage module descriptor and lifecycle adapter.
 
 use std::collections::BTreeSet;
@@ -26,7 +55,7 @@ const RELATIONAL_CAPABILITY: &str = "org.ariadnion.storage.relational";
 const PAGE_KEY_CAPABILITY: &str = "org.ariadnion.secret.page-key";
 const SECRET_LOCATOR_KEY_CAPABILITY: &str = "org.ariadnion.secret.locator-column-key";
 const CONFIGURATION_SCHEMA: &str = "org.ariadnion.storage.rnmdb.config";
-const MODULE_LICENSE: &str = "AGPL-3.0-or-later";
+const MODULE_LICENSE: &str = "LicenseRef-AHCL-1.0";
 const EMPTY_CONFIGURATION_DIGEST: &str =
     "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 const MODULE_VERSION: ModuleVersion = ModuleVersion::new(0, 1, 0);

@@ -12,6 +12,8 @@ The name comes from Ariadne's thread: a clear and dependable path connecting the
 - Sensitive configuration is encrypted by default, and critical operations are auditable.
 - Frontends, command-line tools, identity, accounts, auditing, and operations evolve independently.
 
-## License
+## Source Code, History, and Licenses
 
-Ariadnion is offered under a commercial license and the GNU Affero General Public License. See [LICENSE](LICENSE).
+The canonical source repository and complete published history are available at <https://github.com/czxieddan/Ariadnion>. Source acquisition, immutable revision, build-material, and release-mapping requirements are documented in [AHCL/AHCL-SOURCE.md](AHCL/AHCL-SOURCE.md).
+
+Ariadnion is licensed under version 1.0 of the Aperip Heimdall Commons License (AHCL 1.0). See [LICENSE](LICENSE), the repository's [verbatim AHCL 1.0 text](AHCL/AHCL-1.0.md), the [project notice](AHCL/AHCL-PROJECT-NOTICE.md), and the [dependency and third-party license inventory](AHCL/AHCL-DEPENDENCIES.md).

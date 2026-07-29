@@ -1,3 +1,32 @@
+# tools/dependency-policy/versions.toml - Ariadnion repository configuration.
+#
+# Copyright (C) 2026 czxieddan
+#
+# This file is part of Ariadnion and is provided under version 1.0 of the
+# Aperip Heimdall Commons License (AHCL). The applicable version is also subject
+# to the AHCL provisions concerning Continuous AHCL Licensing Segments and
+# migration to later official versions.
+#
+# After having a reasonable opportunity to read AHCL, all applicable Additional
+# Restrictions, and all version notices, a person accepts the corresponding terms,
+# to the extent permitted by applicable law, by using, copying, modifying, building,
+# using this file as a dependency, deploying, distributing, or operating this file
+# over a network.
+#
+# Official AHCL English text and public notices: https://ahcl.aperip.com
+# Repository verbatim AHCL copy:                 AHCL/AHCL-1.0.md
+# Project canonical repository:                  https://github.com/czxieddan/Ariadnion
+# AHCL origin and project notice:                AHCL/AHCL-PROJECT-NOTICE.md
+# AHCL Version Adoption records:                 AHCL/AHCL-VERSION-ADOPTION.md
+# Complete Corresponding Source and history:     AHCL/AHCL-SOURCE.md
+# Dependencies, Referenced Materials, and licenses:
+#                                                   AHCL/AHCL-DEPENDENCIES.md
+# Additional Restrictions:                       Proposed only; not effective under AHCL 11.2(c):
+#                                                   AHCL/AHCL-RESTRICTIONS/ARIADNION-AR-2026-001.md (ARIADNION-AR-2026-001)
+#                                                   AHCL/AHCL-RESTRICTIONS/ARIADNION-AR-2026-002.md (ARIADNION-AR-2026-002)
+#
+# SPDX-License-Identifier: LicenseRef-AHCL-1.0
+#
 schema_version = 1
 rust = "1.95.0"
 
@@ -9,13 +38,14 @@ allowed = ["Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "MIT", "Unicode-3.0", "
 allowed_exceptions = ["LLVM-exception"]
 forbidden = ["GPL-2.0-only", "GPL-2.0-or-later", "GPL-3.0-only", "GPL-3.0-or-later", "AGPL-3.0-only", "AGPL-3.0-or-later"]
 
-[[licenses.exceptions]]
+[rnmdb_commercial_authorization]
+authorization = "special-commercial-authorization-from-project-owner"
+public_notice = "AHCL/AHCL-SPECIAL-AUTHORIZATIONS.md"
 repository = "https://github.com/czxieddan/RNovModularDB.git"
 commit = "013ec2f48a1dab89997430d72c2b176be2c29d47"
 package_prefix = "rnmdb-"
 packages = ["rnmdb-common", "rnmdb-types", "rnmdb-sql", "rnmdb-planner", "rnmdb-executor", "rnmdb-txn", "rnmdb-index", "rnmdb-fts", "rnmdb-catalog", "rnmdb-storage", "rnmdb-udf", "rnmdb-security", "rnmdb-instance", "rnmdb-server", "rnmdb-cli"]
-allowed = ["AGPL-3.0-only"]
-reason = "Repository ownership and distribution terms are controlled by the Ariadnion owner."
+scope = "ariadnion-and-reasonable-functional-forks"
 
 [versions]
 ctrlc = "3.5.2"
