@@ -154,6 +154,14 @@ impl PrincipalBindingRepositoryPort for RnmdbPrincipalBindingRepository {
     }
 }
 
+pub(crate) fn load_principal_binding_in_session(
+    session: &mut LocalSession,
+    tenant_id: &TenantId,
+    principal_id: &PrincipalId,
+) -> Result<PrincipalBinding, StorageError> {
+    decode::load_binding(session, tenant_id, principal_id)
+}
+
 pub(super) struct CommitRequest<'a> {
     pub(super) tenant_id: &'a TenantId,
     pub(super) principal_id: &'a PrincipalId,

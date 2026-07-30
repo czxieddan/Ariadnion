@@ -34,7 +34,6 @@ mod fingerprint;
 mod sql;
 
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use ariadnion_api_admin::{
     AdminActionKind, AdminCommand, AdminCommandExecution, AdminCommandIntent, AdminCommandReceipt,
@@ -52,10 +51,7 @@ use ariadnion_organization::{
     OrganizationAction, OrganizationCommand, OrganizationState, OrganizationTransition,
     OrganizationVersion, transition as transition_organization,
 };
-use ariadnion_rbac::{
-    AuthorizationPolicy, AuthorizationSubject, MembershipAuthorizationContext,
-    MembershipAuthorizationIdentity,
-};
+use ariadnion_rbac::ResourceState;
 use ariadnion_storage_domain::{StorageError, StorageErrorCode};
 use ariadnion_user_domain::UtcTimestamp;
 use ariadnion_user_domain::{
@@ -65,12 +61,14 @@ use ariadnion_user_domain::{
 use rnmdb_cli::LocalSession;
 
 use crate::api_key_repository::{commit_api_key_in_session, load_api_key_in_session};
+use crate::authoritative_policy::{
+    TransactionAuthorizationFacts, load_transaction_authorization_facts,
+};
 use crate::identity_transaction::run_identity_transaction;
 use crate::invitation_repository::{commit_invitation_in_session, load_invitation_in_session};
 use crate::organization_repository::{
     commit_organization_in_session, load_organization_in_session,
 };
-use crate::rbac_repository::load_authenticated_policy_in_session;
 use crate::session::check_context;
 use crate::user_repository::{commit_user_in_session, load_user_in_session};
 use crate::{AuditSubjectKeyMaterial, RnmdbSessionOwner, SessionOpenOptions};
@@ -189,8 +187,8 @@ fn execute_new_command(
     context: &RequestContext,
     key: &AuditSubjectKeyMaterial,
 ) -> Result<AdminCommandExecution, StorageError> {
-    let mutation = prepare_mutation(session, command)?;
     recheck_authorization(session, command, context, key)?;
+    let mutation = prepare_mutation(session, command)?;
     check_context(context)?;
     match insert_pending_or_replay(session, intent, command, context)? {
         Some(receipt) => Ok(AdminCommandExecution::replayed(receipt)),
@@ -242,39 +240,23 @@ fn recheck_authorization(
     key: &AuditSubjectKeyMaterial,
 ) -> Result<(), StorageError> {
     check_context(context)?;
-    let facts = load_current_authorization_facts(session, command, context, key)?;
+    let facts = load_transaction_authorization_facts(session, command, context, key)?;
     check_context(context)?;
     validate_current_authorization(command, facts)
 }
 
-struct CurrentAuthorizationFacts {
-    policy: AuthorizationPolicy,
-    subject: AuthorizationSubject,
-    evaluated_at: UtcTimestamp,
-}
-
-fn load_current_authorization_facts(
-    session: &mut LocalSession,
-    command: &AdminCommand,
-    context: &RequestContext,
-    key: &AuditSubjectKeyMaterial,
-) -> Result<CurrentAuthorizationFacts, StorageError> {
-    let policy = load_authenticated_policy_in_session(session, command.tenant_id(), context, key)?;
-    let evaluated_at = trusted_authorization_time()?;
-    let subject = load_current_subject(session, command.authorization_subject(), evaluated_at)?;
-    Ok(CurrentAuthorizationFacts {
-        policy,
-        subject,
-        evaluated_at,
-    })
-}
-
 fn validate_current_authorization(
     command: &AdminCommand,
-    facts: CurrentAuthorizationFacts,
+    facts: TransactionAuthorizationFacts,
 ) -> Result<(), StorageError> {
     if facts.policy.tenant_id() != command.tenant_id() {
         return Err(integrity_failure());
+    }
+    if facts.policy.version() != command.policy_version() {
+        return Err(conflict());
+    }
+    if facts.resource_state != expected_resource_state(command.action()) {
+        return Err(conflict());
     }
     if !command.remains_authorized(&facts.policy, facts.subject, facts.evaluated_at) {
         return Err(conflict());
@@ -282,89 +264,13 @@ fn validate_current_authorization(
     Ok(())
 }
 
-fn load_current_subject(
-    session: &mut LocalSession,
-    witness: &AuthorizationSubject,
-    evaluated_at: UtcTimestamp,
-) -> Result<AuthorizationSubject, StorageError> {
-    let user = load_user_in_session(session, witness.principal().tenant_id(), witness.user_id())?;
-    let membership = load_current_membership(session, witness, evaluated_at)?;
-    Ok(AuthorizationSubject::new(
-        witness.principal().clone(),
-        witness.user_id().clone(),
-        user.lifecycle_state(),
-        membership,
-    ))
-}
-
-fn load_current_membership(
-    session: &mut LocalSession,
-    witness: &AuthorizationSubject,
-    evaluated_at: UtcTimestamp,
-) -> Result<Option<MembershipAuthorizationContext>, StorageError> {
-    match witness.membership() {
-        Some(expected) => {
-            load_present_membership(session, witness, expected, evaluated_at).map(Some)
+const fn expected_resource_state(action: AdminActionKind) -> ResourceState {
+    match action {
+        AdminActionKind::RestoreUser | AdminActionKind::UnfreezeOrganization => {
+            ResourceState::Restricted
         }
-        None => Ok(None),
+        _ => ResourceState::Active,
     }
-}
-
-fn load_present_membership(
-    session: &mut LocalSession,
-    witness: &AuthorizationSubject,
-    expected: &MembershipAuthorizationContext,
-    evaluated_at: UtcTimestamp,
-) -> Result<MembershipAuthorizationContext, StorageError> {
-    validate_expected_membership(witness, expected)?;
-    let organization =
-        load_organization_in_session(session, expected.tenant_id(), expected.organization_id())?;
-    let membership = organization
-        .membership(expected.membership_id())
-        .ok_or_else(conflict)?;
-    validate_current_membership(witness, membership)?;
-    let identity = MembershipAuthorizationIdentity::new(
-        expected.tenant_id().clone(),
-        expected.organization_id().clone(),
-        expected.membership_id().clone(),
-        witness.user_id().clone(),
-    );
-    MembershipAuthorizationContext::new(
-        identity,
-        organization.state(),
-        membership.state(),
-        membership.expires_at(),
-        membership.active_team_ids_at(evaluated_at).to_vec(),
-    )
-    .map_err(|_| integrity_failure())
-}
-
-fn validate_expected_membership(
-    witness: &AuthorizationSubject,
-    expected: &MembershipAuthorizationContext,
-) -> Result<(), StorageError> {
-    if expected.user_id() != witness.user_id() {
-        return Err(integrity_failure());
-    }
-    Ok(())
-}
-
-fn validate_current_membership(
-    witness: &AuthorizationSubject,
-    membership: &ariadnion_organization::Membership,
-) -> Result<(), StorageError> {
-    if membership.user_id() != witness.user_id() {
-        return Err(conflict());
-    }
-    Ok(())
-}
-
-fn trusted_authorization_time() -> Result<UtcTimestamp, StorageError> {
-    let duration = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|_| integrity_failure())?;
-    let seconds = i64::try_from(duration.as_secs()).map_err(|_| integrity_failure())?;
-    Ok(UtcTimestamp::from_unix_seconds(seconds))
 }
 
 enum PreparedMutation {
