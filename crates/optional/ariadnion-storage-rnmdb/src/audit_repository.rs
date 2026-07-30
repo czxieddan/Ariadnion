@@ -1042,6 +1042,7 @@ fn decode_subject_kind_remainder(value: &str) -> Result<AuditSubjectKind, Storag
     match value {
         "api_key" => Ok(AuditSubjectKind::ApiKey),
         "password_reset" => Ok(AuditSubjectKind::PasswordReset),
+        "principal_authenticator" => Ok(AuditSubjectKind::PrincipalAuthenticator),
         "administration" => Ok(AuditSubjectKind::Administration),
         _ => Err(integrity_failure()),
     }
@@ -1055,6 +1056,7 @@ const fn subject_kind_label(kind: AuditSubjectKind) -> &'static str {
         AuditSubjectKind::SessionFamily => "session_family",
         AuditSubjectKind::ApiKey => "api_key",
         AuditSubjectKind::PasswordReset => "password_reset",
+        AuditSubjectKind::PrincipalAuthenticator => "principal_authenticator",
         AuditSubjectKind::Administration => "administration",
     }
 }

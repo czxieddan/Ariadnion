@@ -64,6 +64,8 @@ pub enum AuditSubjectKind {
     ApiKey,
     /// A password-reset aggregate was affected.
     PasswordReset,
+    /// A principal-authenticator link was affected.
+    PrincipalAuthenticator,
     /// An administrative decision or policy change was affected.
     Administration,
 }
@@ -552,6 +554,7 @@ fn subject_kind_label(kind: AuditSubjectKind) -> &'static str {
         AuditSubjectKind::SessionFamily => "session_family",
         AuditSubjectKind::ApiKey => "api_key",
         AuditSubjectKind::PasswordReset => "password_reset",
+        AuditSubjectKind::PrincipalAuthenticator => "principal_authenticator",
         AuditSubjectKind::Administration => "administration",
     }
 }
