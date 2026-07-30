@@ -111,11 +111,15 @@ fn enqueue_outbox(
     }
 }
 
+/// Authenticates the exact audit and outbox evidence for a requested transition.
+///
+/// The operation is read-only. The caller must already have validated the
+/// authenticated tenant boundary carried by `request`.
 pub(super) fn reconcile_transition_evidence(
     session: &mut LocalSession,
     request: &CommitRequest<'_>,
     key: &AuditSubjectKeyMaterial,
-) -> Result<UtcTimestamp, StorageError> {
+) -> Result<ReconciledTransitionEvidence, StorageError> {
     reconcile_record(
         session,
         EvidenceRecord::from_request(request),
@@ -124,23 +128,92 @@ pub(super) fn reconcile_transition_evidence(
     )
 }
 
+/// Borrowed durable fields needed to authenticate one persisted transition.
+///
+/// Construction does not trust the fields. Reconciliation re-derives the
+/// transition identity and authenticates its audit and outbox records.
+pub(super) struct PersistedTransitionEvidence<'a> {
+    tenant: &'a ariadnion_core::TenantId,
+    user: &'a ariadnion_user_domain::UserId,
+    expected_previous_version: ariadnion_auth_session::SessionFamilyVersion,
+    family: &'a SessionFamily,
+    event: &'a super::decode::PersistedSessionEvent,
+}
+
+impl<'a> PersistedTransitionEvidence<'a> {
+    pub(super) const fn new(
+        tenant: &'a ariadnion_core::TenantId,
+        user: &'a ariadnion_user_domain::UserId,
+        expected_previous_version: ariadnion_auth_session::SessionFamilyVersion,
+        family: &'a SessionFamily,
+        event: &'a super::decode::PersistedSessionEvent,
+    ) -> Self {
+        Self {
+            tenant,
+            user,
+            expected_previous_version,
+            family,
+            event,
+        }
+    }
+}
+
+/// Authenticated durable facts for one session transition.
+///
+/// The audit sequence and durable head allow callers to prove that a later
+/// transition follows this one without trusting row order alone.
+pub(super) struct ReconciledTransitionEvidence {
+    committed_at: UtcTimestamp,
+    audit_sequence: AuditSequence,
+    durable_head_sequence: AuditSequence,
+}
+
+impl ReconciledTransitionEvidence {
+    pub(super) const fn committed_at(&self) -> UtcTimestamp {
+        self.committed_at
+    }
+
+    pub(super) const fn audit_sequence(&self) -> AuditSequence {
+        self.audit_sequence
+    }
+
+    pub(super) const fn durable_head_sequence(&self) -> AuditSequence {
+        self.durable_head_sequence
+    }
+}
+
+/// Authenticates one persisted transition without replaying or repairing it.
+///
+/// The caller must provide a tenant-scoped authenticated context. Missing,
+/// malformed, divergent, or unauthenticated evidence fails closed.
 pub(super) fn verify_persisted_transition_evidence(
     session: &mut LocalSession,
-    boundary: (&ariadnion_core::TenantId, &ariadnion_user_domain::UserId),
-    expected_previous_version: ariadnion_auth_session::SessionFamilyVersion,
-    family: &SessionFamily,
-    event: &super::decode::PersistedSessionEvent,
+    persisted: PersistedTransitionEvidence<'_>,
     key: &AuditSubjectKeyMaterial,
     context: &ariadnion_core::RequestContext,
-) -> Result<(), StorageError> {
+) -> Result<ReconciledTransitionEvidence, StorageError> {
     let record = EvidenceRecord::from_persisted(
-        boundary.0,
-        boundary.1,
-        expected_previous_version,
-        family,
-        event,
+        persisted.tenant,
+        persisted.user,
+        persisted.expected_previous_version,
+        persisted.family,
+        persisted.event,
     );
-    reconcile_record(session, record, key, context).map(|_| ())
+    reconcile_record(session, record, key, context)
+}
+
+/// Requires a later transition to follow an authenticated earlier transition.
+///
+/// Audit order must increase within the durable head observed for the earlier
+/// read, and the trusted commit timestamp must not move backwards.
+pub(super) fn validate_later_transition_evidence(
+    earlier: &ReconciledTransitionEvidence,
+    later: &ReconciledTransitionEvidence,
+) -> Result<(), StorageError> {
+    let valid = later.audit_sequence() > earlier.audit_sequence()
+        && later.audit_sequence() <= earlier.durable_head_sequence()
+        && later.committed_at() >= earlier.committed_at();
+    valid.then_some(()).ok_or_else(integrity_failure)
 }
 
 fn reconcile_record(
@@ -148,32 +221,36 @@ fn reconcile_record(
     record: EvidenceRecord,
     key: &AuditSubjectKeyMaterial,
     context: &ariadnion_core::RequestContext,
-) -> Result<UtcTimestamp, StorageError> {
+) -> Result<ReconciledTransitionEvidence, StorageError> {
     let identity = EvidenceIdentity::new(record, key)?;
     let outbox = load_outbox(session, &identity)?;
     let evidence = TransitionEvidence::from_identity(identity, outbox.committed_at)?;
     if evidence.payload.as_slice() != outbox.payload.as_slice() {
         return Err(integrity_failure());
     }
-    reconcile_audit(session, &evidence, context)?;
-    Ok(outbox.committed_at)
+    let (audit_sequence, durable_head_sequence) = reconcile_audit(session, &evidence, context)?;
+    Ok(ReconciledTransitionEvidence {
+        committed_at: outbox.committed_at,
+        audit_sequence,
+        durable_head_sequence,
+    })
 }
 
 fn reconcile_audit(
     session: &mut LocalSession,
     evidence: &TransitionEvidence,
     context: &ariadnion_core::RequestContext,
-) -> Result<(), StorageError> {
-    let (persisted, _) =
+) -> Result<(AuditSequence, AuditSequence), StorageError> {
+    let (persisted, head) =
         load_durable_event_with_head(session, &evidence.tenant, &evidence.audit_id, context)
             .map_err(map_reconcile_error)?;
     let expected =
         evidence.audit_event_at(persisted.sequence(), persisted.previous_chain_digest())?;
-    if persisted == expected {
-        Ok(())
-    } else {
-        Err(integrity_failure())
+    let durable_head_sequence = head.last_sequence().ok_or_else(integrity_failure)?;
+    if persisted != expected || persisted.sequence() > durable_head_sequence {
+        return Err(integrity_failure());
     }
+    Ok((persisted.sequence(), durable_head_sequence))
 }
 
 struct TransitionEvidence {

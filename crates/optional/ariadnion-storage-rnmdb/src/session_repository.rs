@@ -42,12 +42,24 @@ use ariadnion_auth_session::{
     SessionRepositoryPort, SessionRotation, SessionRotationEvidence, SessionSubject,
     SessionTransition, transition_session_family,
 };
-use ariadnion_core::{PrincipalContext, RequestContext, TenantId};
+use ariadnion_core::{PrincipalContext, PrincipalId, RequestContext, TenantId};
+use ariadnion_principal_binding::{
+    AuthenticatedPrincipalEvidence, PrincipalAuthenticatorCommand, PrincipalAuthenticatorEventKind,
+    PrincipalAuthenticatorKind, PrincipalAuthenticatorLink, PrincipalAuthenticatorSourceId,
+    PrincipalAuthenticatorState, PrincipalAuthenticatorTransition, PrincipalAuthenticatorVersion,
+    PrincipalBinding, link_authenticator, revoke_authenticator,
+};
 use ariadnion_storage_domain::{StorageError, StorageErrorCode};
 use ariadnion_user_domain::{UserId, UtcTimestamp};
 use rnmdb_cli::LocalSession;
 
 use crate::identity_transaction::run_identity_transaction;
+use crate::principal_authenticator_repository::{
+    PrincipalAuthenticatorCommitRequest, ReconciledPrincipalAuthenticatorFact,
+    ReconciledPrincipalAuthenticatorHistory, commit_principal_authenticator_in_session,
+    reconcile_principal_authenticator_history_by_source_in_session,
+};
+use crate::principal_binding_repository::load_principal_binding_in_session;
 use crate::{AuditSubjectKeyMaterial, RnmdbSessionOwner, SessionOpenOptions};
 
 /// Persists complete browser session families and immutable issuance evidence.
@@ -182,13 +194,88 @@ fn commit_issuance(
     request: &CommitRequest<'_>,
     key: &AuditSubjectKeyMaterial,
 ) -> Result<SessionCommitReceipt, StorageError> {
+    let authenticator = issuance_authenticator_transition(session, request)?;
+    persist_issued_session(session, request)?;
+    let committed_at = trusted_commit_time()?;
+    persist_paired_issuance_evidence(session, request, &authenticator, key, committed_at)?;
+    Ok(commit_receipt(request, committed_at))
+}
+
+fn persist_issued_session(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+) -> Result<(), StorageError> {
     decode::ensure_issuance_absent(session, request)?;
     sql::insert_family(session, request.transition.family())?;
     sql::insert_leaves(session, request.transition.family())?;
-    sql::insert_event(session, request.transition.event())?;
-    let committed_at = trusted_commit_time()?;
+    sql::insert_event(session, request.transition.event())
+}
+
+fn persist_paired_issuance_evidence(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    authenticator: &PrincipalAuthenticatorTransition,
+    key: &AuditSubjectKeyMaterial,
+    committed_at: UtcTimestamp,
+) -> Result<(), StorageError> {
     evidence::persist_transition_evidence(session, request, key, committed_at)?;
-    Ok(commit_receipt(request, committed_at))
+    persist_authenticator_transition(session, request, authenticator, key, committed_at)
+}
+
+fn issuance_authenticator_transition(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+) -> Result<PrincipalAuthenticatorTransition, StorageError> {
+    let principal = authenticated_principal(request.context)?;
+    let binding =
+        load_principal_binding_in_session(session, request.tenant_id, principal.principal_id())
+            .map_err(map_linkage_dependency_error)?;
+    validate_issuance_binding_user(&binding, request.user_id)?;
+    link_authenticator(
+        &binding,
+        PrincipalAuthenticatorKind::SessionFamily,
+        session_authenticator_source(request.transition.family().id())?,
+        request.transition.event().actor().clone(),
+        request.context.request_id().clone(),
+        request.transition.event().occurred_at(),
+    )
+    .map_err(|_| integrity_failure())
+}
+
+fn validate_issuance_binding_user(
+    binding: &ariadnion_principal_binding::PrincipalBinding,
+    user_id: &UserId,
+) -> Result<(), StorageError> {
+    let identity = binding.identity().ok_or_else(integrity_failure)?;
+    if identity.user_id() == user_id {
+        Ok(())
+    } else {
+        Err(integrity_failure())
+    }
+}
+
+fn session_authenticator_source(
+    family_id: &ariadnion_auth_session::SessionFamilyId,
+) -> Result<PrincipalAuthenticatorSourceId, StorageError> {
+    PrincipalAuthenticatorSourceId::parse(family_id.as_str()).map_err(|_| integrity_failure())
+}
+
+fn persist_authenticator_transition(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    transition: &PrincipalAuthenticatorTransition,
+    key: &AuditSubjectKeyMaterial,
+    committed_at: UtcTimestamp,
+) -> Result<(), StorageError> {
+    let authenticator_request = PrincipalAuthenticatorCommitRequest::new(
+        request.tenant_id,
+        transition.authenticator_id(),
+        transition.expected_previous_version(),
+        transition,
+        request.context,
+    );
+    commit_principal_authenticator_in_session(session, &authenticator_request, key, committed_at)
+        .map(|_| ())
 }
 
 fn commit_transition(
@@ -207,16 +294,16 @@ fn commit_update(
     request: &CommitRequest<'_>,
     key: &AuditSubjectKeyMaterial,
 ) -> Result<SessionCommitReceipt, StorageError> {
-    let durable = decode::load_family(
+    let loaded = decode::load_family_with_history(
         session,
         request.tenant_id,
         request.user_id,
         request.transition.family().id(),
     )?;
-    validate_expected_version(&durable, request)?;
-    let replayed = replay_transition(&durable, request)?;
+    validate_expected_version(&loaded.family, request)?;
+    let replayed = replay_transition(&loaded.family, request)?;
     validate_replayed_transition(&replayed, request)?;
-    persist_update(session, request, key, &durable)
+    persist_update(session, request, key, &loaded)
 }
 
 fn validate_replayed_transition(
@@ -234,14 +321,214 @@ fn persist_update(
     session: &mut LocalSession,
     request: &CommitRequest<'_>,
     key: &AuditSubjectKeyMaterial,
-    durable: &SessionFamily,
+    loaded: &decode::LoadedSessionFamily,
 ) -> Result<SessionCommitReceipt, StorageError> {
-    sql::update_family(session, request, durable)?;
-    sql::replace_leaves(session, request.transition.family(), durable)?;
-    sql::insert_event(session, request.transition.event())?;
+    let issuance = issuance_event(&loaded.events)?;
+    let authenticator = terminal_authenticator_transition(session, request, loaded, issuance, key)?;
+    persist_session_update_rows(session, request, &loaded.family)?;
     let committed_at = trusted_commit_time()?;
     evidence::persist_transition_evidence(session, request, key, committed_at)?;
+    persist_optional_authenticator_transition(
+        session,
+        request,
+        authenticator.as_ref(),
+        key,
+        committed_at,
+    )?;
     Ok(commit_receipt(request, committed_at))
+}
+
+fn persist_session_update_rows(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    durable: &SessionFamily,
+) -> Result<(), StorageError> {
+    sql::update_family(session, request, durable)?;
+    sql::replace_leaves(session, request.transition.family(), durable)?;
+    sql::insert_event(session, request.transition.event())
+}
+
+fn persist_optional_authenticator_transition(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    transition: Option<&PrincipalAuthenticatorTransition>,
+    key: &AuditSubjectKeyMaterial,
+    committed_at: UtcTimestamp,
+) -> Result<(), StorageError> {
+    match transition {
+        Some(transition) => {
+            persist_authenticator_transition(session, request, transition, key, committed_at)
+        }
+        None => Ok(()),
+    }
+}
+
+fn terminal_authenticator_transition(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    loaded: &decode::LoadedSessionFamily,
+    issuance: &decode::PersistedSessionEvent,
+    key: &AuditSubjectKeyMaterial,
+) -> Result<Option<PrincipalAuthenticatorTransition>, StorageError> {
+    match request.transition.event().kind() {
+        SessionEventKind::Rotated => {
+            active_session_authenticator(session, request, loaded, issuance, key).map(|_| None)
+        }
+        SessionEventKind::ReuseRevoked | SessionEventKind::Revoked | SessionEventKind::Expired => {
+            revoke_session_authenticator(session, request, loaded, issuance, key).map(Some)
+        }
+        SessionEventKind::Issued => Err(integrity_failure()),
+    }
+}
+
+fn revoke_session_authenticator(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    loaded: &decode::LoadedSessionFamily,
+    issuance: &decode::PersistedSessionEvent,
+    key: &AuditSubjectKeyMaterial,
+) -> Result<PrincipalAuthenticatorTransition, StorageError> {
+    let authenticator =
+        paired_active_session_authenticator(session, request, loaded, issuance, key)?;
+    let event = request.transition.event();
+    let command = PrincipalAuthenticatorCommand::new(
+        authenticator.version(),
+        event.actor().clone(),
+        request.context.request_id().clone(),
+        event.occurred_at(),
+    );
+    revoke_authenticator(&authenticator, command).map_err(|_| integrity_failure())
+}
+
+fn active_session_authenticator(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    loaded: &decode::LoadedSessionFamily,
+    issuance: &decode::PersistedSessionEvent,
+    key: &AuditSubjectKeyMaterial,
+) -> Result<PrincipalAuthenticatorLink, StorageError> {
+    let authenticator =
+        paired_active_session_authenticator(session, request, loaded, issuance, key)?;
+    validate_rotation_event_actor(
+        request.transition.event().kind(),
+        request.transition.event().actor(),
+        &authenticator,
+    )?;
+    let binding = load_authenticator_binding(session, request, &authenticator)?;
+    AuthenticatedPrincipalEvidence::from_active_link(&authenticator, &binding)
+        .map_err(|_| integrity_failure())?;
+    validate_authenticator_binding_user(&binding, request.user_id)?;
+    Ok(authenticator)
+}
+
+fn paired_active_session_authenticator(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    loaded: &decode::LoadedSessionFamily,
+    issuance: &decode::PersistedSessionEvent,
+    key: &AuditSubjectKeyMaterial,
+) -> Result<PrincipalAuthenticatorLink, StorageError> {
+    let issuance_family = decode::family_at_version(
+        &loaded.family,
+        ariadnion_auth_session::SessionFamilyVersion::initial(),
+    )?;
+    let session_evidence = evidence::verify_persisted_transition_evidence(
+        session,
+        evidence::PersistedTransitionEvidence::new(
+            request.tenant_id,
+            request.user_id,
+            SessionFamilyVersion::initial(),
+            &issuance_family,
+            issuance,
+        ),
+        key,
+        request.context,
+    )
+    .map_err(map_reconcile_error)?;
+    let history = reconcile_session_authenticator_history(session, request, key)?;
+    validate_issuance_principal(history.link(), issuance)?;
+    validate_reconciled_active_link(&history)?;
+    validate_paired_issuance_fact(issuance, session_evidence.committed_at(), &history)?;
+    Ok(history.link().clone())
+}
+
+fn reconcile_session_authenticator_history(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    key: &AuditSubjectKeyMaterial,
+) -> Result<ReconciledPrincipalAuthenticatorHistory, StorageError> {
+    let source = session_authenticator_source(request.transition.family().id())?;
+    reconcile_principal_authenticator_history_by_source_in_session(
+        session,
+        request.tenant_id,
+        PrincipalAuthenticatorKind::SessionFamily,
+        &source,
+        key,
+        request.context,
+    )
+    .map_err(map_reconcile_error)
+}
+
+fn validate_paired_issuance_fact(
+    issuance: &decode::PersistedSessionEvent,
+    committed_at: UtcTimestamp,
+    history: &ReconciledPrincipalAuthenticatorHistory,
+) -> Result<(), StorageError> {
+    let linked = history.facts().first().ok_or_else(integrity_failure)?;
+    let valid = linked.kind() == PrincipalAuthenticatorEventKind::Linked
+        && linked.actor() == issuance.actor()
+        && linked.occurred_at() == issuance.occurred_at()
+        && linked.committed_at() == committed_at;
+    if valid {
+        Ok(())
+    } else {
+        Err(integrity_failure())
+    }
+}
+
+fn load_authenticator_binding(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    authenticator: &PrincipalAuthenticatorLink,
+) -> Result<PrincipalBinding, StorageError> {
+    load_principal_binding_in_session(session, request.tenant_id, authenticator.principal_id())
+        .map_err(map_linkage_dependency_error)
+}
+
+fn validate_issuance_principal(
+    authenticator: &PrincipalAuthenticatorLink,
+    issuance: &decode::PersistedSessionEvent,
+) -> Result<(), StorageError> {
+    if authenticator.principal_id() == issuance.actor() {
+        Ok(())
+    } else {
+        Err(integrity_failure())
+    }
+}
+
+fn validate_authenticator_binding_user(
+    binding: &PrincipalBinding,
+    user_id: &UserId,
+) -> Result<(), StorageError> {
+    if binding
+        .identity()
+        .is_some_and(|identity| identity.user_id() == user_id)
+    {
+        Ok(())
+    } else {
+        Err(integrity_failure())
+    }
+}
+
+fn issuance_event(
+    events: &[decode::PersistedSessionEvent],
+) -> Result<&decode::PersistedSessionEvent, StorageError> {
+    let event = event_at(events, SessionFamilyVersion::initial())?;
+    if event.kind() == SessionEventKind::Issued {
+        Ok(event)
+    } else {
+        Err(integrity_failure())
+    }
 }
 
 fn validate_expected_version(
@@ -345,10 +632,19 @@ fn reconcile_read_only(
     )
     .map_err(map_reconcile_error)?;
     let target = authenticate_reconciliation_target(&loaded, request)?;
-    let committed_at = evidence::reconcile_transition_evidence(session, request, key)
+    let target_evidence = evidence::reconcile_transition_evidence(session, request, key)
         .map_err(map_reconcile_error)?;
-    verify_optional_successor(session, &loaded, &target, request, key)?;
-    Ok(commit_receipt(request, committed_at))
+    let successor =
+        verify_optional_successor(session, &loaded, &target, request, &target_evidence, key)?;
+    reconcile_session_authenticator(
+        session,
+        &loaded,
+        request,
+        &target_evidence,
+        successor.as_ref(),
+        key,
+    )?;
+    Ok(commit_receipt(request, target_evidence.committed_at()))
 }
 
 fn authenticate_reconciliation_target(
@@ -379,29 +675,253 @@ fn validate_reconciliation_distance(
     }
 }
 
-fn verify_optional_successor(
+struct VerifiedSessionSuccessor<'a> {
+    event: &'a decode::PersistedSessionEvent,
+    evidence: evidence::ReconciledTransitionEvidence,
+}
+
+fn verify_optional_successor<'a>(
     session: &mut LocalSession,
-    loaded: &decode::LoadedSessionFamily,
+    loaded: &'a decode::LoadedSessionFamily,
     target: &SessionFamily,
     request: &CommitRequest<'_>,
+    target_evidence: &evidence::ReconciledTransitionEvidence,
     key: &AuditSubjectKeyMaterial,
-) -> Result<(), StorageError> {
+) -> Result<Option<VerifiedSessionSuccessor<'a>>, StorageError> {
     if loaded.family.version() == target.version() {
-        return Ok(());
+        return Ok(None);
     }
     let successor_version = target.version().next().map_err(|_| integrity_failure())?;
     let successor = decode::family_at_version(&loaded.family, successor_version)?;
     let event = event_at(&loaded.events, successor_version)?;
-    evidence::verify_persisted_transition_evidence(
+    let successor_evidence = evidence::verify_persisted_transition_evidence(
         session,
-        (request.tenant_id, request.user_id),
-        target.version(),
-        &successor,
-        event,
+        evidence::PersistedTransitionEvidence::new(
+            request.tenant_id,
+            request.user_id,
+            target.version(),
+            &successor,
+            event,
+        ),
         key,
         request.context,
     )
-    .map_err(map_reconcile_error)
+    .map_err(map_reconcile_error)?;
+    evidence::validate_later_transition_evidence(target_evidence, &successor_evidence)?;
+    Ok(Some(VerifiedSessionSuccessor {
+        event,
+        evidence: successor_evidence,
+    }))
+}
+
+fn reconcile_session_authenticator(
+    session: &mut LocalSession,
+    loaded: &decode::LoadedSessionFamily,
+    request: &CommitRequest<'_>,
+    target_evidence: &evidence::ReconciledTransitionEvidence,
+    successor: Option<&VerifiedSessionSuccessor<'_>>,
+    key: &AuditSubjectKeyMaterial,
+) -> Result<(), StorageError> {
+    let history = reconcile_session_authenticator_history(session, request, key)?;
+    let issuance = issuance_event(&loaded.events)?;
+    let issuance_committed_at = reconcile_initial_issuance_evidence(
+        session,
+        loaded,
+        request,
+        issuance,
+        target_evidence,
+        key,
+    )?;
+    validate_reconciled_rotation_actors(&loaded.events, history.link())?;
+    validate_reconciled_authenticator_history(
+        request,
+        successor,
+        issuance,
+        issuance_committed_at,
+        target_evidence.committed_at(),
+        &history,
+    )
+}
+
+fn validate_reconciled_authenticator_history(
+    request: &CommitRequest<'_>,
+    successor: Option<&VerifiedSessionSuccessor<'_>>,
+    issuance: &decode::PersistedSessionEvent,
+    issuance_committed_at: UtcTimestamp,
+    target_committed_at: UtcTimestamp,
+    history: &ReconciledPrincipalAuthenticatorHistory,
+) -> Result<(), StorageError> {
+    validate_reconciled_authenticator_identity(issuance, history)?;
+    validate_paired_issuance_fact(issuance, issuance_committed_at, history)?;
+    let terminal = terminal_reconciliation_fact(request, target_committed_at, successor)?;
+    validate_reconciled_authenticator_lifecycle(history, terminal.as_ref())
+}
+
+fn validate_reconciled_rotation_actors(
+    events: &[decode::PersistedSessionEvent],
+    link: &PrincipalAuthenticatorLink,
+) -> Result<(), StorageError> {
+    for event in events {
+        validate_rotation_event_actor(event.kind(), event.actor(), link)?;
+    }
+    Ok(())
+}
+
+fn validate_rotation_event_actor(
+    kind: SessionEventKind,
+    actor: &PrincipalId,
+    link: &PrincipalAuthenticatorLink,
+) -> Result<(), StorageError> {
+    if kind != SessionEventKind::Rotated || actor == link.principal_id() {
+        Ok(())
+    } else {
+        Err(integrity_failure())
+    }
+}
+
+fn reconcile_initial_issuance_evidence(
+    session: &mut LocalSession,
+    loaded: &decode::LoadedSessionFamily,
+    request: &CommitRequest<'_>,
+    issuance: &decode::PersistedSessionEvent,
+    target_evidence: &evidence::ReconciledTransitionEvidence,
+    key: &AuditSubjectKeyMaterial,
+) -> Result<UtcTimestamp, StorageError> {
+    if request.transition.event().kind() == SessionEventKind::Issued {
+        return Ok(target_evidence.committed_at());
+    }
+    let family = decode::family_at_version(&loaded.family, SessionFamilyVersion::initial())?;
+    let issuance_evidence = evidence::verify_persisted_transition_evidence(
+        session,
+        evidence::PersistedTransitionEvidence::new(
+            request.tenant_id,
+            request.user_id,
+            SessionFamilyVersion::initial(),
+            &family,
+            issuance,
+        ),
+        key,
+        request.context,
+    )
+    .map_err(map_reconcile_error)?;
+    evidence::validate_later_transition_evidence(&issuance_evidence, target_evidence)?;
+    Ok(issuance_evidence.committed_at())
+}
+
+fn validate_reconciled_authenticator_identity(
+    issuance: &decode::PersistedSessionEvent,
+    history: &ReconciledPrincipalAuthenticatorHistory,
+) -> Result<(), StorageError> {
+    validate_issuance_principal(history.link(), issuance)
+}
+
+struct VerifiedTerminalSession {
+    actor: PrincipalId,
+    occurred_at: UtcTimestamp,
+    committed_at: UtcTimestamp,
+}
+
+fn terminal_reconciliation_fact(
+    request: &CommitRequest<'_>,
+    committed_at: UtcTimestamp,
+    successor: Option<&VerifiedSessionSuccessor<'_>>,
+) -> Result<Option<VerifiedTerminalSession>, StorageError> {
+    match request.transition.event().kind() {
+        SessionEventKind::ReuseRevoked | SessionEventKind::Revoked | SessionEventKind::Expired => {
+            if successor.is_some() {
+                return Err(integrity_failure());
+            }
+            Ok(Some(terminal_from_target(request, committed_at)))
+        }
+        SessionEventKind::Issued | SessionEventKind::Rotated => terminal_from_successor(successor),
+    }
+}
+
+fn terminal_from_target(
+    request: &CommitRequest<'_>,
+    committed_at: UtcTimestamp,
+) -> VerifiedTerminalSession {
+    let event = request.transition.event();
+    VerifiedTerminalSession {
+        actor: event.actor().clone(),
+        occurred_at: event.occurred_at(),
+        committed_at,
+    }
+}
+
+fn terminal_from_successor(
+    successor: Option<&VerifiedSessionSuccessor<'_>>,
+) -> Result<Option<VerifiedTerminalSession>, StorageError> {
+    let Some(successor) = successor else {
+        return Ok(None);
+    };
+    match successor.event.kind() {
+        SessionEventKind::ReuseRevoked | SessionEventKind::Revoked | SessionEventKind::Expired => {
+            Ok(Some(VerifiedTerminalSession {
+                actor: successor.event.actor().clone(),
+                occurred_at: successor.event.occurred_at(),
+                committed_at: successor.evidence.committed_at(),
+            }))
+        }
+        SessionEventKind::Rotated => Ok(None),
+        SessionEventKind::Issued => Err(integrity_failure()),
+    }
+}
+
+fn validate_reconciled_authenticator_lifecycle(
+    history: &ReconciledPrincipalAuthenticatorHistory,
+    terminal: Option<&VerifiedTerminalSession>,
+) -> Result<(), StorageError> {
+    match terminal {
+        Some(terminal) => validate_reconciled_revocation(history, terminal),
+        None => validate_reconciled_active_link(history),
+    }
+}
+
+fn validate_reconciled_active_link(
+    history: &ReconciledPrincipalAuthenticatorHistory,
+) -> Result<(), StorageError> {
+    let link = history.link();
+    let valid = link.version() == PrincipalAuthenticatorVersion::initial()
+        && link.state() == PrincipalAuthenticatorState::Active
+        && link.revoked_at().is_none()
+        && history.facts().len() == 1;
+    if valid {
+        Ok(())
+    } else {
+        Err(integrity_failure())
+    }
+}
+
+fn validate_reconciled_revocation(
+    history: &ReconciledPrincipalAuthenticatorHistory,
+    terminal: &VerifiedTerminalSession,
+) -> Result<(), StorageError> {
+    let link = history.link();
+    let revoked = history.facts().get(1).ok_or_else(integrity_failure)?;
+    let valid = link.version().get() == 2
+        && link.state() == PrincipalAuthenticatorState::Revoked
+        && link.revoked_at() == Some(terminal.occurred_at)
+        && history.facts().len() == 2;
+    if !valid {
+        return Err(integrity_failure());
+    }
+    validate_revoked_fact(revoked, terminal)
+}
+
+fn validate_revoked_fact(
+    revoked: &ReconciledPrincipalAuthenticatorFact,
+    terminal: &VerifiedTerminalSession,
+) -> Result<(), StorageError> {
+    let valid = revoked.kind() == PrincipalAuthenticatorEventKind::Revoked
+        && revoked.actor() == &terminal.actor
+        && revoked.occurred_at() == terminal.occurred_at
+        && revoked.committed_at() == terminal.committed_at;
+    if valid {
+        Ok(())
+    } else {
+        Err(integrity_failure())
+    }
 }
 
 fn event_at(
@@ -551,6 +1071,16 @@ const fn map_storage_durability_error_code(code: StorageErrorCode) -> SessionRep
 }
 
 fn map_reconcile_error(error: StorageError) -> StorageError {
+    match error.code() {
+        StorageErrorCode::Cancelled
+        | StorageErrorCode::DeadlineExceeded
+        | StorageErrorCode::ResourceExhausted
+        | StorageErrorCode::Unavailable => error,
+        _ => integrity_failure(),
+    }
+}
+
+fn map_linkage_dependency_error(error: StorageError) -> StorageError {
     match error.code() {
         StorageErrorCode::Cancelled
         | StorageErrorCode::DeadlineExceeded

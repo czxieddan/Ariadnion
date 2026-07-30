@@ -36,13 +36,14 @@ mod sql;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use ariadnion_core::{PrincipalContext, RequestContext, TenantId};
+use ariadnion_core::{PrincipalContext, PrincipalId, RequestContext, TenantId};
 use ariadnion_principal_binding::{
     PrincipalAuthenticatorCommand, PrincipalAuthenticatorCommitReceipt,
     PrincipalAuthenticatorEventKind, PrincipalAuthenticatorId, PrincipalAuthenticatorKind,
     PrincipalAuthenticatorLink, PrincipalAuthenticatorRepositoryError,
     PrincipalAuthenticatorRepositoryErrorCode, PrincipalAuthenticatorRepositoryPort,
-    PrincipalAuthenticatorSourceId, PrincipalAuthenticatorTransition,
+    PrincipalAuthenticatorSnapshot, PrincipalAuthenticatorSnapshotData,
+    PrincipalAuthenticatorSourceId, PrincipalAuthenticatorState, PrincipalAuthenticatorTransition,
     PrincipalAuthenticatorVersion, link_authenticator, revoke_authenticator,
 };
 use ariadnion_storage_domain::{StorageError, StorageErrorCode};
@@ -202,6 +203,133 @@ pub(crate) fn reconcile_principal_authenticator_in_session(
 ) -> Result<PrincipalAuthenticatorCommitReceipt, StorageError> {
     validate_commit_request(request)?;
     reconcile_exact(session, request, key)
+}
+
+/// Authenticates the complete bounded history for one durable source link.
+///
+/// The caller must supply an authenticated context already scoped to `tenant_id`.
+/// This function performs no writes, replay, or repair. It verifies the final
+/// snapshot, the one- or two-event history, every audit and outbox record, and
+/// increasing audit order. Verification intentionally does not depend on the
+/// current principal-binding row, which may have advanced or been erased after
+/// the link was committed. All malformed or divergent durable material is
+/// projected to a redacted integrity failure.
+pub(crate) fn reconcile_principal_authenticator_history_by_source_in_session(
+    session: &mut LocalSession,
+    tenant_id: &TenantId,
+    kind: PrincipalAuthenticatorKind,
+    source_id: &PrincipalAuthenticatorSourceId,
+    key: &AuditSubjectKeyMaterial,
+    context: &RequestContext,
+) -> Result<ReconciledPrincipalAuthenticatorHistory, StorageError> {
+    let loaded = decode::load_link_with_history_by_source(session, tenant_id, kind, source_id)
+        .map_err(map_reconcile_error)?;
+    let mut facts = Vec::with_capacity(loaded.events.len());
+    let mut previous: Option<evidence::ReconciledTransitionEvidence> = None;
+    for persisted in &loaded.events {
+        let event = persisted.event();
+        let snapshot = snapshot_for_persisted_event(&loaded.link, event)?;
+        let reconciled = evidence::reconcile_persisted_transition_evidence(
+            session, &snapshot, event, key, context,
+        )
+        .map_err(map_reconcile_error)?;
+        if let Some(prior) = previous.as_ref() {
+            evidence::validate_later_audit_order(
+                &reconciled,
+                prior.audit_sequence(),
+                prior.durable_head_sequence(),
+            )?;
+        }
+        facts.push(ReconciledPrincipalAuthenticatorFact {
+            kind: event.kind(),
+            actor: event.actor().clone(),
+            occurred_at: event.occurred_at(),
+            committed_at: reconciled.committed_at(),
+        });
+        previous = Some(reconciled);
+    }
+    Ok(ReconciledPrincipalAuthenticatorHistory {
+        link: loaded.link,
+        facts,
+    })
+}
+
+/// Authenticated final link and its bounded durable transition facts.
+///
+/// The facts contain one `Linked` entry and, for a terminal link, one later
+/// `Revoked` entry. They are returned only after audit and outbox verification.
+pub(crate) struct ReconciledPrincipalAuthenticatorHistory {
+    link: PrincipalAuthenticatorLink,
+    facts: Vec<ReconciledPrincipalAuthenticatorFact>,
+}
+
+impl ReconciledPrincipalAuthenticatorHistory {
+    pub(crate) const fn link(&self) -> &PrincipalAuthenticatorLink {
+        &self.link
+    }
+
+    pub(crate) fn facts(&self) -> &[ReconciledPrincipalAuthenticatorFact] {
+        &self.facts
+    }
+}
+
+/// Authenticated non-secret facts for one persisted link transition.
+///
+/// Raw source identifiers, payloads, and audit digests are deliberately not
+/// exposed to composing repositories.
+pub(crate) struct ReconciledPrincipalAuthenticatorFact {
+    kind: PrincipalAuthenticatorEventKind,
+    actor: PrincipalId,
+    occurred_at: UtcTimestamp,
+    committed_at: UtcTimestamp,
+}
+
+impl ReconciledPrincipalAuthenticatorFact {
+    pub(crate) const fn kind(&self) -> PrincipalAuthenticatorEventKind {
+        self.kind
+    }
+
+    pub(crate) const fn actor(&self) -> &PrincipalId {
+        &self.actor
+    }
+
+    pub(crate) const fn occurred_at(&self) -> UtcTimestamp {
+        self.occurred_at
+    }
+
+    pub(crate) const fn committed_at(&self) -> UtcTimestamp {
+        self.committed_at
+    }
+}
+
+fn snapshot_for_persisted_event(
+    link: &PrincipalAuthenticatorLink,
+    event: &ariadnion_principal_binding::PrincipalAuthenticatorEvent,
+) -> Result<PrincipalAuthenticatorSnapshot, StorageError> {
+    match event.kind() {
+        PrincipalAuthenticatorEventKind::Linked => initial_active_snapshot(link),
+        PrincipalAuthenticatorEventKind::Revoked => Ok(link.snapshot()),
+    }
+}
+
+fn initial_active_snapshot(
+    link: &PrincipalAuthenticatorLink,
+) -> Result<PrincipalAuthenticatorSnapshot, StorageError> {
+    let snapshot = PrincipalAuthenticatorSnapshot::new(PrincipalAuthenticatorSnapshotData {
+        tenant_id: link.tenant_id().clone(),
+        authenticator_id: link.authenticator_id().clone(),
+        authenticator_kind: link.kind(),
+        source_id: link.source_id().clone(),
+        principal_id: link.principal_id().clone(),
+        principal_binding_version: link.principal_binding_version(),
+        version: PrincipalAuthenticatorVersion::initial(),
+        state: PrincipalAuthenticatorState::Active,
+        linked_at: link.linked_at(),
+        revoked_at: None,
+    });
+    PrincipalAuthenticatorLink::rehydrate(snapshot)
+        .map(|active| active.snapshot())
+        .map_err(|_| integrity_failure())
 }
 
 pub(crate) struct PrincipalAuthenticatorCommitRequest<'a> {

@@ -112,13 +112,16 @@ pub trait SessionRepositoryPort: Send + Sync {
     /// Atomically compares the old family version and persists one transition.
     ///
     /// The family snapshot, complete leaf set and history, exact event,
-    /// audit-chain append, and outbox message commit together or not at all.
-    /// Issuance uses the initial expected version and requires the family ID,
-    /// leaf ID, and tenant token digest to be absent before any insert. Rotation
-    /// requires the durable current leaf and digest to match the transition's
-    /// predecessor. Reuse detection, revocation, and expiry update every leaf
-    /// in the same transaction. A changed version, identity, digest, or leaf
-    /// set returns [`SessionRepositoryErrorCode::Conflict`] with zero writes.
+    /// credential-to-principal linkage evidence, audit-chain append, and outbox
+    /// message commit together or not at all. Issuance uses the initial expected
+    /// version, requires the family ID, leaf ID, and tenant token digest to be
+    /// absent, and links the family only to an existing active principal binding.
+    /// Rotation requires the durable current leaf and digest, the exact family
+    /// linkage, and its version-matched principal binding to remain active.
+    /// Reuse detection, revocation, and expiry update every leaf and terminally
+    /// revoke the family linkage even when the principal binding has since become
+    /// inactive. A changed version, identity, digest, linkage, or leaf set returns
+    /// a redacted failure with zero durable writes.
     ///
     /// Success is returned only after durable commit. An untrusted commit
     /// boundary returns [`SessionRepositoryErrorCode::CommitIndeterminate`]
@@ -136,11 +139,12 @@ pub trait SessionRepositoryPort: Send + Sync {
     /// Reconciles one indeterminate session commit from durable evidence.
     ///
     /// Implementations only read and authenticate the target family snapshot,
-    /// exact leaf history, event, audit-chain membership, and outbox record.
-    /// Reconciliation never writes, replays, or synthesizes a transition. A
-    /// current family may be later only when contiguous authenticated evidence
-    /// proves the requested transition committed first. Missing, behind,
-    /// malformed, duplicate, or divergent evidence is an integrity failure.
+    /// exact leaf history, event, credential-to-principal linkage, audit-chain
+    /// membership, and outbox records. Reconciliation never writes, replays, or
+    /// synthesizes a durable transition. A current family or linkage may be later
+    /// only when contiguous authenticated evidence proves the requested transition
+    /// committed first. Missing, behind, malformed, duplicate, or divergent
+    /// evidence is an integrity failure.
     fn reconcile_commit(
         &self,
         tenant_id: &TenantId,

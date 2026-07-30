@@ -107,6 +107,37 @@ pub(super) fn reconcile_transition_evidence(
     })
 }
 
+/// Authenticates evidence reconstructed from one persisted snapshot and event.
+///
+/// The operation is read-only and requires a tenant-scoped authenticated
+/// context. It validates snapshot/event agreement, exact outbox payload, audit
+/// membership, and the durable audit head. Missing or divergent material fails
+/// closed without exposing source identifiers or evidence payloads.
+pub(super) fn reconcile_persisted_transition_evidence(
+    session: &mut LocalSession,
+    snapshot: &PrincipalAuthenticatorSnapshot,
+    event: &PrincipalAuthenticatorEvent,
+    key: &AuditSubjectKeyMaterial,
+    context: &RequestContext,
+) -> Result<ReconciledTransitionEvidence, StorageError> {
+    event
+        .validate_against(snapshot)
+        .map_err(|_| integrity_failure())?;
+    let identity = EvidenceIdentity::from_snapshot_event(snapshot, event, key)?;
+    let outbox = load_outbox(session, &identity)?;
+    let evidence = TransitionEvidence::from_identity(identity, outbox.committed_at)?;
+    if evidence.payload.as_slice() != outbox.payload.as_slice() {
+        return Err(integrity_failure());
+    }
+    let (audit_sequence, durable_head_sequence) = reconcile_audit(session, &evidence, context)?;
+    Ok(ReconciledTransitionEvidence {
+        committed_at: outbox.committed_at,
+        audit_sequence,
+        durable_head_sequence,
+    })
+}
+
+/// Authenticated commit time and audit-order facts for one link transition.
 pub(super) struct ReconciledTransitionEvidence {
     committed_at: UtcTimestamp,
     audit_sequence: AuditSequence,
@@ -201,25 +232,32 @@ impl EvidenceIdentity {
         transition: &PrincipalAuthenticatorTransition,
         key: &AuditSubjectKeyMaterial,
     ) -> Result<Self, StorageError> {
-        let snapshot_digest = snapshot_digest(&transition.new_snapshot())?;
-        let event_digest = event_digest(transition.event())?;
-        let canonical = canonical_identity(transition, &snapshot_digest, &event_digest)?;
+        Self::from_snapshot_event(&transition.new_snapshot(), transition.event(), key)
+    }
+
+    fn from_snapshot_event(
+        snapshot: &PrincipalAuthenticatorSnapshot,
+        event: &PrincipalAuthenticatorEvent,
+        key: &AuditSubjectKeyMaterial,
+    ) -> Result<Self, StorageError> {
+        let snapshot_digest = snapshot_digest(snapshot)?;
+        let event_digest = event_digest(event)?;
+        let canonical = canonical_identity(snapshot, event, &snapshot_digest, &event_digest)?;
         let audit_id = derive_audit_id(&canonical)?;
         let outbox_id = derive_outbox_id(&canonical)?;
         let outbox_key = derive_outbox_key(&canonical)?;
-        let event = transition.event();
         Ok(Self {
-            tenant: transition.tenant_id().clone(),
-            authenticator_id: transition.authenticator_id().clone(),
-            authenticator_kind: transition.link().kind(),
-            version: transition.link().version().get(),
-            state: transition.link().state(),
+            tenant: snapshot.tenant_id().clone(),
+            authenticator_id: snapshot.authenticator_id().clone(),
+            authenticator_kind: snapshot.authenticator_kind(),
+            version: snapshot.version().get(),
+            state: snapshot.state(),
             actor: event.actor().clone(),
             occurred_at: event.occurred_at(),
             kind: event.kind(),
             snapshot_digest,
             event_digest,
-            subject: subject_digest(transition.authenticator_id(), key)?,
+            subject: subject_digest(snapshot.authenticator_id(), key)?,
             audit_id,
             outbox_id,
             outbox_key,
@@ -312,29 +350,28 @@ impl TransitionEvidence {
 }
 
 fn canonical_identity(
-    transition: &PrincipalAuthenticatorTransition,
+    snapshot: &PrincipalAuthenticatorSnapshot,
+    event: &PrincipalAuthenticatorEvent,
     snapshot_digest: &[u8; 32],
     event_digest: &[u8; 32],
 ) -> Result<Zeroizing<Vec<u8>>, StorageError> {
     let mut output = Zeroizing::new(IDENTITY_DOMAIN.to_vec());
-    push_identity_link_fields(&mut output, transition)?;
+    push_identity_link_fields(&mut output, snapshot, event)?;
     push_identity_digests(&mut output, snapshot_digest, event_digest)?;
     Ok(output)
 }
 
 fn push_identity_link_fields(
     output: &mut Vec<u8>,
-    transition: &PrincipalAuthenticatorTransition,
+    snapshot: &PrincipalAuthenticatorSnapshot,
+    event: &PrincipalAuthenticatorEvent,
 ) -> Result<(), StorageError> {
-    push_text(output, transition.tenant_id().as_str())?;
-    push_text(output, transition.authenticator_id().as_str())?;
-    push_text(output, transition.link().kind().as_str())?;
-    push_u64(output, transition.link().version().get())?;
-    push_text(output, state_label(transition.link().state()))?;
-    push_text(
-        output,
-        super::sql::event_kind_label(transition.event().kind()),
-    )
+    push_text(output, snapshot.tenant_id().as_str())?;
+    push_text(output, snapshot.authenticator_id().as_str())?;
+    push_text(output, snapshot.authenticator_kind().as_str())?;
+    push_u64(output, snapshot.version().get())?;
+    push_text(output, state_label(snapshot.state()))?;
+    push_text(output, super::sql::event_kind_label(event.kind()))
 }
 
 fn push_identity_digests(

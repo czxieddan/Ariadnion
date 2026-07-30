@@ -97,6 +97,21 @@ pub(super) fn load_link_by_source(
     kind: PrincipalAuthenticatorKind,
     source: &PrincipalAuthenticatorSourceId,
 ) -> Result<PrincipalAuthenticatorLink, StorageError> {
+    load_link_with_history_by_source(session, tenant, kind, source).map(|loaded| loaded.link)
+}
+
+/// Loads and structurally authenticates the bounded source-link history.
+///
+/// The result contains at most the required `Linked` event and one terminal
+/// `Revoked` event. This decoder validates row shape, tenant/source identity,
+/// lifecycle continuity, and final snapshot agreement. Audit and outbox
+/// authentication is performed by the repository reconciliation seam.
+pub(super) fn load_link_with_history_by_source(
+    session: &mut LocalSession,
+    tenant: &TenantId,
+    kind: PrincipalAuthenticatorKind,
+    source: &PrincipalAuthenticatorSourceId,
+) -> Result<LoadedPrincipalAuthenticator, StorageError> {
     let output = sql::load_snapshot_by_source(session, tenant, kind, source)?;
     load_link_with_history(
         session,
@@ -104,7 +119,6 @@ pub(super) fn load_link_by_source(
         SnapshotLookup::Source(kind, source),
         output,
     )
-    .map(|loaded| loaded.link)
 }
 
 fn load_link_with_history(
