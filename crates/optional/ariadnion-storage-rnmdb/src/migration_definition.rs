@@ -90,6 +90,14 @@ use ariadnion_organization::migrations::{
     IDENTITY_ORGANIZATION_MIGRATION_REQUIRES_BACKUP, IDENTITY_ORGANIZATION_MIGRATION_STATEMENTS,
     IDENTITY_ORGANIZATION_MIGRATION_TO_VERSION,
 };
+use ariadnion_principal_binding::migrations::{
+    IDENTITY_PRINCIPAL_BINDINGS_MIGRATION_CANONICAL_V1_SHA256,
+    IDENTITY_PRINCIPAL_BINDINGS_MIGRATION_DOMAIN,
+    IDENTITY_PRINCIPAL_BINDINGS_MIGRATION_FROM_VERSION, IDENTITY_PRINCIPAL_BINDINGS_MIGRATION_ID,
+    IDENTITY_PRINCIPAL_BINDINGS_MIGRATION_REQUIRES_BACKUP,
+    IDENTITY_PRINCIPAL_BINDINGS_MIGRATION_STATEMENTS,
+    IDENTITY_PRINCIPAL_BINDINGS_MIGRATION_TO_VERSION,
+};
 use ariadnion_rbac::migrations::{
     IDENTITY_RBAC_MIGRATION_CANONICAL_V1_SHA256, IDENTITY_RBAC_MIGRATION_DOMAIN,
     IDENTITY_RBAC_MIGRATION_FROM_VERSION, IDENTITY_RBAC_MIGRATION_ID,
@@ -431,6 +439,7 @@ fn compile_identity_security_followup_definitions(
         compile_identity_password_commit_evidence_definition()?,
         compile_identity_tenant_enforcement_definition()?,
         compile_identity_admin_command_definition()?,
+        compile_identity_principal_bindings_definition()?,
     ] {
         insert_definition(definitions, definition)?;
     }
@@ -703,6 +712,20 @@ fn compile_identity_admin_command_definition() -> Result<RnmdbMigrationDefinitio
         statements: IDENTITY_ADMIN_COMMAND_MIGRATION_STATEMENTS,
         expected_checksum: IDENTITY_ADMIN_COMMAND_MIGRATION_CANONICAL_V1_SHA256,
         requires_backup: IDENTITY_ADMIN_COMMAND_MIGRATION_REQUIRES_BACKUP,
+    };
+    compile_migration_definition(input, CanonicalAstV1)
+}
+
+fn compile_identity_principal_bindings_definition() -> Result<RnmdbMigrationDefinition, StorageError>
+{
+    let input = CanonicalMigrationDefinitionInput {
+        id: IDENTITY_PRINCIPAL_BINDINGS_MIGRATION_ID,
+        domain: IDENTITY_PRINCIPAL_BINDINGS_MIGRATION_DOMAIN,
+        from: IDENTITY_PRINCIPAL_BINDINGS_MIGRATION_FROM_VERSION,
+        to: IDENTITY_PRINCIPAL_BINDINGS_MIGRATION_TO_VERSION,
+        statements: IDENTITY_PRINCIPAL_BINDINGS_MIGRATION_STATEMENTS,
+        expected_checksum: IDENTITY_PRINCIPAL_BINDINGS_MIGRATION_CANONICAL_V1_SHA256,
+        requires_backup: IDENTITY_PRINCIPAL_BINDINGS_MIGRATION_REQUIRES_BACKUP,
     };
     compile_migration_definition(input, CanonicalAstV1)
 }

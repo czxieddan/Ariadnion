@@ -43,6 +43,7 @@ use ariadnion_invitation::migrations::IDENTITY_INVITATION_MIGRATION_ID;
 use ariadnion_organization::migrations::{
     IDENTITY_ORGANIZATION_EVENT_REPLAY_MIGRATION_ID, IDENTITY_ORGANIZATION_MIGRATION_ID,
 };
+use ariadnion_principal_binding::migrations::IDENTITY_PRINCIPAL_BINDINGS_MIGRATION_ID;
 use ariadnion_rbac::migrations::{
     IDENTITY_RBAC_MIGRATION_ID, IDENTITY_TENANT_ENFORCEMENT_MIGRATION_ID,
 };
@@ -273,6 +274,22 @@ pub fn identity_tenant_enforcement_migration() -> Result<MigrationDescriptor, St
 /// version-fifteen to version-sixteen transition explicitly through the registry.
 pub fn identity_admin_command_migration() -> Result<MigrationDescriptor, StorageError> {
     compiled_migration_definitions()?.descriptor(IDENTITY_ADMIN_COMMAND_MIGRATION_ID)
+}
+
+/// Returns the durable principal-binding migration after digest verification.
+///
+/// The migration remains outside module startup. Callers must request the
+/// version-sixteen to version-seventeen transition explicitly through the registry.
+/// This synchronous accessor performs no I/O and has no cancellation boundary.
+/// Its descriptor, ordered statements, and canonical checksum are fixed for
+/// the schema version-sixteen to version-seventeen transition.
+///
+/// # Errors
+///
+/// Returns an integrity error when registry metadata, migration statements, or
+/// the frozen canonical checksum fail validation.
+pub fn identity_principal_bindings_migration() -> Result<MigrationDescriptor, StorageError> {
+    compiled_migration_definitions()?.descriptor(IDENTITY_PRINCIPAL_BINDINGS_MIGRATION_ID)
 }
 
 fn migration_insert(
