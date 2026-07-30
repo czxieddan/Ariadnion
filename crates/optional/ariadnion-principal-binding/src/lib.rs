@@ -33,8 +33,11 @@
 #![deny(missing_docs)]
 
 mod authenticator_error;
+mod authenticator_evidence;
 mod authenticator_ids;
 mod authenticator_model;
+mod authenticator_repository;
+mod authenticator_transition;
 mod error;
 mod ids;
 pub mod migrations;
@@ -43,6 +46,9 @@ mod repository;
 mod transition;
 
 pub use authenticator_error::{PrincipalAuthenticatorError, PrincipalAuthenticatorErrorCode};
+pub use authenticator_evidence::{
+    AuthenticatedPrincipalEvidence, AuthenticatedPrincipalEvidenceData,
+};
 pub use authenticator_ids::{
     PrincipalAuthenticatorId, PrincipalAuthenticatorKind, PrincipalAuthenticatorSourceCommitment,
     PrincipalAuthenticatorSourceId, PrincipalAuthenticatorVersion,
@@ -51,6 +57,13 @@ pub use authenticator_model::{
     PrincipalAuthenticatorEvent, PrincipalAuthenticatorEventData, PrincipalAuthenticatorEventKind,
     PrincipalAuthenticatorLink, PrincipalAuthenticatorSnapshot, PrincipalAuthenticatorSnapshotData,
     PrincipalAuthenticatorState, PrincipalAuthenticatorTransition,
+};
+pub use authenticator_repository::{
+    PrincipalAuthenticatorCommitReceipt, PrincipalAuthenticatorRepositoryError,
+    PrincipalAuthenticatorRepositoryErrorCode, PrincipalAuthenticatorRepositoryPort,
+};
+pub use authenticator_transition::{
+    PrincipalAuthenticatorCommand, link_authenticator, revoke_authenticator,
 };
 pub use error::{PrincipalBindingError, PrincipalBindingErrorCode};
 pub use ids::PrincipalBindingVersion;
