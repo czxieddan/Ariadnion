@@ -2,9 +2,9 @@
 
 This index maps every raw file stored below this directory to its exact raw-byte digest, byte length, original package/version and filename, and versioned source. It contains 99 stored blobs and intentionally lists each stored path in exactly one table row.
 
-The production inventory covers the 34 production/repository lockfiles used by [AHCL-DEPENDENCIES.md](../AHCL-DEPENDENCIES.md): 154 distinct crates.io package/version pairs. Exact byte matching produced 259 crate-archive member associations. Sixteen package archives inherit a workspace-root license without embedding it; their immutable repository-root sources are listed against the already identical stored blob. Together the rows cover all 154 registry package/version pairs.
+The production inventory covers the 35 production/repository lockfiles used by [AHCL-DEPENDENCIES.md](../AHCL-DEPENDENCIES.md): 154 distinct crates.io package/version pairs. Exact byte matching produced 259 crate-archive member associations. Sixteen package archives inherit a workspace-root license without embedding it; their immutable repository-root sources are listed against the already identical stored blob. Together the rows cover all 154 registry package/version pairs.
 
-The ignored generated test lockfile `crates/optional/ariadnion-api-admin/tests/command_forgery_guard/Cargo.lock` is excluded from both the production dependency inventory and source-header insertion scope. Its 21 registry package/version pairs are all already present in the 34-lockfile production union, so it adds zero registry package/version pairs.
+The ignored generated test lockfile `crates/optional/ariadnion-api-admin/tests/command_forgery_guard/Cargo.lock` is excluded from both the production dependency inventory and source-header insertion scope. Its 21 registry package/version pairs are all already present in the 35-lockfile production union, so it adds zero registry package/version pairs.
 
 A linked crates.io origin identifies the exact versioned `.crate` archive; the label records the original archive member name. Cargo archive checksums remain recorded in the corresponding lockfiles. An `upstream/` path records an immutable supplemental retrieval route, not a different license classification. Multiple origins in one cell mean that those sources contain byte-identical raw files and therefore share one content-addressed copy.
 
