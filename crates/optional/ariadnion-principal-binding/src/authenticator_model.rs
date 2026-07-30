@@ -418,6 +418,8 @@ impl PrincipalAuthenticatorEvent {
         &self,
         snapshot: &PrincipalAuthenticatorSnapshot,
     ) -> Result<(), PrincipalAuthenticatorError> {
+        validate_snapshot(&snapshot.0)
+            .map_err(|_| authenticator_error(PrincipalAuthenticatorErrorCode::InvalidEvent))?;
         if !self.matches_snapshot_identity(snapshot) || !self.matches_snapshot_lifecycle(snapshot) {
             return Err(authenticator_error(
                 PrincipalAuthenticatorErrorCode::InvalidEvent,
