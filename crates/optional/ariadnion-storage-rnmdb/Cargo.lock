@@ -167,6 +167,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ariadnion-principal-binding"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+ "ariadnion-organization",
+ "ariadnion-user-domain",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "ariadnion-rbac"
 version = "0.1.0"
 dependencies = [
@@ -239,6 +249,7 @@ dependencies = [
  "ariadnion-invitation",
  "ariadnion-job-runner",
  "ariadnion-organization",
+ "ariadnion-principal-binding",
  "ariadnion-rbac",
  "ariadnion-storage-backup",
  "ariadnion-storage-domain",
