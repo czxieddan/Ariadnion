@@ -55,6 +55,7 @@ mod module;
 mod organization_repository;
 mod outbox;
 mod password_repository;
+mod principal_authenticator_repository;
 mod principal_binding_repository;
 mod query;
 mod rbac_repository;
@@ -102,6 +103,7 @@ pub use organization_repository::{
 };
 pub use outbox::{OutboxLeaseKeyMaterial, RnmdbOutboxRepository};
 pub use password_repository::RnmdbPasswordRepository;
+pub use principal_authenticator_repository::RnmdbPrincipalAuthenticatorRepository;
 pub use principal_binding_repository::RnmdbPrincipalBindingRepository;
 pub use query::{
     FixedRnmdbReadQuery, QueryPlanDiagnostic, QueryPlanFormat, RnmdbFixedQueryExecutor,
