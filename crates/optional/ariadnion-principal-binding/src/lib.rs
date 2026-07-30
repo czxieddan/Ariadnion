@@ -32,6 +32,9 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+mod authenticator_error;
+mod authenticator_ids;
+mod authenticator_model;
 mod error;
 mod ids;
 pub mod migrations;
@@ -39,6 +42,16 @@ mod model;
 mod repository;
 mod transition;
 
+pub use authenticator_error::{PrincipalAuthenticatorError, PrincipalAuthenticatorErrorCode};
+pub use authenticator_ids::{
+    PrincipalAuthenticatorId, PrincipalAuthenticatorKind, PrincipalAuthenticatorSourceCommitment,
+    PrincipalAuthenticatorSourceId, PrincipalAuthenticatorVersion,
+};
+pub use authenticator_model::{
+    PrincipalAuthenticatorEvent, PrincipalAuthenticatorEventData, PrincipalAuthenticatorEventKind,
+    PrincipalAuthenticatorLink, PrincipalAuthenticatorSnapshot, PrincipalAuthenticatorSnapshotData,
+    PrincipalAuthenticatorState, PrincipalAuthenticatorTransition,
+};
 pub use error::{PrincipalBindingError, PrincipalBindingErrorCode};
 pub use ids::PrincipalBindingVersion;
 pub use migrations::{
