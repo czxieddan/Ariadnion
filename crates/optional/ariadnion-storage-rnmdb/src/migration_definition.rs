@@ -448,11 +448,28 @@ fn compile_identity_security_base_definitions(
 fn compile_identity_security_followup_definitions(
     definitions: &mut BTreeMap<MigrationId, RnmdbMigrationDefinition>,
 ) -> Result<(), StorageError> {
+    compile_identity_authorization_followup_definitions(definitions)?;
+    compile_identity_authenticator_followup_definitions(definitions)
+}
+
+fn compile_identity_authorization_followup_definitions(
+    definitions: &mut BTreeMap<MigrationId, RnmdbMigrationDefinition>,
+) -> Result<(), StorageError> {
     for definition in [
         compile_identity_organization_event_replay_definition()?,
         compile_identity_password_commit_evidence_definition()?,
         compile_identity_tenant_enforcement_definition()?,
         compile_identity_admin_command_definition()?,
+    ] {
+        insert_definition(definitions, definition)?;
+    }
+    Ok(())
+}
+
+fn compile_identity_authenticator_followup_definitions(
+    definitions: &mut BTreeMap<MigrationId, RnmdbMigrationDefinition>,
+) -> Result<(), StorageError> {
+    for definition in [
         compile_identity_principal_bindings_definition()?,
         compile_identity_principal_authenticators_definition()?,
         compile_identity_api_key_request_evidence_definition()?,
