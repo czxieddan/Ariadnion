@@ -588,23 +588,30 @@ impl ApiKey {
         }
     }
 
-    pub(crate) fn advance(&self, next: ApiKeyAdvance) -> Self {
-        Self {
-            id: self.id.clone(),
-            owner: self.owner.clone(),
-            prefix: self.prefix.clone(),
-            current_secret: next.current_secret,
-            previous_secret: next.previous_secret,
-            rotation_started_at: next.rotation_started_at,
-            previous_secret_expires_at: next.previous_secret_expires_at,
-            retired_secrets: next.retired_secrets,
-            scopes: self.scopes.clone(),
-            issued_at: self.issued_at,
-            expires_at: self.expires_at,
-            version: next.version,
-            state: next.state,
+    /// Consumes the aggregate so immutable allocations and retirement history
+    /// can be carried into the next state without cloning.
+    ///
+    /// Callers must validate retirement capacity before selecting
+    /// [`RetiredSecretAdvance::RetirePrevious`].
+    pub(crate) fn advance(mut self, next: ApiKeyAdvance) -> Self {
+        if let RetiredSecretAdvance::RetirePrevious = next.retired_secret
+            && let Some(previous) = self.previous_secret
+        {
+            self.retired_secrets.push(previous);
         }
+        self.current_secret = next.current_secret;
+        self.previous_secret = next.previous_secret;
+        self.rotation_started_at = next.rotation_started_at;
+        self.previous_secret_expires_at = next.previous_secret_expires_at;
+        self.version = next.version;
+        self.state = next.state;
+        self
     }
+}
+
+pub(crate) enum RetiredSecretAdvance {
+    Preserve,
+    RetirePrevious,
 }
 
 pub(crate) struct ApiKeyAdvance {
@@ -614,7 +621,7 @@ pub(crate) struct ApiKeyAdvance {
     pub(crate) previous_secret: Option<ApiKeySecretDigest>,
     pub(crate) rotation_started_at: Option<UtcTimestamp>,
     pub(crate) previous_secret_expires_at: Option<UtcTimestamp>,
-    pub(crate) retired_secrets: Vec<ApiKeySecretDigest>,
+    pub(crate) retired_secret: RetiredSecretAdvance,
 }
 
 pub(crate) fn normalize_scopes(

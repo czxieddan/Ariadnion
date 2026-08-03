@@ -34,7 +34,7 @@ use ariadnion_user_domain::UtcTimestamp;
 use subtle::Choice;
 
 use crate::error::error;
-use crate::model::ApiKeyAdvance;
+use crate::model::{ApiKeyAdvance, RetiredSecretAdvance};
 use crate::{
     ApiKey, ApiKeyError, ApiKeyErrorCode, ApiKeyId, ApiKeyIssueRequest, ApiKeyOwner, ApiKeyPrefix,
     ApiKeyScope, ApiKeySecretDigest, ApiKeyState, ApiKeyValidityWindow, ApiKeyVersion,
@@ -272,6 +272,15 @@ impl ApiKeyTransition {
     pub const fn event(&self) -> &ApiKeyEvent {
         &self.event
     }
+
+    /// Consumes the transition and returns its resulting aggregate.
+    ///
+    /// This accessor lets bounded replay advance ownership without cloning the
+    /// aggregate's immutable fields, scopes, or retired-secret history.
+    #[must_use]
+    pub fn into_key(self) -> ApiKey {
+        self.key
+    }
 }
 
 /// Issues one active scoped API key that retains only digests.
@@ -324,8 +333,26 @@ pub fn transition_api_key(
     current: &ApiKey,
     command: ApiKeyCommand,
 ) -> Result<ApiKeyTransition, ApiKeyError> {
-    validate_expected_version(current, command.expected_version)?;
-    validate_command_time(current, command.occurred_at)?;
+    transition_api_key_owned(current.clone(), command)
+}
+
+/// Applies one deterministic optimistic transition to an owned API key.
+///
+/// The resulting transition is identical to [`transition_api_key`], while the
+/// owned boundary reuses the aggregate's bounded allocations and retirement
+/// history. It is intended for sequential replay where the prior aggregate is
+/// no longer needed.
+///
+/// # Errors
+///
+/// Returns stable redacted failures for invalid evidence, version conflicts,
+/// terminal states, expiry boundaries, or exhausted retirement capacity.
+pub fn transition_api_key_owned(
+    current: ApiKey,
+    command: ApiKeyCommand,
+) -> Result<ApiKeyTransition, ApiKeyError> {
+    validate_expected_version(&current, command.expected_version)?;
+    validate_command_time(&current, command.occurred_at)?;
 
     let ApiKeyCommand {
         expected_version: _,
@@ -343,12 +370,12 @@ pub fn transition_api_key(
 }
 
 fn apply_rotation(
-    current: &ApiKey,
+    current: ApiKey,
     actor: PrincipalId,
     occurred_at: UtcTimestamp,
     rotation: ApiKeyRotation,
 ) -> Result<ApiKeyTransition, ApiKeyError> {
-    validate_rotation_request(current, occurred_at, &rotation)?;
+    validate_rotation_request(&current, occurred_at, &rotation)?;
     let version = current.version().next()?;
     let key = rotating_key(current, version, occurred_at, &rotation);
     let event = event_from(&key, actor, occurred_at, ApiKeyEventKind::Rotated);
@@ -356,7 +383,7 @@ fn apply_rotation(
 }
 
 fn apply_complete_rotation(
-    current: &ApiKey,
+    current: ApiKey,
     actor: PrincipalId,
     occurred_at: UtcTimestamp,
 ) -> Result<ApiKeyTransition, ApiKeyError> {
@@ -369,68 +396,71 @@ fn apply_complete_rotation(
     if occurred_at.unix_seconds() < previous_expires.unix_seconds() {
         return Err(error(ApiKeyErrorCode::NotYetExpired));
     }
-    let retired_secrets = retire_previous_secret(current)?;
+    let retired_secret = retire_previous_secret(&current)?;
     let version = current.version().next()?;
+    let current_secret = current.current_secret();
     let key = current.advance(ApiKeyAdvance {
         version,
         state: ApiKeyState::Active,
-        current_secret: current.current_secret(),
+        current_secret,
         previous_secret: None,
         rotation_started_at: None,
         previous_secret_expires_at: None,
-        retired_secrets,
+        retired_secret,
     });
     let event = event_from(&key, actor, occurred_at, ApiKeyEventKind::RotationCompleted);
     Ok(ApiKeyTransition { key, event })
 }
 
 fn apply_revoke(
-    current: &ApiKey,
+    current: ApiKey,
     actor: PrincipalId,
     occurred_at: UtcTimestamp,
     owner: ApiKeyOwner,
 ) -> Result<ApiKeyTransition, ApiKeyError> {
-    validate_owner(current, &owner)?;
-    validate_usable_state(current)?;
-    let retired_secrets = retire_previous_secret(current)?;
+    validate_owner(&current, &owner)?;
+    validate_usable_state(&current)?;
+    let retired_secret = retire_previous_secret(&current)?;
     let version = current.version().next()?;
+    let current_secret = current.current_secret();
     let key = current.advance(ApiKeyAdvance {
         version,
         state: ApiKeyState::Revoked,
-        current_secret: current.current_secret(),
+        current_secret,
         previous_secret: None,
         rotation_started_at: None,
         previous_secret_expires_at: None,
-        retired_secrets,
+        retired_secret,
     });
     let event = event_from(&key, actor, occurred_at, ApiKeyEventKind::Revoked);
     Ok(ApiKeyTransition { key, event })
 }
 
 fn apply_expire(
-    current: &ApiKey,
+    current: ApiKey,
     actor: PrincipalId,
     occurred_at: UtcTimestamp,
     owner: ApiKeyOwner,
 ) -> Result<ApiKeyTransition, ApiKeyError> {
-    validate_owner(current, &owner)?;
-    validate_usable_state(current)?;
+    validate_owner(&current, &owner)?;
+    validate_usable_state(&current)?;
     let expires_at = current
         .expires_at()
         .ok_or_else(|| error(ApiKeyErrorCode::InvalidArgument))?;
     if occurred_at.unix_seconds() < expires_at.unix_seconds() {
         return Err(error(ApiKeyErrorCode::NotYetExpired));
     }
-    let retired_secrets = retire_previous_secret(current)?;
+    let retired_secret = retire_previous_secret(&current)?;
     let version = current.version().next()?;
+    let current_secret = current.current_secret();
     let key = current.advance(ApiKeyAdvance {
         version,
         state: ApiKeyState::Expired,
-        current_secret: current.current_secret(),
+        current_secret,
         previous_secret: None,
         rotation_started_at: None,
         previous_secret_expires_at: None,
-        retired_secrets,
+        retired_secret,
     });
     let event = event_from(&key, actor, occurred_at, ApiKeyEventKind::Expired);
     Ok(ApiKeyTransition { key, event })
@@ -545,19 +575,20 @@ fn validate_rotation_key(current: &ApiKey, rotation: &ApiKeyRotation) -> Result<
 }
 
 fn rotating_key(
-    current: &ApiKey,
+    current: ApiKey,
     version: ApiKeyVersion,
     occurred_at: UtcTimestamp,
     rotation: &ApiKeyRotation,
 ) -> ApiKey {
+    let previous_secret = current.current_secret();
     current.advance(ApiKeyAdvance {
         version,
         state: ApiKeyState::Rotating,
         current_secret: rotation.new_secret,
-        previous_secret: Some(current.current_secret()),
+        previous_secret: Some(previous_secret),
         rotation_started_at: Some(occurred_at),
         previous_secret_expires_at: Some(rotation.previous_secret_expires_at),
-        retired_secrets: current.retired_secrets().to_vec(),
+        retired_secret: RetiredSecretAdvance::Preserve,
     })
 }
 
@@ -700,14 +731,12 @@ fn validate_retired_capacity(current: &ApiKey) -> Result<(), ApiKeyError> {
     Ok(())
 }
 
-fn retire_previous_secret(current: &ApiKey) -> Result<Vec<ApiKeySecretDigest>, ApiKeyError> {
-    let mut retired = current.retired_secrets().to_vec();
-    let Some(previous) = current.previous_secret() else {
-        return Ok(retired);
+fn retire_previous_secret(current: &ApiKey) -> Result<RetiredSecretAdvance, ApiKeyError> {
+    if current.previous_secret().is_none() {
+        return Ok(RetiredSecretAdvance::Preserve);
     };
-    if retired.len() >= MAX_RETIRED_SECRETS {
+    if current.retired_secrets().len() >= MAX_RETIRED_SECRETS {
         return Err(error(ApiKeyErrorCode::ResourceLimitExceeded));
     }
-    retired.push(previous);
-    Ok(retired)
+    Ok(RetiredSecretAdvance::RetirePrevious)
 }

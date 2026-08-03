@@ -53,5 +53,5 @@ pub use repository::{
 pub use transition::{
     ApiKeyAction, ApiKeyCommand, ApiKeyEvent, ApiKeyEventKind, ApiKeyPresentation, ApiKeyRotation,
     ApiKeyTransition, ApiKeyVerification, issue_api_key, transition_api_key,
-    verify_api_key_presentation,
+    transition_api_key_owned, verify_api_key_presentation,
 };

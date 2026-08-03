@@ -62,6 +62,15 @@ const REPOSITORY_ERROR_CODES: [&str; 8] = [
 /// tenant and user to the aggregate, event, and every companion row before
 /// performing I/O. A matching request with a changed durable version or atomic
 /// precondition returns a conflict without partial effects.
+///
+/// Issuance also requires the issuance actor's exact active principal binding
+/// and atomically creates an `ApiKey` principal-authenticator link whose source
+/// is the original raw API-key identity. Rotation and overlap completion require
+/// the immutable linked principal and its version-matched active binding; they
+/// do not mutate the link. Revocation and expiry revoke that exact link while
+/// preserving its original principal and binding version. Terminal cleanup may
+/// therefore proceed after the original binding has been revoked or erased when
+/// the terminal actor is independently authorized by the calling service.
 pub trait ApiKeyRepositoryPort: Send + Sync {
     /// Loads one exact API key inside its tenant and user boundary.
     ///
@@ -119,10 +128,12 @@ pub trait ApiKeyRepositoryPort: Send + Sync {
     /// Reconciles an indeterminate commit from exact durable evidence.
     ///
     /// Implementations only read and authenticate the target snapshot,
-    /// companion rows, event history, audit-chain membership, and outbox
-    /// record. Reconciliation never writes, replays, or synthesizes a
-    /// transition. A later state is accepted only when contiguous authenticated
-    /// evidence proves the requested transition committed first.
+    /// companion rows, event and immutable request histories, every transition's
+    /// audit-chain membership and outbox record, together with the complete
+    /// bounded principal-authenticator history. Reconciliation never writes,
+    /// repairs, or depends on the current mutable principal-binding row. A later
+    /// state is accepted only when bounded semantic replay and contiguous
+    /// authenticated evidence prove the requested transition committed first.
     fn reconcile_commit(
         &self,
         tenant_id: &TenantId,
