@@ -62,9 +62,11 @@ use crate::migration_definition::{
     MigrationLookupOrder, PLATFORM_INITIAL_ID, PLATFORM_OUTBOX_ID, PLATFORM_SECRET_REFERENCES_ID,
     RnmdbMigrationDefinition, compiled_migration_definitions,
 };
+use crate::session::map_rnmdb_error;
 use crate::{RnmdbSessionOwner, UtcTimestampMicros};
 
 const MAX_LEDGER_LITERAL_BYTES: usize = 256;
+const LEGACY_API_KEY_PROBE: &str = "SELECT issued_at FROM identity_api_keys LIMIT 1;";
 
 /// Result of applying one immutable migration definition.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -159,8 +161,9 @@ impl RnmdbMigrationRunner {
         let definition = definitions.definition_for(descriptor)?;
         let lookup = migration_lookup(definition.descriptor())?;
         let insert = migration_insert(definition.descriptor(), applied_at)?;
-        self.session.with_session(context, |session| {
+        self.session.with_storage_session(context, |session| {
             run_migration_transaction(session, definition, &lookup, &insert)
+                .map_err(MigrationRunError::into_storage_error)
         })
     }
 }
@@ -371,7 +374,7 @@ fn run_migration_transaction(
     definition: &RnmdbMigrationDefinition,
     lookup: &str,
     insert: &str,
-) -> Result<MigrationApplyStatus, RnovError> {
+) -> Result<MigrationApplyStatus, MigrationRunError> {
     session.execute("BEGIN")?;
     let result = apply_migration_body(session, definition, lookup, insert);
     finish_migration_transaction(session, result)
@@ -382,10 +385,11 @@ fn apply_migration_body(
     definition: &RnmdbMigrationDefinition,
     lookup: &str,
     insert: &str,
-) -> Result<MigrationApplyStatus, RnovError> {
+) -> Result<MigrationApplyStatus, MigrationRunError> {
     match definition.lookup_order() {
         MigrationLookupOrder::CreateLedgerBeforeLookup => {
             apply_ledger_creating_body(session, definition, lookup, insert)
+                .map_err(MigrationRunError::Database)
         }
         MigrationLookupOrder::LookupBeforeStatements => {
             apply_lookup_first_body(session, definition, lookup, insert)
@@ -412,13 +416,44 @@ fn apply_lookup_first_body(
     definition: &RnmdbMigrationDefinition,
     lookup: &str,
     insert: &str,
-) -> Result<MigrationApplyStatus, RnovError> {
+) -> Result<MigrationApplyStatus, MigrationRunError> {
     let output = session.execute(lookup)?;
     if migration_record_exists(output, definition.descriptor())? {
         return Ok(MigrationApplyStatus::AlreadyApplied);
     }
+    require_migration_preconditions(session, definition.descriptor())?;
     execute_migration_statements(session, definition)?;
-    record_migration(session, insert)
+    record_migration(session, insert).map_err(MigrationRunError::Database)
+}
+
+fn require_migration_preconditions(
+    session: &mut LocalSession,
+    descriptor: &MigrationDescriptor,
+) -> Result<(), MigrationRunError> {
+    if descriptor.id().as_str() != IDENTITY_API_KEY_REQUEST_EVIDENCE_MIGRATION_ID {
+        return Ok(());
+    }
+    let output = session.execute(LEGACY_API_KEY_PROBE)?;
+    require_empty_legacy_api_keys(output)
+}
+
+fn require_empty_legacy_api_keys(output: CommandOutput) -> Result<(), MigrationRunError> {
+    let CommandOutput::Rows(batch) = output else {
+        return Err(migration_corruption("legacy API-key probe did not return rows").into());
+    };
+    let [column] = batch.columns() else {
+        return Err(migration_corruption("legacy API-key probe column count changed").into());
+    };
+    if column.name() != "issued_at" || column.data_type() != &SqlType::Int64 {
+        return Err(migration_corruption("legacy API-key probe schema changed").into());
+    }
+    match batch.rows() {
+        [] => Ok(()),
+        [row] if matches!(row.values(), [SqlValue::Int64(_)]) => {
+            Err(MigrationRunError::MigrationRequired)
+        }
+        _ => Err(migration_corruption("legacy API-key probe row shape changed").into()),
+    }
 }
 
 fn execute_migration_statements(
@@ -441,12 +476,42 @@ fn record_migration(
 
 fn finish_migration_transaction(
     session: &mut LocalSession,
-    result: Result<MigrationApplyStatus, RnovError>,
-) -> Result<MigrationApplyStatus, RnovError> {
+    result: Result<MigrationApplyStatus, MigrationRunError>,
+) -> Result<MigrationApplyStatus, MigrationRunError> {
     match result {
-        Ok(MigrationApplyStatus::Applied) => commit_migration(session),
-        Ok(MigrationApplyStatus::AlreadyApplied) => rollback_existing_migration(session),
-        Err(error) => rollback_with_error(session, error),
+        Ok(MigrationApplyStatus::Applied) => commit_migration(session).map_err(Into::into),
+        Ok(MigrationApplyStatus::AlreadyApplied) => {
+            rollback_existing_migration(session).map_err(Into::into)
+        }
+        Err(error) => rollback_migration_error(session, error),
+    }
+}
+
+fn rollback_migration_error<T>(
+    session: &mut LocalSession,
+    error: MigrationRunError,
+) -> Result<T, MigrationRunError> {
+    session.execute("ROLLBACK")?;
+    Err(error)
+}
+
+enum MigrationRunError {
+    Database(RnovError),
+    MigrationRequired,
+}
+
+impl MigrationRunError {
+    fn into_storage_error(self) -> StorageError {
+        match self {
+            Self::Database(error) => map_rnmdb_error(error),
+            Self::MigrationRequired => StorageError::new(StorageErrorCode::MigrationRequired),
+        }
+    }
+}
+
+impl From<RnovError> for MigrationRunError {
+    fn from(error: RnovError) -> Self {
+        Self::Database(error)
     }
 }
 
