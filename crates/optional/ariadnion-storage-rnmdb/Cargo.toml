@@ -50,6 +50,7 @@ ariadnion-auth-session = { path = "../ariadnion-auth-session" }
 ariadnion-auth-api-key = { path = "../ariadnion-auth-api-key" }
 ariadnion-core = { path = "../../ariadnion-core" }
 ariadnion-invitation = { path = "../ariadnion-invitation" }
+ariadnion-job-runner = { path = "../ariadnion-job-runner" }
 ariadnion-organization = { path = "../ariadnion-organization" }
 ariadnion-principal-binding = { path = "../ariadnion-principal-binding" }
 ariadnion-rbac = { path = "../ariadnion-rbac" }
@@ -84,7 +85,6 @@ zeroize = "1.9.0"
 [dev-dependencies]
 ariadnion-api-http = { path = "../ariadnion-api-http" }
 ariadnion-cli-user = { path = "../ariadnion-cli-user" }
-ariadnion-job-runner = { path = "../ariadnion-job-runner" }
 
 [lints.rust]
 unsafe_code = "forbid"

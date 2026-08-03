@@ -36,5 +36,5 @@ mod admin;
 
 pub use admin::{
     AdminJobDisposition, AdminJobEnvelope, AdminJobLeaseId, AdminJobResult, AdminJobRunner,
-    MAX_ADMIN_JOB_LEASE_ID_BYTES,
+    MAX_ADMIN_JOB_LEASE_ID_BYTES, ManagedSystemAuthenticatorPort,
 };

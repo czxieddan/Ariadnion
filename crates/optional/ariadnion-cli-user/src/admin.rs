@@ -36,6 +36,7 @@ use ariadnion_api_admin::{
     AdminExecutionPort, AdminExecutionRequest, AdminTarget,
 };
 use ariadnion_core::RequestContext;
+use ariadnion_principal_binding::AuthenticatedPrincipalEvidence;
 use ariadnion_rbac::{DecisionId, PolicyVersion};
 use ariadnion_user_domain::UserId;
 
@@ -64,12 +65,17 @@ impl CliAdminAdapter {
 
     /// Parses and executes one exact suspend-user invocation.
     ///
-    /// Tenant, principal, roles, and authorization decisions are never CLI
-    /// inputs; the supplied request context owns authenticated identity.
+    /// Tenant, principal, roles, and authorization decisions are never parsed
+    /// from CLI arguments; typed evidence carries authenticated identity.
     #[must_use]
-    pub fn execute(&self, arguments: &[&str], context: &RequestContext) -> CliAdminOutput {
+    pub fn execute(
+        &self,
+        arguments: &[&str],
+        evidence: &AuthenticatedPrincipalEvidence,
+        context: &RequestContext,
+    ) -> CliAdminOutput {
         let result = parse_suspend_user(arguments)
-            .and_then(|request| self.executor.execute(request, context));
+            .and_then(|request| self.executor.execute(request, evidence, context));
         CliAdminOutput::from_result(result)
     }
 }

@@ -30,6 +30,7 @@
 //! Trusted authorization and durable command execution boundaries.
 
 use ariadnion_core::{RequestContext, TenantId};
+use ariadnion_principal_binding::AuthenticatedPrincipalEvidence;
 use ariadnion_rbac::{
     AuthorizationPolicy, AuthorizationSubject, DecisionId, PolicyVersion, ResourceState,
 };
@@ -42,6 +43,25 @@ use crate::{
 
 pub(crate) mod private {
     pub trait Sealed {}
+}
+
+/// Revalidates transient authentication evidence against authoritative state.
+pub trait AuthenticatedPrincipalPort: Send + Sync {
+    /// Validates the exact active authenticator and principal-binding linkage.
+    ///
+    /// Implementations must perform this check on every execution attempt,
+    /// including exact command replay. They must not infer identity from policy
+    /// assignments or accept a constructor-provided principal as evidence.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable redacted error for inactive, missing, mismatched,
+    /// unavailable, cancelled, expired, or malformed authoritative evidence.
+    fn validate(
+        &self,
+        evidence: &AuthenticatedPrincipalEvidence,
+        context: &RequestContext,
+    ) -> Result<(), AdminError>;
 }
 
 /// Shared object-safe entrypoint for authoritative administration execution.
@@ -59,6 +79,7 @@ pub trait AdminExecutionPort: private::Sealed + Send + Sync {
     fn execute(
         &self,
         request: AdminExecutionRequest,
+        evidence: &AuthenticatedPrincipalEvidence,
         context: &RequestContext,
     ) -> Result<AdminCommandReceipt, AdminError>;
 }

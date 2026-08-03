@@ -16,6 +16,7 @@ dependencies = [
  "ariadnion-invitation",
  "ariadnion-job-runner",
  "ariadnion-organization",
+ "ariadnion-principal-binding",
  "ariadnion-rbac",
  "ariadnion-user-domain",
 ]
@@ -26,6 +27,7 @@ version = "0.1.0"
 dependencies = [
  "ariadnion-api-admin",
  "ariadnion-core",
+ "ariadnion-principal-binding",
  "ariadnion-rbac",
  "ariadnion-user-domain",
 ]
@@ -74,6 +76,7 @@ version = "0.1.0"
 dependencies = [
  "ariadnion-api-admin",
  "ariadnion-core",
+ "ariadnion-principal-binding",
  "ariadnion-rbac",
  "ariadnion-user-domain",
 ]
@@ -100,6 +103,7 @@ version = "0.1.0"
 dependencies = [
  "ariadnion-api-admin",
  "ariadnion-core",
+ "ariadnion-principal-binding",
 ]
 
 [[package]]
@@ -108,6 +112,16 @@ version = "0.1.0"
 dependencies = [
  "ariadnion-core",
  "ariadnion-user-domain",
+]
+
+[[package]]
+name = "ariadnion-principal-binding"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+ "ariadnion-organization",
+ "ariadnion-user-domain",
+ "sha2",
 ]
 
 [[package]]

@@ -37,9 +37,8 @@ use ariadnion_api_admin::{
     AdminActionKind, AdminCommandId, AdminCommandReceipt, AdminError, AdminErrorCode,
     AdminExecutionPort, AdminExecutionRequest, AdminTarget,
 };
-use ariadnion_core::{
-    CancellationToken, ErrorCode, PrincipalContext, RequestContext, RequestId, TraceId,
-};
+use ariadnion_core::{CancellationToken, ErrorCode, RequestContext, RequestId, TraceId};
+use ariadnion_principal_binding::AuthenticatedPrincipalEvidence;
 use ariadnion_rbac::{DecisionId, PolicyVersion};
 use ariadnion_user_domain::UserId;
 
@@ -104,7 +103,7 @@ impl Drop for HttpAuthorization {
 
 /// Authenticates ephemeral HTTP authorization material.
 pub trait HttpAuthenticationPort: Send + Sync {
-    /// Produces one trusted principal from an active anonymous request context.
+    /// Produces typed authentication evidence from an anonymous request context.
     ///
     /// # Errors
     ///
@@ -114,7 +113,7 @@ pub trait HttpAuthenticationPort: Send + Sync {
         &self,
         authorization: &HttpAuthorization,
         context: &RequestContext,
-    ) -> Result<PrincipalContext, AdminError>;
+    ) -> Result<AuthenticatedPrincipalEvidence, AdminError>;
 }
 
 /// Bounded transport metadata propagated into authoritative execution.
@@ -250,12 +249,11 @@ impl HttpAdminAdapter {
     ) -> Result<AdminCommandReceipt, AdminError> {
         let anonymous = request.metadata.anonymous_context();
         check_context(&anonymous)?;
-        let principal = self
+        let evidence = self
             .authentication
             .authenticate(&request.authorization, &anonymous)?;
-        let authenticated = authenticated_context(&anonymous, principal);
         self.executor
-            .execute(request.body.execution, &authenticated)
+            .execute(request.body.execution, &evidence, &anonymous)
     }
 }
 
@@ -300,19 +298,6 @@ impl HttpAdminResponse {
     pub const fn receipt(&self) -> Option<&AdminCommandReceipt> {
         self.receipt.as_ref()
     }
-}
-
-fn authenticated_context(
-    anonymous: &RequestContext,
-    principal: PrincipalContext,
-) -> RequestContext {
-    RequestContext::new(
-        anonymous.request_id().clone(),
-        anonymous.trace_id().clone(),
-        Some(principal),
-        anonymous.deadline(),
-        anonymous.cancellation(),
-    )
 }
 
 fn check_context(context: &RequestContext) -> Result<(), AdminError> {

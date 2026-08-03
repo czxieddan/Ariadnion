@@ -51,5 +51,5 @@ pub use executor::{AdminCommandExecutor, AdminCommandIntent, AdminExecutionReque
 pub use model::{AdminActionKind, AdminCommand, AdminCommandId, AdminTarget, AdminTargetKind};
 pub use port::{
     AdminCommandExecution, AdminCommandReceipt, AdminCommandRepositoryPort, AdminExecutionPort,
-    AuthoritativeAuthorizationSnapshot, AuthoritativePolicyPort,
+    AuthenticatedPrincipalPort, AuthoritativeAuthorizationSnapshot, AuthoritativePolicyPort,
 };

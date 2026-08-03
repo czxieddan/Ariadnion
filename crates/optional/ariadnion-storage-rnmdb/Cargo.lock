@@ -60,6 +60,7 @@ dependencies = [
  "ariadnion-core",
  "ariadnion-invitation",
  "ariadnion-organization",
+ "ariadnion-principal-binding",
  "ariadnion-rbac",
  "ariadnion-user-domain",
 ]
@@ -70,6 +71,7 @@ version = "0.1.0"
 dependencies = [
  "ariadnion-api-admin",
  "ariadnion-core",
+ "ariadnion-principal-binding",
  "ariadnion-rbac",
  "ariadnion-user-domain",
 ]
@@ -130,6 +132,7 @@ version = "0.1.0"
 dependencies = [
  "ariadnion-api-admin",
  "ariadnion-core",
+ "ariadnion-principal-binding",
  "ariadnion-rbac",
  "ariadnion-user-domain",
 ]
@@ -156,6 +159,7 @@ version = "0.1.0"
 dependencies = [
  "ariadnion-api-admin",
  "ariadnion-core",
+ "ariadnion-principal-binding",
 ]
 
 [[package]]

@@ -43,6 +43,7 @@ ariadnion-user-domain = { path = "../ariadnion-user-domain" }
 ariadnion-organization = { path = "../ariadnion-organization" }
 ariadnion-invitation = { path = "../ariadnion-invitation" }
 ariadnion-auth-api-key = { path = "../ariadnion-auth-api-key" }
+ariadnion-principal-binding = { path = "../ariadnion-principal-binding" }
 ariadnion-rbac = { path = "../ariadnion-rbac" }
 
 [lints.rust]

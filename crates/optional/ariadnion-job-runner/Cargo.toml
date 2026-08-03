@@ -40,6 +40,7 @@ publish = false
 [dependencies]
 ariadnion-api-admin = { path = "../ariadnion-api-admin" }
 ariadnion-core = { path = "../../ariadnion-core" }
+ariadnion-principal-binding = { path = "../ariadnion-principal-binding" }
 
 [dev-dependencies]
 ariadnion-organization = { path = "../ariadnion-organization" }

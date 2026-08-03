@@ -36,7 +36,10 @@ use std::time::SystemTime;
 use ariadnion_api_admin::{
     AdminCommandReceipt, AdminError, AdminErrorCode, AdminExecutionPort, AdminExecutionRequest,
 };
-use ariadnion_core::{CancellationToken, PrincipalContext, RequestContext, RequestId, TraceId};
+use ariadnion_core::{CancellationToken, RequestContext, RequestId, TenantId, TraceId};
+use ariadnion_principal_binding::{
+    AuthenticatedPrincipalEvidence, PrincipalAuthenticatorKind, PrincipalAuthenticatorSourceId,
+};
 
 /// Maximum bytes accepted in a background lease identity.
 pub const MAX_ADMIN_JOB_LEASE_ID_BYTES: usize = 128;
@@ -180,19 +183,51 @@ impl AdminJobResult {
     }
 }
 
-/// Executes background administration with one trusted system principal.
+/// Loads one managed system identity from authoritative durable state.
+pub trait ManagedSystemAuthenticatorPort: Send + Sync {
+    /// Loads authenticated evidence for one exact durable `System` source.
+    ///
+    /// Implementations must require an active authenticator link, principal
+    /// binding, managed user, organization, and membership at a trusted time.
+    /// Returning evidence does not authorize replay: the shared executor
+    /// revalidates it, and completion of that validation is the per-request
+    /// authentication linearization point before replay lookup. Revocations
+    /// completed after that point affect subsequent execution attempts.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable redacted administration error when any required fact is
+    /// missing, inactive, expired, mismatched, unavailable, or malformed.
+    fn authenticate(
+        &self,
+        tenant_id: &TenantId,
+        source_id: &PrincipalAuthenticatorSourceId,
+        context: &RequestContext,
+    ) -> Result<AuthenticatedPrincipalEvidence, AdminError>;
+}
+
+/// Executes background administration with one durable system authenticator.
 pub struct AdminJobRunner {
     executor: Arc<dyn AdminExecutionPort>,
-    system_principal: PrincipalContext,
+    authenticator: Arc<dyn ManagedSystemAuthenticatorPort>,
+    tenant_id: TenantId,
+    source_id: PrincipalAuthenticatorSourceId,
 }
 
 impl AdminJobRunner {
-    /// Creates a runner with a constructor-injected trusted system principal.
+    /// Creates a runner configured with one durable system-authenticator source.
     #[must_use]
-    pub fn new(executor: Arc<dyn AdminExecutionPort>, system_principal: PrincipalContext) -> Self {
+    pub fn new(
+        executor: Arc<dyn AdminExecutionPort>,
+        authenticator: Arc<dyn ManagedSystemAuthenticatorPort>,
+        tenant_id: TenantId,
+        source_id: PrincipalAuthenticatorSourceId,
+    ) -> Self {
         Self {
             executor,
-            system_principal,
+            authenticator,
+            tenant_id,
+            source_id,
         }
     }
 
@@ -206,13 +241,40 @@ impl AdminJobRunner {
         let context = RequestContext::new(
             job.request_id.clone(),
             job.trace_id.clone(),
-            Some(self.system_principal.clone()),
+            None,
             Some(job.deadline),
             job.cancellation.clone(),
         );
-        let result = self.executor.execute(job.execution.clone(), &context);
+        let result = self.authenticate_and_execute(job, &context);
         AdminJobResult::from_result(job.lease_id.clone(), result)
     }
+
+    fn authenticate_and_execute(
+        &self,
+        job: &AdminJobEnvelope,
+        context: &RequestContext,
+    ) -> Result<AdminCommandReceipt, AdminError> {
+        let evidence =
+            self.authenticator
+                .authenticate(&self.tenant_id, &self.source_id, context)?;
+        validate_system_evidence(&evidence, &self.tenant_id, &self.source_id)?;
+        self.executor
+            .execute(job.execution.clone(), &evidence, context)
+    }
+}
+
+fn validate_system_evidence(
+    evidence: &AuthenticatedPrincipalEvidence,
+    tenant_id: &TenantId,
+    source_id: &PrincipalAuthenticatorSourceId,
+) -> Result<(), AdminError> {
+    if evidence.tenant_id() != tenant_id
+        || evidence.authenticator_kind() != PrincipalAuthenticatorKind::System
+        || evidence.source_id() != source_id
+    {
+        return Err(AdminError::new(AdminErrorCode::Unauthenticated));
+    }
+    Ok(())
 }
 
 const fn disposition_for(code: AdminErrorCode) -> AdminJobDisposition {

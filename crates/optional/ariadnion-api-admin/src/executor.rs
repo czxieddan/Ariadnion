@@ -30,6 +30,7 @@
 //! Authoritative just-in-time administration command execution.
 
 use ariadnion_core::{ErrorCode, PrincipalContext, RequestContext};
+use ariadnion_principal_binding::AuthenticatedPrincipalEvidence;
 use ariadnion_rbac::{AuthorizationRequest, DecisionId, PolicyVersion, ResourceState, evaluate};
 
 use crate::error::error;
@@ -39,7 +40,7 @@ use crate::model::{
 };
 use crate::{
     AdminActionKind, AdminCommandExecution, AdminCommandReceipt, AdminCommandRepositoryPort,
-    AdminError, AdminErrorCode, AdminExecutionPort, AdminTarget,
+    AdminError, AdminErrorCode, AdminExecutionPort, AdminTarget, AuthenticatedPrincipalPort,
     AuthoritativeAuthorizationSnapshot, AuthoritativePolicyPort,
 };
 
@@ -188,20 +189,23 @@ impl AdminCommandIntent {
 }
 
 /// Coordinates authoritative policy evaluation and one durable command attempt.
-pub struct AdminCommandExecutor<P, R> {
+pub struct AdminCommandExecutor<A, P, R> {
+    authenticated_principals: A,
     policies: P,
     repository: R,
 }
 
-impl<P, R> AdminCommandExecutor<P, R>
+impl<A, P, R> AdminCommandExecutor<A, P, R>
 where
+    A: AuthenticatedPrincipalPort,
     P: AuthoritativePolicyPort,
     R: AdminCommandRepositoryPort,
 {
-    /// Creates an executor over trusted policy and durable command ports.
+    /// Creates an executor over authentication, policy, and command ports.
     #[must_use]
-    pub const fn new(policies: P, repository: R) -> Self {
+    pub const fn new(authenticated_principals: A, policies: P, repository: R) -> Self {
         Self {
+            authenticated_principals,
             policies,
             repository,
         }
@@ -221,16 +225,20 @@ where
     pub fn execute(
         &self,
         request: AdminExecutionRequest,
+        evidence: &AuthenticatedPrincipalEvidence,
         context: &RequestContext,
     ) -> Result<AdminCommandReceipt, AdminError> {
-        let principal = prepare_execution(context)?;
-        let intent = AdminCommandIntent::from_request(&request, principal);
-        if let Some(receipt) = self.find_replay(&intent, context)? {
+        let (principal, authenticated) = prepare_execution(evidence, context)?;
+        self.authenticated_principals
+            .validate(evidence, &authenticated)?;
+        check_context(&authenticated)?;
+        let intent = AdminCommandIntent::from_request(&request, &principal);
+        if let Some(receipt) = self.find_replay(&intent, &authenticated)? {
             return Ok(receipt);
         }
-        let snapshot = self.load_authoritative_snapshot(&request, principal, context)?;
-        let command = authorize_command(request, snapshot, principal)?;
-        self.execute_authorized_command(&intent, &command, context)
+        let snapshot = self.load_authoritative_snapshot(&request, &principal, &authenticated)?;
+        let command = authorize_command(request, snapshot, &principal)?;
+        self.execute_authorized_command(&intent, &command, &authenticated)
     }
 
     fn find_replay(
@@ -273,30 +281,47 @@ where
     }
 }
 
-impl<P, R> crate::port::private::Sealed for AdminCommandExecutor<P, R>
+impl<A, P, R> crate::port::private::Sealed for AdminCommandExecutor<A, P, R>
 where
+    A: AuthenticatedPrincipalPort,
     P: AuthoritativePolicyPort,
     R: AdminCommandRepositoryPort,
 {
 }
 
-impl<P, R> AdminExecutionPort for AdminCommandExecutor<P, R>
+impl<A, P, R> AdminExecutionPort for AdminCommandExecutor<A, P, R>
 where
+    A: AuthenticatedPrincipalPort,
     P: AuthoritativePolicyPort,
     R: AdminCommandRepositoryPort,
 {
     fn execute(
         &self,
         request: AdminExecutionRequest,
+        evidence: &AuthenticatedPrincipalEvidence,
         context: &RequestContext,
     ) -> Result<AdminCommandReceipt, AdminError> {
-        AdminCommandExecutor::execute(self, request, context)
+        AdminCommandExecutor::execute(self, request, evidence, context)
     }
 }
 
-fn prepare_execution(context: &RequestContext) -> Result<&PrincipalContext, AdminError> {
+fn prepare_execution(
+    evidence: &AuthenticatedPrincipalEvidence,
+    context: &RequestContext,
+) -> Result<(PrincipalContext, RequestContext), AdminError> {
     check_context(context)?;
-    authenticated_principal(context)
+    let principal = PrincipalContext::new(
+        evidence.tenant_id().clone(),
+        evidence.principal_id().clone(),
+    );
+    let authenticated = RequestContext::new(
+        context.request_id().clone(),
+        context.trace_id().clone(),
+        Some(principal.clone()),
+        context.deadline(),
+        context.cancellation(),
+    );
+    Ok((principal, authenticated))
 }
 
 fn authorize_command(
@@ -390,12 +415,6 @@ fn validate_execution(
         return Err(error(AdminErrorCode::IntegrityFailure));
     }
     Ok(execution.into_receipt())
-}
-
-fn authenticated_principal(context: &RequestContext) -> Result<&PrincipalContext, AdminError> {
-    context
-        .principal()
-        .ok_or_else(|| error(AdminErrorCode::Unauthenticated))
 }
 
 fn check_context(context: &RequestContext) -> Result<(), AdminError> {

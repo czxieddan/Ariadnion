@@ -34,9 +34,11 @@
 
 use std::any::type_name;
 
+mod admin_execution;
 mod admin_repository;
 mod api_key_repository;
 mod audit_repository;
+mod authenticated_principal;
 mod authoritative_policy;
 mod backup;
 mod codec;
@@ -73,6 +75,9 @@ mod user_repository;
 pub use admin_repository::RnmdbAdminCommandRepository;
 pub use api_key_repository::RnmdbApiKeyRepository;
 pub use audit_repository::{MAX_AUDIT_MEMBERSHIP_DISTANCE, RnmdbAuditRepository};
+pub use authenticated_principal::{
+    RnmdbAuthenticatedPrincipalValidator, RnmdbManagedSystemAuthenticator,
+};
 pub use authoritative_policy::RnmdbAuthoritativePolicyPort;
 pub use backup::{RnmdbBackupAdapter, RnmdbBackupEnvironment};
 pub use codec::{CurrencyCode, MoneyValue, NormalizedJson, StorageUuid, UtcTimestampMicros};
