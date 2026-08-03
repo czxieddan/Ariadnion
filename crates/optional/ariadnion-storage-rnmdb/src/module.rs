@@ -33,27 +33,30 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use ariadnion_api_admin::AdminExecutionPort;
 use ariadnion_core::{
     CORE_ABI_VERSION, CapabilityId, CapabilityProvider, CapabilityRequirement,
     CapabilityResolution, ConfigurationContract, CoreError, ErrorCode, ExecutionBudget,
     ExecutionBudgetInput, HealthReasonCode, HealthStatus, LifecycleBudget, LifecycleBudgetInput,
     ModuleConfigurationSnapshot, ModuleContext, ModuleDescriptor, ModuleDescriptorInput,
     ModuleFactory, ModuleHandle, ModuleHealthSnapshot, ModuleId, ModuleShutdownReport,
-    ModuleVersion, RequestContext, RequestId, ResourceBudget, SecretCapabilityRequirement,
-    ShutdownPriority, TraceId, WasmBudget,
+    ModuleVersion, PortHandle, RequestContext, RequestId, ResourceBudget,
+    SecretCapabilityRequirement, ShutdownPriority, TraceId, WasmBudget,
 };
 use ariadnion_storage_domain::{StorageError, StorageErrorCode};
 
+use crate::admin_execution::{AdminExecutionCapability, admin_execution_provider};
 use crate::migration_definition::compiled_migration_definitions;
 use crate::{
-    REVIEWED_RNMDB_COMMIT, RnmdbColumnSecurity, RnmdbMigrationRunner, RnmdbSessionOwner,
-    SecretLocatorKeyMaterial, SessionOpenOptions, UtcTimestampMicros,
+    AuditSubjectKeyMaterial, REVIEWED_RNMDB_COMMIT, RnmdbColumnSecurity, RnmdbMigrationRunner,
+    RnmdbSessionOwner, SecretLocatorKeyMaterial, SessionOpenOptions, UtcTimestampMicros,
 };
 
 const MODULE_ID: &str = "org.ariadnion.storage.rnmdb";
 const RELATIONAL_CAPABILITY: &str = "org.ariadnion.storage.relational";
 const PAGE_KEY_CAPABILITY: &str = "org.ariadnion.secret.page-key";
 const SECRET_LOCATOR_KEY_CAPABILITY: &str = "org.ariadnion.secret.locator-column-key";
+const AUDIT_SUBJECT_KEY_CAPABILITY: &str = "org.ariadnion.secret.audit-subject-key";
 const CONFIGURATION_SCHEMA: &str = "org.ariadnion.storage.rnmdb.config";
 const MODULE_LICENSE: &str = "LicenseRef-AHCL-1.0";
 const EMPTY_CONFIGURATION_DIGEST: &str =
@@ -66,28 +69,33 @@ const MODULE_METADATA: &str = include_str!("../module.toml");
 ///
 /// Secret-bearing open options remain behind a mutex and are consumed exactly
 /// once by [`ModuleFactory::start`]. The immutable descriptor contains only a
-/// typed secret capability requirement and a sensitive configuration path.
+/// typed set of page, locator-column, and audit-subject secret requirements and
+/// their sensitive configuration paths.
 pub struct StorageRnmdbModule {
     descriptor: ModuleDescriptor,
     options: Mutex<Option<StorageRnmdbModuleOptions>>,
+    admin_execution: AdminExecutionCapability,
 }
 
 /// Single-consumption secrets and paths needed to start RNMDB storage.
 pub struct StorageRnmdbModuleOptions {
     session: SessionOpenOptions,
     secret_locator_key: SecretLocatorKeyMaterial,
+    audit_subject_key: AuditSubjectKeyMaterial,
 }
 
 impl StorageRnmdbModuleOptions {
-    /// Combines encrypted-session options with the managed locator-column key.
+    /// Combines encrypted-session options with locator-column and audit-subject keys.
     #[must_use]
     pub const fn new(
         session: SessionOpenOptions,
         secret_locator_key: SecretLocatorKeyMaterial,
+        audit_subject_key: AuditSubjectKeyMaterial,
     ) -> Self {
         Self {
             session,
             secret_locator_key,
+            audit_subject_key,
         }
     }
 }
@@ -130,10 +138,21 @@ impl StorageRnmdbModule {
         ModuleConfigurationSnapshot::new(CONFIGURATION_SCHEMA, 1, EMPTY_CONFIGURATION_DIGEST)
     }
 
+    /// Resolves the shared administration executor for the current live generation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ErrorCode::Unavailable`] before successful startup and after
+    /// shutdown invalidates the provider generation.
+    pub fn resolve_admin_execution(&self) -> Result<PortHandle<dyn AdminExecutionPort>, CoreError> {
+        self.admin_execution.resolve()
+    }
+
     fn with_options(options: Option<StorageRnmdbModuleOptions>) -> Result<Self, CoreError> {
         Ok(Self {
             descriptor: build_descriptor()?,
             options: Mutex::new(options),
+            admin_execution: AdminExecutionCapability::new()?,
         })
     }
 }
@@ -158,18 +177,14 @@ impl ModuleFactory for StorageRnmdbModule {
         cancellation.check_active()?;
         validate_secret_resolution(&self.descriptor, context.capabilities())?;
         let options = take_options(&self.options)?;
-        let session = RnmdbSessionOwner::open(options.session)
-            .map(Arc::new)
-            .map_err(map_storage_error)?;
-        let request = startup_request_context(cancellation.clone())?;
-        apply_startup_migrations(&session, &request)?;
-        RnmdbColumnSecurity::new(session.clone())
-            .configure_secret_locator(options.secret_locator_key, &request)
-            .map_err(map_storage_error)?;
+        let (session, audit_subject_key) = start_ready_storage(options, cancellation.clone())?;
+        self.admin_execution
+            .publish(session.clone(), audit_subject_key, cancellation.clone())?;
         Ok(Box::new(StorageRnmdbHandle {
             module_id: self.descriptor.id().clone(),
             cancellation,
             session: Some(session),
+            admin_execution: Some(self.admin_execution.clone()),
         }))
     }
 }
@@ -178,6 +193,7 @@ struct StorageRnmdbHandle {
     module_id: ModuleId,
     cancellation: ariadnion_core::CancellationToken,
     session: Option<Arc<RnmdbSessionOwner>>,
+    admin_execution: Option<AdminExecutionCapability>,
 }
 
 impl ModuleHandle for StorageRnmdbHandle {
@@ -203,6 +219,7 @@ impl ModuleHandle for StorageRnmdbHandle {
     }
 
     fn shutdown(&mut self, deadline: SystemTime) -> Result<ModuleShutdownReport, CoreError> {
+        invalidate_admin_execution(&mut self.admin_execution)?;
         let Some(session) = self.session.as_ref() else {
             return Ok(ModuleShutdownReport::new(0, 0, true));
         };
@@ -222,9 +239,8 @@ fn build_descriptor() -> Result<ModuleDescriptor, CoreError> {
 
 fn descriptor_input() -> Result<ModuleDescriptorInput, CoreError> {
     let id = ModuleId::parse(MODULE_ID)?;
-    let provided = relational_provider(&id)?;
-    let page_key = page_key_requirement()?;
-    let locator_key = secret_locator_key_requirement()?;
+    let provided = descriptor_providers(&id)?;
+    let required_secret_capabilities = descriptor_secret_requirements()?;
     let configuration = configuration_contract()?;
     let resources = module_resource_budget()?;
     let shutdown_priority = ShutdownPriority::new(512)?;
@@ -233,19 +249,35 @@ fn descriptor_input() -> Result<ModuleDescriptorInput, CoreError> {
         version: MODULE_VERSION,
         build_commit: REVIEWED_RNMDB_COMMIT.into(),
         abi_version: CORE_ABI_VERSION,
-        provided: vec![provided],
+        provided,
         required: Vec::new(),
-        required_secret_capabilities: vec![page_key, locator_key],
+        required_secret_capabilities,
         configuration,
         resources,
         shutdown_priority,
         sensitive_paths: vec![
             "storage.rnmdb.page_key_ref".into(),
             "storage.rnmdb.secret_locator_key_ref".into(),
+            "storage.rnmdb.audit_subject_key_ref".into(),
         ],
         observability_namespace: "ariadnion.storage.rnmdb".into(),
         audit_namespace: "ariadnion.storage.rnmdb".into(),
     })
+}
+
+fn descriptor_providers(module_id: &ModuleId) -> Result<Vec<CapabilityProvider>, CoreError> {
+    Ok(vec![
+        relational_provider(module_id)?,
+        admin_execution_provider(module_id, CONTRACT_VERSION)?,
+    ])
+}
+
+fn descriptor_secret_requirements() -> Result<Vec<SecretCapabilityRequirement>, CoreError> {
+    Ok(vec![
+        page_key_requirement()?,
+        secret_locator_key_requirement()?,
+        audit_subject_key_requirement()?,
+    ])
 }
 
 fn relational_provider(module_id: &ModuleId) -> Result<CapabilityProvider, CoreError> {
@@ -270,6 +302,16 @@ fn secret_locator_key_requirement() -> Result<SecretCapabilityRequirement, CoreE
     Ok(SecretCapabilityRequirement::new(
         CapabilityRequirement::new(
             CapabilityId::parse(SECRET_LOCATOR_KEY_CAPABILITY)?,
+            CONTRACT_VERSION,
+            Some(1),
+        ),
+    ))
+}
+
+fn audit_subject_key_requirement() -> Result<SecretCapabilityRequirement, CoreError> {
+    Ok(SecretCapabilityRequirement::new(
+        CapabilityRequirement::new(
+            CapabilityId::parse(AUDIT_SUBJECT_KEY_CAPABILITY)?,
             CONTRACT_VERSION,
             Some(1),
         ),
@@ -313,7 +355,7 @@ fn validate_secret_resolution(
     capabilities: &CapabilityResolution,
 ) -> Result<(), CoreError> {
     let requirements = descriptor.required_secret_capabilities();
-    if requirements.len() != 2 {
+    if requirements.len() != 3 {
         return Err(CoreError::from_code(ErrorCode::Internal)
             .with_internal_context("RNMDB secret requirements are incomplete"));
     }
@@ -467,6 +509,32 @@ fn take_options(
         CoreError::from_code(ErrorCode::Unavailable)
             .with_internal_context("RNMDB session options are unavailable")
     })
+}
+
+fn invalidate_admin_execution(
+    capability: &mut Option<AdminExecutionCapability>,
+) -> Result<(), CoreError> {
+    let Some(active) = capability.as_ref() else {
+        return Ok(());
+    };
+    active.invalidate()?;
+    *capability = None;
+    Ok(())
+}
+
+fn start_ready_storage(
+    options: StorageRnmdbModuleOptions,
+    cancellation: ariadnion_core::CancellationToken,
+) -> Result<(Arc<RnmdbSessionOwner>, AuditSubjectKeyMaterial), CoreError> {
+    let session = RnmdbSessionOwner::open(options.session)
+        .map(Arc::new)
+        .map_err(map_storage_error)?;
+    let request = startup_request_context(cancellation)?;
+    apply_startup_migrations(&session, &request)?;
+    RnmdbColumnSecurity::new(session.clone())
+        .configure_secret_locator(options.secret_locator_key, &request)
+        .map_err(map_storage_error)?;
+    Ok((session, options.audit_subject_key))
 }
 
 fn startup_request_context(
