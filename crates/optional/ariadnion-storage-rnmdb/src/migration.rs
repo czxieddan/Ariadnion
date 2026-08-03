@@ -33,7 +33,9 @@ use std::sync::Arc;
 
 use ariadnion_api_admin::migrations::IDENTITY_ADMIN_COMMAND_MIGRATION_ID;
 use ariadnion_audit_domain::migrations::IDENTITY_AUDIT_MIGRATION_ID;
-use ariadnion_auth_api_key::migrations::IDENTITY_API_KEYS_MIGRATION_ID;
+use ariadnion_auth_api_key::migrations::{
+    IDENTITY_API_KEY_REQUEST_EVIDENCE_MIGRATION_ID, IDENTITY_API_KEYS_MIGRATION_ID,
+};
 use ariadnion_auth_password::migrations::{
     IDENTITY_PASSWORD_COMMIT_EVIDENCE_MIGRATION_ID, IDENTITY_PASSWORD_MIGRATION_ID,
 };
@@ -308,6 +310,23 @@ pub fn identity_principal_bindings_migration() -> Result<MigrationDescriptor, St
 /// the frozen canonical checksum fail validation.
 pub fn identity_principal_authenticators_migration() -> Result<MigrationDescriptor, StorageError> {
     compiled_migration_definitions()?.descriptor(IDENTITY_PRINCIPAL_AUTHENTICATORS_MIGRATION_ID)
+}
+
+/// Returns the durable API-key request-evidence migration after digest verification.
+///
+/// The migration remains outside module startup. Callers must request the
+/// version-eighteen to version-nineteen transition explicitly through the
+/// registry. The immutable table records the originating request identifier
+/// for each tenant, API key, and aggregate version without granting mutation or
+/// deletion privileges. This synchronous accessor performs no I/O and has no
+/// cancellation boundary.
+///
+/// # Errors
+///
+/// Returns an integrity error when registry metadata, migration statements, or
+/// the frozen canonical checksum fail validation.
+pub fn identity_api_key_request_evidence_migration() -> Result<MigrationDescriptor, StorageError> {
+    compiled_migration_definitions()?.descriptor(IDENTITY_API_KEY_REQUEST_EVIDENCE_MIGRATION_ID)
 }
 
 fn migration_insert(

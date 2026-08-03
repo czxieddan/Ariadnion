@@ -89,3 +89,37 @@ pub const IDENTITY_API_KEY_MIGRATION_STATEMENTS: &[&str] = IDENTITY_API_KEYS_MIG
 /// Singular alias for the canonical checksum bytes.
 pub const IDENTITY_API_KEY_MIGRATION_CANONICAL_V1_SHA256: [u8; 32] =
     IDENTITY_API_KEYS_MIGRATION_CANONICAL_V1_SHA256;
+
+/// Stable identifier of the durable API-key request-evidence migration.
+pub const IDENTITY_API_KEY_REQUEST_EVIDENCE_MIGRATION_ID: &str =
+    "identity.0015.api-key-request-evidence";
+
+/// Stable domain recorded for the API-key request-evidence migration.
+pub const IDENTITY_API_KEY_REQUEST_EVIDENCE_MIGRATION_DOMAIN: &str = "identity";
+
+/// Global schema version required before the API-key request-evidence migration.
+pub const IDENTITY_API_KEY_REQUEST_EVIDENCE_MIGRATION_FROM_VERSION: u64 = 18;
+
+/// Global schema version produced by the API-key request-evidence migration.
+pub const IDENTITY_API_KEY_REQUEST_EVIDENCE_MIGRATION_TO_VERSION: u64 = 19;
+
+/// Whether the migration runner requires a separate backup prerequisite.
+///
+/// This additive migration runs only against a new target while the source is
+/// retained, so the migration itself does not require another backup.
+pub const IDENTITY_API_KEY_REQUEST_EVIDENCE_MIGRATION_REQUIRES_BACKUP: bool = false;
+
+/// Ordered single-statement definitions for immutable API-key request evidence.
+pub const IDENTITY_API_KEY_REQUEST_EVIDENCE_MIGRATION_STATEMENTS: &[&str] = &[
+    "CREATE TABLE identity_api_key_request_evidence (tenant_id TEXT NOT NULL, api_key_id TEXT NOT NULL, version TEXT NOT NULL, request_id TEXT NOT NULL);",
+    "CREATE UNIQUE INDEX identity_api_key_request_evidence_tenant_key_version_uq ON identity_api_key_request_evidence (tenant_id, api_key_id, version);",
+    "CREATE POLICY tenant_identity_api_key_request_evidence ON identity_api_key_request_evidence USING (tenant_id = current_tenant());",
+    "GRANT SELECT ON TABLE identity_api_key_request_evidence TO ariadnion_identity_runtime;",
+    "GRANT INSERT ON TABLE identity_api_key_request_evidence TO ariadnion_identity_runtime;",
+];
+
+/// Canonical-AST-v1 SHA-256 of the ordered API-key request-evidence statements.
+pub const IDENTITY_API_KEY_REQUEST_EVIDENCE_MIGRATION_CANONICAL_V1_SHA256: [u8; 32] = [
+    0x16, 0x24, 0x6e, 0x80, 0x9f, 0xd6, 0x58, 0x89, 0x6c, 0x7f, 0xb0, 0x8e, 0xef, 0x23, 0xfa, 0x28,
+    0x8a, 0xd3, 0x3f, 0x6e, 0xed, 0xab, 0x09, 0xc3, 0x11, 0xf4, 0xd8, 0xd4, 0x03, 0x4e, 0xa4, 0x1f,
+];

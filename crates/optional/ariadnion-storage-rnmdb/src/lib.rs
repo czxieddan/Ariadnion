@@ -87,7 +87,8 @@ pub use maintenance::{
 };
 pub use migration::{
     MigrationApplyStatus, RnmdbMigrationRunner, identity_admin_command_migration,
-    identity_api_key_migration, identity_audit_migration, identity_invitation_migration,
+    identity_api_key_migration, identity_api_key_request_evidence_migration,
+    identity_audit_migration, identity_invitation_migration,
     identity_organization_event_replay_migration, identity_organization_migration,
     identity_password_commit_evidence_migration, identity_password_migration,
     identity_principal_authenticators_migration, identity_principal_bindings_migration,
