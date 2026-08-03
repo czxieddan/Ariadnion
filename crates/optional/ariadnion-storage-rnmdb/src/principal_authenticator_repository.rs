@@ -243,8 +243,10 @@ pub(crate) fn reconcile_principal_authenticator_history_by_source_in_session(
         facts.push(ReconciledPrincipalAuthenticatorFact {
             kind: event.kind(),
             actor: event.actor().clone(),
+            request_id: event.request_id().clone(),
             occurred_at: event.occurred_at(),
             committed_at: reconciled.committed_at(),
+            audit_sequence: reconciled.audit_sequence(),
         });
         previous = Some(reconciled);
     }
@@ -276,12 +278,16 @@ impl ReconciledPrincipalAuthenticatorHistory {
 /// Authenticated non-secret facts for one persisted link transition.
 ///
 /// Raw source identifiers, payloads, and audit digests are deliberately not
-/// exposed to composing repositories.
+/// exposed to composing repositories. The authenticated request identity is
+/// retained because composing repositories use it to re-derive paired evidence
+/// whose primary event row does not persist a request identity.
 pub(crate) struct ReconciledPrincipalAuthenticatorFact {
     kind: PrincipalAuthenticatorEventKind,
     actor: PrincipalId,
+    request_id: ariadnion_core::RequestId,
     occurred_at: UtcTimestamp,
     committed_at: UtcTimestamp,
+    audit_sequence: ariadnion_audit_domain::AuditSequence,
 }
 
 impl ReconciledPrincipalAuthenticatorFact {
@@ -293,12 +299,21 @@ impl ReconciledPrincipalAuthenticatorFact {
         &self.actor
     }
 
+    /// Returns the authenticated request identity bound to this transition.
+    pub(crate) const fn request_id(&self) -> &ariadnion_core::RequestId {
+        &self.request_id
+    }
+
     pub(crate) const fn occurred_at(&self) -> UtcTimestamp {
         self.occurred_at
     }
 
     pub(crate) const fn committed_at(&self) -> UtcTimestamp {
         self.committed_at
+    }
+
+    pub(crate) const fn audit_sequence(&self) -> ariadnion_audit_domain::AuditSequence {
+        self.audit_sequence
     }
 }
 

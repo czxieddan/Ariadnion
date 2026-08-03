@@ -84,13 +84,50 @@ pub(super) fn reconcile_transition_evidence(
     session: &mut LocalSession,
     request: &CommitRequest<'_>,
     key: &AuditSubjectKeyMaterial,
-) -> Result<UtcTimestamp, StorageError> {
+) -> Result<ReconciledTransitionEvidence, StorageError> {
     let identity = reconciliation_identity(request)?;
     let outbox = load_outbox(session, request, &identity.outbox_id, &identity.outbox_key)?;
     let evidence = TransitionEvidence::new(request, key, outbox.committed_at)?;
     validate_reconciled_evidence(&evidence, &outbox, &identity)?;
-    reconcile_audit(session, &evidence, request.context)?;
-    Ok(outbox.committed_at)
+    let (audit_sequence, durable_head_sequence) =
+        reconcile_audit(session, &evidence, request.context)?;
+    Ok(ReconciledTransitionEvidence {
+        committed_at: outbox.committed_at,
+        audit_sequence,
+        durable_head_sequence,
+    })
+}
+
+/// Authenticated commit time and audit-order facts for one API-key transition.
+pub(super) struct ReconciledTransitionEvidence {
+    committed_at: UtcTimestamp,
+    audit_sequence: AuditSequence,
+    durable_head_sequence: AuditSequence,
+}
+
+impl ReconciledTransitionEvidence {
+    pub(super) const fn committed_at(&self) -> UtcTimestamp {
+        self.committed_at
+    }
+
+    pub(super) const fn audit_sequence(&self) -> AuditSequence {
+        self.audit_sequence
+    }
+
+    pub(super) const fn durable_head_sequence(&self) -> AuditSequence {
+        self.durable_head_sequence
+    }
+}
+
+pub(super) fn validate_later_transition_evidence(
+    earlier: &ReconciledTransitionEvidence,
+    later: &ReconciledTransitionEvidence,
+) -> Result<(), StorageError> {
+    let valid = later.audit_sequence() > earlier.audit_sequence()
+        && earlier.audit_sequence() <= earlier.durable_head_sequence()
+        && later.audit_sequence() <= later.durable_head_sequence()
+        && later.audit_sequence() <= earlier.durable_head_sequence();
+    valid.then_some(()).ok_or_else(integrity_failure)
 }
 
 struct ReconciliationIdentity {
@@ -128,17 +165,17 @@ fn reconcile_audit(
     session: &mut LocalSession,
     evidence: &TransitionEvidence,
     context: &ariadnion_core::RequestContext,
-) -> Result<(), StorageError> {
-    let (persisted, _) =
+) -> Result<(AuditSequence, AuditSequence), StorageError> {
+    let (persisted, head) =
         load_durable_event_with_head(session, &evidence.tenant, &evidence.audit_id, context)
             .map_err(map_reconcile_error)?;
     let expected =
         evidence.audit_event_at(persisted.sequence(), persisted.previous_chain_digest())?;
-    if persisted == expected {
-        Ok(())
-    } else {
-        Err(integrity_failure())
-    }
+    let durable_head_sequence = head.last_sequence().ok_or_else(integrity_failure)?;
+    let valid = persisted == expected && persisted.sequence() <= durable_head_sequence;
+    valid
+        .then_some((persisted.sequence(), durable_head_sequence))
+        .ok_or_else(integrity_failure)
 }
 
 fn append_audit(

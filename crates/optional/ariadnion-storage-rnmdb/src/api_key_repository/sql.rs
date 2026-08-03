@@ -30,7 +30,7 @@
 //! Fixed tenant-bound SQL for durable scoped API keys.
 
 use ariadnion_auth_api_key::{
-    ApiKey, ApiKeyEvent, ApiKeyEventKind, ApiKeyId, ApiKeyPrefix, ApiKeyState, ApiKeyVersion,
+    ApiKey, ApiKeyEventKind, ApiKeyId, ApiKeyPrefix, ApiKeyState, ApiKeyVersion,
 };
 use ariadnion_core::TenantId;
 use ariadnion_storage_domain::{StorageError, StorageErrorCode};
@@ -44,6 +44,7 @@ pub(super) const KEY_PROJECTION: &str = "tenant_id, user_id, api_key_id, prefix,
 pub(super) const SCOPE_PROJECTION: &str = "tenant_id, api_key_id, scope";
 pub(super) const RETIRED_PROJECTION: &str = "tenant_id, api_key_id, ordinal, secret_digest";
 pub(super) const EVENT_PROJECTION: &str = "tenant_id, api_key_id, user_id, version, kind, occurred_at, actor_id, state, current_secret_digest, previous_secret_digest, rotation_started_at, previous_secret_expires_at";
+pub(super) const REQUEST_EVIDENCE_PROJECTION: &str = "tenant_id, api_key_id, version, request_id";
 pub(super) const OUTBOX_PROJECTION: &str = "tenant_id, event_id, topic, idempotency_key, payload_hex, created_at, available_at, attempt, state, lease_token, lease_worker, lease_expires_at, delivered_at, failed_at";
 const OWNER_PROJECTION: &str = "tenant_id, user_id, api_key_id, prefix";
 const MAX_SQL_BYTES: usize = 1_048_576;
@@ -114,6 +115,14 @@ pub(super) fn load_events(
     companion_query(session, event_query(), tenant, key)
 }
 
+pub(super) fn load_request_evidence(
+    session: &mut LocalSession,
+    tenant: &TenantId,
+    key: &ApiKeyId,
+) -> Result<CommandOutput, StorageError> {
+    companion_query(session, request_evidence_query(), tenant, key)
+}
+
 pub(super) fn load_outbox(
     session: &mut LocalSession,
     tenant: &TenantId,
@@ -180,6 +189,15 @@ const fn event_query() -> CompanionQuery {
     CompanionQuery {
         projection: EVENT_PROJECTION,
         table: "identity_api_key_events",
+        order: "version",
+        limit: MAX_API_KEY_EVENT_ROWS + 1,
+    }
+}
+
+const fn request_evidence_query() -> CompanionQuery {
+    CompanionQuery {
+        projection: REQUEST_EVIDENCE_PROJECTION,
+        table: "identity_api_key_request_evidence",
         order: "version",
         limit: MAX_API_KEY_EVENT_ROWS + 1,
     }
@@ -284,9 +302,18 @@ pub(super) fn insert_retired_at(
 
 pub(super) fn insert_event(
     session: &mut LocalSession,
-    event: &ApiKeyEvent,
-    key: &ApiKey,
+    request: &CommitRequest<'_>,
 ) -> Result<(), StorageError> {
+    insert_legacy_event(session, request)?;
+    insert_request_evidence(session, request)
+}
+
+fn insert_legacy_event(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+) -> Result<(), StorageError> {
+    let event = request.transition.event();
+    let key = request.transition.key();
     let mut sql = format!("INSERT INTO identity_api_key_events ({EVENT_PROJECTION}) VALUES (");
     push_text(&mut sql, event.tenant_id().as_str());
     push_value(&mut sql, event.key_id().as_str());
@@ -300,6 +327,22 @@ pub(super) fn insert_event(
     push_optional_digest(&mut sql, key.previous_secret());
     push_optional_time(&mut sql, key.rotation_started_at());
     push_optional_time(&mut sql, key.previous_secret_expires_at());
+    sql.push_str(");");
+    require_single_insert(session, sql)
+}
+
+fn insert_request_evidence(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+) -> Result<(), StorageError> {
+    let key = request.transition.key();
+    let mut sql = format!(
+        "INSERT INTO identity_api_key_request_evidence ({REQUEST_EVIDENCE_PROJECTION}) VALUES ("
+    );
+    push_text(&mut sql, request.tenant_id.as_str());
+    push_value(&mut sql, key.id().as_str());
+    push_value(&mut sql, &encode_version(key.version()));
+    push_value(&mut sql, request.context.request_id().as_str());
     sql.push_str(");");
     require_single_insert(session, sql)
 }

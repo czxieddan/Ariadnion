@@ -31,6 +31,7 @@
 
 mod decode;
 mod evidence;
+mod reconcile;
 mod sql;
 
 use std::sync::Arc;
@@ -42,11 +43,23 @@ use ariadnion_auth_api_key::{
     MAX_RETIRED_SECRETS,
 };
 use ariadnion_core::{PrincipalContext, RequestContext, TenantId};
+use ariadnion_principal_binding::{
+    AuthenticatedPrincipalEvidence, PrincipalAuthenticatorCommand, PrincipalAuthenticatorEventKind,
+    PrincipalAuthenticatorKind, PrincipalAuthenticatorLink, PrincipalAuthenticatorSourceId,
+    PrincipalAuthenticatorState, PrincipalAuthenticatorTransition, PrincipalAuthenticatorVersion,
+    PrincipalBinding, link_authenticator, revoke_authenticator,
+};
 use ariadnion_storage_domain::{StorageError, StorageErrorCode};
 use ariadnion_user_domain::{UserId, UtcTimestamp};
 use rnmdb_cli::LocalSession;
 
 use crate::identity_transaction::{require_active_identity_transaction, run_identity_transaction};
+use crate::principal_authenticator_repository::{
+    PrincipalAuthenticatorCommitRequest, ReconciledPrincipalAuthenticatorHistory,
+    commit_principal_authenticator_in_session,
+    reconcile_principal_authenticator_history_by_source_in_session,
+};
+use crate::principal_binding_repository::load_principal_binding_in_session;
 use crate::{AuditSubjectKeyMaterial, RnmdbSessionOwner, SessionOpenOptions};
 
 pub(super) const MAX_API_KEY_EVENT_ROWS: usize = MAX_RETIRED_SECRETS * 2 + 2;
@@ -168,7 +181,7 @@ impl ApiKeyRepositoryPort for RnmdbApiKeyRepository {
         validate_commit_shape(&request, kind).map_err(map_storage_error)?;
         self.session
             .with_identity_storage_session(context, tenant_id, |session| {
-                reconcile_exact(session, &request, &self.audit_subject_key)
+                reconcile::reconcile_exact(session, &request, &self.audit_subject_key)
             })
             .map_err(map_storage_error)
     }
@@ -242,15 +255,82 @@ fn commit_issuance(
     request: &CommitRequest<'_>,
     subject_key: &AuditSubjectKeyMaterial,
 ) -> Result<ApiKeyCommitReceipt, StorageError> {
+    let authenticator = issuance_authenticator_transition(session, request)?;
+    persist_issued_key(session, request)?;
+    let committed_at = trusted_commit_time()?;
+    persist_paired_issuance_evidence(session, request, &authenticator, subject_key, committed_at)?;
+    Ok(commit_receipt(request, committed_at))
+}
+
+fn persist_issued_key(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+) -> Result<(), StorageError> {
     let key = request.transition.key();
     decode::ensure_issuance_absent(session, request)?;
     sql::insert_key(session, key)?;
     sql::insert_scopes(session, key)?;
     sql::insert_retired(session, key)?;
-    sql::insert_event(session, request.transition.event(), key)?;
-    let committed_at = trusted_commit_time()?;
+    sql::insert_event(session, request)
+}
+
+fn persist_paired_issuance_evidence(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    authenticator: &PrincipalAuthenticatorTransition,
+    subject_key: &AuditSubjectKeyMaterial,
+    committed_at: UtcTimestamp,
+) -> Result<(), StorageError> {
     evidence::persist_transition_evidence(session, request, subject_key, committed_at)?;
-    Ok(commit_receipt(request, committed_at))
+    persist_authenticator_transition(session, request, authenticator, subject_key, committed_at)
+}
+
+fn issuance_authenticator_transition(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+) -> Result<PrincipalAuthenticatorTransition, StorageError> {
+    let principal = authenticated_principal(request.context)?;
+    let binding =
+        load_principal_binding_in_session(session, request.tenant_id, principal.principal_id())
+            .map_err(map_linkage_dependency_error)?;
+    link_authenticator(
+        &binding,
+        PrincipalAuthenticatorKind::ApiKey,
+        api_key_authenticator_source(request.transition.key().id())?,
+        request.transition.event().actor().clone(),
+        request.context.request_id().clone(),
+        request.transition.event().occurred_at(),
+    )
+    .map_err(|_| integrity_failure())
+}
+
+fn api_key_authenticator_source(
+    api_key_id: &ApiKeyId,
+) -> Result<PrincipalAuthenticatorSourceId, StorageError> {
+    PrincipalAuthenticatorSourceId::parse(api_key_id.as_str()).map_err(|_| integrity_failure())
+}
+
+fn persist_authenticator_transition(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    transition: &PrincipalAuthenticatorTransition,
+    subject_key: &AuditSubjectKeyMaterial,
+    committed_at: UtcTimestamp,
+) -> Result<(), StorageError> {
+    let authenticator_request = PrincipalAuthenticatorCommitRequest::new(
+        request.tenant_id,
+        transition.authenticator_id(),
+        transition.expected_previous_version(),
+        transition,
+        request.context,
+    );
+    commit_principal_authenticator_in_session(
+        session,
+        &authenticator_request,
+        subject_key,
+        committed_at,
+    )
+    .map(|_| ())
 }
 
 fn commit_rotation(
@@ -265,12 +345,9 @@ fn commit_rotation(
         request.transition.key().id(),
     )?;
     validate_rotation_precondition(request, &durable)?;
+    validate_active_api_key_authenticator(session, request, &durable, subject_key)?;
     sql::update_rotation(session, request, &durable)?;
-    sql::insert_event(
-        session,
-        request.transition.event(),
-        request.transition.key(),
-    )?;
+    sql::insert_event(session, request)?;
     let committed_at = trusted_commit_time()?;
     evidence::persist_transition_evidence(session, request, subject_key, committed_at)?;
     Ok(commit_receipt(request, committed_at))
@@ -288,20 +365,90 @@ fn commit_rotation_completion(
         request.transition.key().id(),
     )?;
     validate_completion_precondition(request, &durable)?;
-    sql::update_rotation_completion(session, request, &durable)?;
+    validate_active_api_key_authenticator(session, request, &durable, subject_key)?;
+    persist_rotation_completion_rows(session, request, &durable)?;
+    let committed_at = trusted_commit_time()?;
+    evidence::persist_transition_evidence(session, request, subject_key, committed_at)?;
+    Ok(commit_receipt(request, committed_at))
+}
+
+fn persist_rotation_completion_rows(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    durable: &ApiKey,
+) -> Result<(), StorageError> {
+    sql::update_rotation_completion(session, request, durable)?;
     sql::insert_retired_at(
         session,
         request.transition.key(),
         durable.retired_secrets().len(),
     )?;
-    sql::insert_event(
+    sql::insert_event(session, request)
+}
+
+fn validate_active_api_key_authenticator(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    durable: &ApiKey,
+    subject_key: &AuditSubjectKeyMaterial,
+) -> Result<(), StorageError> {
+    let history = reconcile_api_key_authenticator_history(session, request, subject_key)?;
+    validate_active_link_history(&history)?;
+    let issuance_actor = decode::issuance_actor(session, durable)?;
+    validate_update_principal(request, history.link(), &issuance_actor)?;
+    let binding = load_authenticator_binding(session, request, history.link())?;
+    AuthenticatedPrincipalEvidence::from_active_link(history.link(), &binding)
+        .map(|_| ())
+        .map_err(|_| integrity_failure())
+}
+
+fn reconcile_api_key_authenticator_history(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    subject_key: &AuditSubjectKeyMaterial,
+) -> Result<ReconciledPrincipalAuthenticatorHistory, StorageError> {
+    let source = api_key_authenticator_source(request.transition.key().id())?;
+    reconcile_principal_authenticator_history_by_source_in_session(
         session,
-        request.transition.event(),
-        request.transition.key(),
-    )?;
-    let committed_at = trusted_commit_time()?;
-    evidence::persist_transition_evidence(session, request, subject_key, committed_at)?;
-    Ok(commit_receipt(request, committed_at))
+        request.tenant_id,
+        PrincipalAuthenticatorKind::ApiKey,
+        &source,
+        subject_key,
+        request.context,
+    )
+    .map_err(map_reconcile_error)
+}
+
+fn validate_active_link_history(
+    history: &ReconciledPrincipalAuthenticatorHistory,
+) -> Result<(), StorageError> {
+    let link = history.link();
+    let linked = history.facts().first().ok_or_else(integrity_failure)?;
+    let valid = link.version() == PrincipalAuthenticatorVersion::initial()
+        && link.state() == PrincipalAuthenticatorState::Active
+        && link.revoked_at().is_none()
+        && history.facts().len() == 1
+        && linked.kind() == PrincipalAuthenticatorEventKind::Linked;
+    valid.then_some(()).ok_or_else(integrity_failure)
+}
+
+fn validate_update_principal(
+    request: &CommitRequest<'_>,
+    link: &PrincipalAuthenticatorLink,
+    issuance_actor: &ariadnion_core::PrincipalId,
+) -> Result<(), StorageError> {
+    let actor = request.transition.event().actor();
+    let valid = link.principal_id() == issuance_actor && actor == link.principal_id();
+    valid.then_some(()).ok_or_else(integrity_failure)
+}
+
+fn load_authenticator_binding(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    link: &PrincipalAuthenticatorLink,
+) -> Result<PrincipalBinding, StorageError> {
+    load_principal_binding_in_session(session, request.tenant_id, link.principal_id())
+        .map_err(map_linkage_dependency_error)
 }
 
 fn commit_terminal(
@@ -316,16 +463,57 @@ fn commit_terminal(
         request.transition.key().id(),
     )?;
     validate_terminal_precondition(request, &durable)?;
-    sql::update_terminal(session, request, &durable)?;
-    persist_terminal_retirement(session, request.transition.key(), &durable)?;
-    sql::insert_event(
-        session,
-        request.transition.event(),
-        request.transition.key(),
-    )?;
+    let authenticator = terminal_authenticator_transition(session, request, &durable, subject_key)?;
+    persist_terminal_rows(session, request, &durable)?;
     let committed_at = trusted_commit_time()?;
-    evidence::persist_transition_evidence(session, request, subject_key, committed_at)?;
+    persist_paired_terminal_evidence(session, request, &authenticator, subject_key, committed_at)?;
     Ok(commit_receipt(request, committed_at))
+}
+
+fn persist_terminal_rows(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    durable: &ApiKey,
+) -> Result<(), StorageError> {
+    sql::update_terminal(session, request, durable)?;
+    persist_terminal_retirement(session, request.transition.key(), durable)?;
+    sql::insert_event(session, request)
+}
+
+fn terminal_authenticator_transition(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    durable: &ApiKey,
+    subject_key: &AuditSubjectKeyMaterial,
+) -> Result<PrincipalAuthenticatorTransition, StorageError> {
+    let history = reconcile_api_key_authenticator_history(session, request, subject_key)?;
+    validate_active_link_history(&history)?;
+    let issuance_actor = decode::issuance_actor(session, durable)?;
+    if history.link().principal_id() != &issuance_actor {
+        return Err(integrity_failure());
+    }
+    let event = request.transition.event();
+    revoke_authenticator(
+        history.link(),
+        PrincipalAuthenticatorCommand::new(
+            history.link().version(),
+            event.actor().clone(),
+            request.context.request_id().clone(),
+            event.occurred_at(),
+        ),
+    )
+    .map_err(|_| integrity_failure())
+}
+
+fn persist_paired_terminal_evidence(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+    authenticator: &PrincipalAuthenticatorTransition,
+    subject_key: &AuditSubjectKeyMaterial,
+    committed_at: UtcTimestamp,
+) -> Result<(), StorageError> {
+    evidence::persist_transition_evidence(session, request, subject_key, committed_at)?;
+    persist_authenticator_transition(session, request, authenticator, subject_key, committed_at)
 }
 
 fn persist_terminal_retirement(
@@ -348,26 +536,6 @@ fn commit_receipt(request: &CommitRequest<'_>, committed_at: UtcTimestamp) -> Ap
         key.version(),
         committed_at,
     )
-}
-
-fn reconcile_exact(
-    session: &mut LocalSession,
-    request: &CommitRequest<'_>,
-    subject_key: &AuditSubjectKeyMaterial,
-) -> Result<ApiKeyCommitReceipt, StorageError> {
-    let target = request.transition.key();
-    let durable = decode::load_key(session, request.tenant_id, request.user_id, target.id())
-        .map_err(map_reconcile_error)?;
-    validate_reconciliation_snapshot(&durable, target)?;
-    decode::verify_target_event(session, request, &durable).map_err(map_reconcile_error)?;
-    let committed_at = evidence::reconcile_transition_evidence(session, request, subject_key)
-        .map_err(map_reconcile_error)?;
-    Ok(commit_receipt(request, committed_at))
-}
-
-fn validate_reconciliation_snapshot(durable: &ApiKey, target: &ApiKey) -> Result<(), StorageError> {
-    let valid = durable.version() >= target.version() && immutable_fields_match(durable, target);
-    valid.then_some(()).ok_or_else(integrity_failure)
 }
 
 fn validate_commit_binding(request: &CommitRequest<'_>) -> Result<(), StorageError> {
@@ -693,6 +861,16 @@ fn map_reconcile_error(error: StorageError) -> StorageError {
 
 const fn repository_error(code: ApiKeyRepositoryErrorCode) -> ApiKeyRepositoryError {
     ApiKeyRepositoryError::new(code)
+}
+
+fn map_linkage_dependency_error(error: StorageError) -> StorageError {
+    match error.code() {
+        StorageErrorCode::Cancelled
+        | StorageErrorCode::DeadlineExceeded
+        | StorageErrorCode::ResourceExhausted
+        | StorageErrorCode::Unavailable => error,
+        _ => integrity_failure(),
+    }
 }
 
 pub(super) const fn integrity_failure() -> StorageError {
