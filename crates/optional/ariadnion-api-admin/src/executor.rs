@@ -232,13 +232,22 @@ where
         self.authenticated_principals
             .validate(evidence, &authenticated)?;
         check_context(&authenticated)?;
-        let intent = AdminCommandIntent::from_request(&request, &principal);
-        if let Some(receipt) = self.find_replay(&intent, &authenticated)? {
+        self.execute_authenticated(request, &principal, &authenticated)
+    }
+
+    fn execute_authenticated(
+        &self,
+        request: AdminExecutionRequest,
+        principal: &PrincipalContext,
+        context: &RequestContext,
+    ) -> Result<AdminCommandReceipt, AdminError> {
+        let intent = AdminCommandIntent::from_request(&request, principal);
+        if let Some(receipt) = self.find_replay(&intent, context)? {
             return Ok(receipt);
         }
-        let snapshot = self.load_authoritative_snapshot(&request, &principal, &authenticated)?;
-        let command = authorize_command(request, snapshot, &principal)?;
-        self.execute_authorized_command(&intent, &command, &authenticated)
+        let snapshot = self.load_authoritative_snapshot(&request, principal, context)?;
+        let command = authorize_command(request, snapshot, principal)?;
+        self.execute_authorized_command(&intent, &command, context)
     }
 
     fn find_replay(

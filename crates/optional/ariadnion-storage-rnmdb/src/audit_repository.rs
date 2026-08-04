@@ -1048,7 +1048,7 @@ fn decode_subject_kind_remainder(value: &str) -> Result<AuditSubjectKind, Storag
     }
 }
 
-const fn subject_kind_label(kind: AuditSubjectKind) -> &'static str {
+fn subject_kind_label(kind: AuditSubjectKind) -> &'static str {
     match kind {
         AuditSubjectKind::User => "user",
         AuditSubjectKind::Organization => "organization",
@@ -1056,8 +1056,32 @@ const fn subject_kind_label(kind: AuditSubjectKind) -> &'static str {
         AuditSubjectKind::SessionFamily => "session_family",
         AuditSubjectKind::ApiKey => "api_key",
         AuditSubjectKind::PasswordReset => "password_reset",
-        AuditSubjectKind::PrincipalAuthenticator => "principal_authenticator",
-        AuditSubjectKind::Administration => "administration",
+        AuditSubjectKind::PrincipalAuthenticator | AuditSubjectKind::Administration => {
+            terminal_subject_kind_label(TerminalSubjectKind::from_audit_kind(kind))
+        }
+    }
+}
+
+enum TerminalSubjectKind {
+    PrincipalAuthenticator,
+    Administration,
+}
+
+impl TerminalSubjectKind {
+    fn from_audit_kind(kind: AuditSubjectKind) -> Self {
+        if kind == AuditSubjectKind::PrincipalAuthenticator {
+            Self::PrincipalAuthenticator
+        } else {
+            // The exhaustive caller routes only Administration to this branch.
+            Self::Administration
+        }
+    }
+}
+
+fn terminal_subject_kind_label(kind: TerminalSubjectKind) -> &'static str {
+    match kind {
+        TerminalSubjectKind::PrincipalAuthenticator => "principal_authenticator",
+        TerminalSubjectKind::Administration => "administration",
     }
 }
 

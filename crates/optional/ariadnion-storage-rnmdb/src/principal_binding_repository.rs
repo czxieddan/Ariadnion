@@ -221,6 +221,16 @@ fn persist_update(
         .transition
         .previous_snapshot()
         .ok_or_else(integrity_failure)?;
+    let durable = load_update_precondition(session, request)?;
+    validate_durable_precondition(&durable, previous, expected)?;
+    sql::update_snapshot(session, request.transition.binding(), expected)?;
+    sql::insert_event(session, request.transition.event()).map_err(map_fresh_evidence_error)
+}
+
+fn load_update_precondition(
+    session: &mut LocalSession,
+    request: &CommitRequest<'_>,
+) -> Result<PrincipalBinding, StorageError> {
     let durable =
         match decode::load_binding_with_history(session, request.tenant_id, request.principal_id) {
             Err(error) if error.code() == StorageErrorCode::NotFound => {
@@ -228,9 +238,7 @@ fn persist_update(
             }
             result => result?.binding,
         };
-    validate_durable_precondition(&durable, previous, expected)?;
-    sql::update_snapshot(session, request.transition.binding(), expected)?;
-    sql::insert_event(session, request.transition.event()).map_err(map_fresh_evidence_error)
+    Ok(durable)
 }
 
 fn validate_durable_precondition(
@@ -292,27 +300,46 @@ fn verify_later_state_and_evidence(
 ) -> Result<(), StorageError> {
     let start = usize::try_from(request.transition.binding().version().get())
         .map_err(|_| integrity_failure())?;
-    let mut current = request.transition.binding().clone();
-    let mut previous_audit_sequence = target_evidence.audit_sequence();
-    let durable_head_sequence = target_evidence.durable_head_sequence();
+    let mut state = LaterReconciliationState {
+        current: request.transition.binding().clone(),
+        previous_audit_sequence: target_evidence.audit_sequence(),
+        durable_head_sequence: target_evidence.durable_head_sequence(),
+    };
     for persisted in loaded.events.iter().skip(start) {
-        let transition = replay_later_transition(&current, persisted.event())?;
-        if !persisted.matches_transition(&transition) {
-            return Err(integrity_failure());
-        }
-        let later_evidence =
-            evidence::reconcile_transition_evidence(session, &transition, key, request.context)?;
-        evidence::validate_later_audit_order(
-            &later_evidence,
-            previous_audit_sequence,
-            durable_head_sequence,
-        )?;
-        previous_audit_sequence = later_evidence.audit_sequence();
-        current = transition.into_binding();
+        apply_later_transition(session, persisted, key, request.context, &mut state)?;
     }
-    if current != loaded.binding {
+    if state.current != loaded.binding {
         return Err(integrity_failure());
     }
+    Ok(())
+}
+
+struct LaterReconciliationState {
+    current: PrincipalBinding,
+    previous_audit_sequence: ariadnion_audit_domain::AuditSequence,
+    durable_head_sequence: ariadnion_audit_domain::AuditSequence,
+}
+
+fn apply_later_transition(
+    session: &mut LocalSession,
+    persisted: &decode::PersistedPrincipalBindingEvent,
+    key: &AuditSubjectKeyMaterial,
+    context: &RequestContext,
+    state: &mut LaterReconciliationState,
+) -> Result<(), StorageError> {
+    let transition = replay_later_transition(&state.current, persisted.event())?;
+    if !persisted.matches_transition(&transition) {
+        return Err(integrity_failure());
+    }
+    let later_evidence =
+        evidence::reconcile_transition_evidence(session, &transition, key, context)?;
+    evidence::validate_later_audit_order(
+        &later_evidence,
+        state.previous_audit_sequence,
+        state.durable_head_sequence,
+    )?;
+    state.previous_audit_sequence = later_evidence.audit_sequence();
+    state.current = transition.into_binding();
     Ok(())
 }
 
@@ -469,6 +496,12 @@ const fn map_storage_error_code(code: StorageErrorCode) -> PrincipalBindingRepos
         StorageErrorCode::Conflict => PrincipalBindingRepositoryErrorCode::Conflict,
         StorageErrorCode::Cancelled => PrincipalBindingRepositoryErrorCode::Cancelled,
         StorageErrorCode::DeadlineExceeded => PrincipalBindingRepositoryErrorCode::DeadlineExceeded,
+        _ => map_durability_error_code(code),
+    }
+}
+
+const fn map_durability_error_code(code: StorageErrorCode) -> PrincipalBindingRepositoryErrorCode {
+    match code {
         StorageErrorCode::ResourceExhausted => {
             PrincipalBindingRepositoryErrorCode::ResourceExhausted
         }

@@ -249,12 +249,27 @@ fn validate_current_authorization(
     command: &AdminCommand,
     facts: TransactionAuthorizationFacts,
 ) -> Result<(), StorageError> {
+    validate_current_policy(command, &facts)?;
+    validate_current_resource_and_decision(command, facts)
+}
+
+fn validate_current_policy(
+    command: &AdminCommand,
+    facts: &TransactionAuthorizationFacts,
+) -> Result<(), StorageError> {
     if facts.policy.tenant_id() != command.tenant_id() {
         return Err(integrity_failure());
     }
     if facts.policy.version() != command.policy_version() {
         return Err(conflict());
     }
+    Ok(())
+}
+
+fn validate_current_resource_and_decision(
+    command: &AdminCommand,
+    facts: TransactionAuthorizationFacts,
+) -> Result<(), StorageError> {
     if facts.resource_state != expected_resource_state(command.action()) {
         return Err(conflict());
     }

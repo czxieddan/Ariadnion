@@ -351,17 +351,24 @@ fn validate_event_matrix(
     event: &PrincipalBindingEvent,
     binding: &PrincipalBinding,
 ) -> Result<(), StorageError> {
-    let expected = match index {
-        0 => PrincipalBindingEventKind::Provisioned,
-        1 => PrincipalBindingEventKind::Revoked,
-        2 => PrincipalBindingEventKind::Erased,
-        _ => return Err(integrity_failure()),
-    };
-    let valid = event.kind() == expected
-        && event.tenant_id() == binding.tenant_id()
-        && event.principal_id() == binding.principal_id()
-        && event.subject_commitment() == binding.subject_commitment();
+    let expected = expected_event_kind(index)?;
+    let valid = event.kind() == expected && event_identity_matches(event, binding);
     valid.then_some(()).ok_or_else(integrity_failure)
+}
+
+fn expected_event_kind(index: usize) -> Result<PrincipalBindingEventKind, StorageError> {
+    match index {
+        0 => Ok(PrincipalBindingEventKind::Provisioned),
+        1 => Ok(PrincipalBindingEventKind::Revoked),
+        2 => Ok(PrincipalBindingEventKind::Erased),
+        _ => Err(integrity_failure()),
+    }
+}
+
+fn event_identity_matches(event: &PrincipalBindingEvent, binding: &PrincipalBinding) -> bool {
+    event.tenant_id() == binding.tenant_id()
+        && event.principal_id() == binding.principal_id()
+        && event.subject_commitment() == binding.subject_commitment()
 }
 
 fn validate_history_times(

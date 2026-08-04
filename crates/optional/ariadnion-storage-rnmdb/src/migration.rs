@@ -55,7 +55,7 @@ use ariadnion_storage_domain::{MigrationDescriptor, StorageError, StorageErrorCo
 use ariadnion_user_domain::migrations::IDENTITY_USERS_MIGRATION_ID;
 use rnmdb_cli::{CommandOutput, LocalSession};
 use rnmdb_common::{ErrorKind, RnovError};
-use rnmdb_executor::vector::{ColumnSchema, Row};
+use rnmdb_executor::vector::{ColumnSchema, Row, VectorBatch};
 use rnmdb_types::{SqlType, SqlValue};
 
 use crate::migration_definition::{
@@ -438,22 +438,41 @@ fn require_migration_preconditions(
 }
 
 fn require_empty_legacy_api_keys(output: CommandOutput) -> Result<(), MigrationRunError> {
-    let CommandOutput::Rows(batch) = output else {
-        return Err(migration_corruption("legacy API-key probe did not return rows").into());
-    };
+    let batch = legacy_api_key_probe_rows(output)?;
+    validate_legacy_api_key_probe_schema(&batch)?;
+    classify_legacy_api_key_probe_rows(batch.rows())
+}
+
+fn legacy_api_key_probe_rows(output: CommandOutput) -> Result<VectorBatch, MigrationRunError> {
+    match output {
+        CommandOutput::Rows(batch) => Ok(batch),
+        _ => Err(migration_corruption("legacy API-key probe did not return rows").into()),
+    }
+}
+
+fn validate_legacy_api_key_probe_schema(batch: &VectorBatch) -> Result<(), MigrationRunError> {
     let [column] = batch.columns() else {
         return Err(migration_corruption("legacy API-key probe column count changed").into());
     };
     if column.name() != "issued_at" || column.data_type() != &SqlType::Int64 {
         return Err(migration_corruption("legacy API-key probe schema changed").into());
     }
-    match batch.rows() {
+    Ok(())
+}
+
+fn classify_legacy_api_key_probe_rows(rows: &[Row]) -> Result<(), MigrationRunError> {
+    match rows {
         [] => Ok(()),
-        [row] if matches!(row.values(), [SqlValue::Int64(_)]) => {
-            Err(MigrationRunError::MigrationRequired)
-        }
+        [row] => classify_legacy_api_key_probe_row(row),
         _ => Err(migration_corruption("legacy API-key probe row shape changed").into()),
     }
+}
+
+fn classify_legacy_api_key_probe_row(row: &Row) -> Result<(), MigrationRunError> {
+    if matches!(row.values(), [SqlValue::Int64(_)]) {
+        return Err(MigrationRunError::MigrationRequired);
+    }
+    Err(migration_corruption("legacy API-key probe row shape changed").into())
 }
 
 fn execute_migration_statements(

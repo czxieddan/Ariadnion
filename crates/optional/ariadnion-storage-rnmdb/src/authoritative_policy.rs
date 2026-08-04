@@ -299,12 +299,27 @@ fn validate_transaction_identity(
     identity: &PrincipalBindingIdentity,
     witness: &AuthorizationSubject,
 ) -> Result<(), AuthorityFactError> {
+    validate_transaction_principal(identity, witness)?;
+    validate_transaction_membership(identity, witness)
+}
+
+fn validate_transaction_principal(
+    identity: &PrincipalBindingIdentity,
+    witness: &AuthorizationSubject,
+) -> Result<(), AuthorityFactError> {
     if identity.principal() != witness.principal() {
         return Err(AuthorityFactError::Changed);
     }
     if identity.user_id() != witness.user_id() {
         return Err(AuthorityFactError::Changed);
     }
+    Ok(())
+}
+
+fn validate_transaction_membership(
+    identity: &PrincipalBindingIdentity,
+    witness: &AuthorizationSubject,
+) -> Result<(), AuthorityFactError> {
     let membership = witness.membership().ok_or(AuthorityFactError::Changed)?;
     if identity.organization_id() != membership.organization_id() {
         return Err(AuthorityFactError::Changed);
