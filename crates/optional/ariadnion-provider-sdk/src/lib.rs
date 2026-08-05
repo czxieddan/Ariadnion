@@ -35,6 +35,8 @@
 mod attempt;
 mod contract;
 mod error;
+mod health;
+mod provider;
 mod stream;
 
 pub use attempt::{
@@ -48,6 +50,13 @@ pub use contract::{
 };
 pub use error::{
     MAX_PROVIDER_RETRY_AFTER, ProviderFailure, ProviderFailureClass, ProviderRetryAdvice,
+};
+pub use health::{
+    BoxProviderHealthProbe, ProviderHealthFuture, ProviderHealthPort, ProviderHealthReason,
+    ProviderHealthSnapshot, ProviderHealthStatus,
+};
+pub use provider::{
+    BoxProviderCall, ProviderAttemptOutcome, ProviderCallFuture, ProviderPort, ProviderRawOutcome,
 };
 pub use stream::{
     ProviderStreamConfig, ProviderStreamEvent, ProviderStreamPublishError, ProviderStreamPublisher,
