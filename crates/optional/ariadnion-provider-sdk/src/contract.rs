@@ -95,46 +95,35 @@ impl std::error::Error for ProviderContractError {}
 /// A provider-neutral capability supported by an adapter.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
+#[repr(u8)]
 pub enum ProviderCapability {
     /// Text generation is available.
-    TextGeneration,
+    TextGeneration = 0,
     /// Incremental text streaming is available.
-    TextStreaming,
+    TextStreaming = 1,
     /// Tool calls are available.
-    ToolCalls,
+    ToolCalls = 2,
     /// Structured output is available.
-    StructuredOutput,
+    StructuredOutput = 3,
     /// Vision input is available.
-    VisionInput,
+    VisionInput = 4,
     /// Audio input is available.
-    AudioInput,
+    AudioInput = 5,
     /// Audio output is available.
-    AudioOutput,
+    AudioOutput = 6,
     /// Embeddings are available.
-    Embeddings,
+    Embeddings = 7,
     /// File inputs or outputs are available.
-    Files,
+    Files = 8,
     /// Realtime sessions are available.
-    Realtime,
+    Realtime = 9,
     /// Batch requests are available.
-    Batch,
+    Batch = 10,
 }
 
 impl ProviderCapability {
     const fn bit(self) -> u16 {
-        match self {
-            Self::TextGeneration => 1 << 0,
-            Self::TextStreaming => 1 << 1,
-            Self::ToolCalls => 1 << 2,
-            Self::StructuredOutput => 1 << 3,
-            Self::VisionInput => 1 << 4,
-            Self::AudioInput => 1 << 5,
-            Self::AudioOutput => 1 << 6,
-            Self::Embeddings => 1 << 7,
-            Self::Files => 1 << 8,
-            Self::Realtime => 1 << 9,
-            Self::Batch => 1 << 10,
-        }
+        1_u16 << (self as u8)
     }
 }
 
@@ -240,20 +229,18 @@ impl ProviderLimits {
         max_stream_bytes: usize,
         max_stream_events: usize,
     ) -> Result<Self, ProviderContractError> {
-        if max_request_bytes == 0 || max_delta_bytes == 0 || max_stream_bytes == 0 {
-            return Err(ProviderContractError::new(
-                ProviderContractErrorCode::InvalidArgument,
-            ));
-        }
-        if max_request_bytes > MAX_PROVIDER_REQUEST_BYTES
-            || max_delta_bytes > MAX_PROVIDER_DELTA_BYTES
-            || max_stream_bytes > MAX_PROVIDER_STREAM_BYTES
-            || max_stream_events == 0
-            || max_stream_events > MAX_PROVIDER_STREAM_EVENTS
+        if let Err(error) =
+            validate_required_sizes(max_request_bytes, max_delta_bytes, max_stream_bytes)
         {
-            return Err(ProviderContractError::new(
-                ProviderContractErrorCode::LimitExceeded,
-            ));
+            return Err(error);
+        }
+        if let Err(error) = validate_hard_limits(
+            max_request_bytes,
+            max_delta_bytes,
+            max_stream_bytes,
+            max_stream_events,
+        ) {
+            return Err(error);
         }
         Ok(Self {
             max_request_bytes,
@@ -286,6 +273,38 @@ impl ProviderLimits {
     pub const fn max_stream_events(self) -> usize {
         self.max_stream_events
     }
+}
+
+const fn validate_required_sizes(
+    max_request_bytes: usize,
+    max_delta_bytes: usize,
+    max_stream_bytes: usize,
+) -> Result<(), ProviderContractError> {
+    if max_request_bytes == 0 || max_delta_bytes == 0 || max_stream_bytes == 0 {
+        return Err(ProviderContractError::new(
+            ProviderContractErrorCode::InvalidArgument,
+        ));
+    }
+    Ok(())
+}
+
+const fn validate_hard_limits(
+    max_request_bytes: usize,
+    max_delta_bytes: usize,
+    max_stream_bytes: usize,
+    max_stream_events: usize,
+) -> Result<(), ProviderContractError> {
+    if max_request_bytes > MAX_PROVIDER_REQUEST_BYTES
+        || max_delta_bytes > MAX_PROVIDER_DELTA_BYTES
+        || max_stream_bytes > MAX_PROVIDER_STREAM_BYTES
+        || max_stream_events == 0
+        || max_stream_events > MAX_PROVIDER_STREAM_EVENTS
+    {
+        return Err(ProviderContractError::new(
+            ProviderContractErrorCode::LimitExceeded,
+        ));
+    }
+    Ok(())
 }
 
 impl Default for ProviderLimits {

@@ -38,60 +38,66 @@ use crate::contract::{ProviderContractError, ProviderContractErrorCode};
 /// The maximum accepted provider retry delay.
 pub const MAX_PROVIDER_RETRY_AFTER: Duration = Duration::from_secs(86_400);
 
+const PROVIDER_FAILURE_CODES: [&str; 14] = [
+    "provider_cancelled",
+    "provider_deadline_exceeded",
+    "provider_attempt_timeout",
+    "provider_invalid_request",
+    "provider_authentication_failed",
+    "provider_permission_denied",
+    "provider_not_found",
+    "provider_rate_limited",
+    "provider_quota_exhausted",
+    "provider_content_rejected",
+    "provider_upstream_unavailable",
+    "provider_protocol_violation",
+    "provider_response_limit",
+    "provider_internal",
+];
+
 /// A stable provider failure classification.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
+#[repr(u8)]
 pub enum ProviderFailureClass {
     /// The caller or consumer cancelled work.
-    Cancelled,
+    Cancelled = 0,
     /// The overall request deadline expired.
-    DeadlineExceeded,
+    DeadlineExceeded = 1,
     /// A bounded per-attempt timeout expired while the overall request may continue.
-    AttemptTimeout,
+    AttemptTimeout = 2,
     /// The provider rejected the request shape or semantics.
-    InvalidRequest,
+    InvalidRequest = 3,
     /// The provider rejected authentication evidence.
-    Authentication,
+    Authentication = 4,
     /// The provider denied the authenticated action.
-    PermissionDenied,
+    PermissionDenied = 5,
     /// The selected provider resource does not exist.
-    NotFound,
+    NotFound = 6,
     /// The provider applied a rate limit.
-    RateLimited,
+    RateLimited = 7,
     /// The selected provider account exhausted quota.
-    QuotaExhausted,
+    QuotaExhausted = 8,
     /// The provider rejected content under its policy.
-    ContentRejected,
+    ContentRejected = 9,
     /// The upstream provider or transport is unavailable.
-    UpstreamUnavailable,
+    UpstreamUnavailable = 10,
     /// The upstream response violated the selected protocol contract.
-    ProtocolViolation,
+    ProtocolViolation = 11,
     /// A response exceeded a configured byte, event, or token limit.
-    ResponseLimit,
+    ResponseLimit = 12,
     /// The adapter encountered an unclassified internal failure.
-    Internal,
+    Internal = 13,
 }
 
 impl ProviderFailureClass {
     /// Returns the stable machine code.
     #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Cancelled => "provider_cancelled",
-            Self::DeadlineExceeded => "provider_deadline_exceeded",
-            Self::AttemptTimeout => "provider_attempt_timeout",
-            Self::InvalidRequest => "provider_invalid_request",
-            Self::Authentication => "provider_authentication_failed",
-            Self::PermissionDenied => "provider_permission_denied",
-            Self::NotFound => "provider_not_found",
-            Self::RateLimited => "provider_rate_limited",
-            Self::QuotaExhausted => "provider_quota_exhausted",
-            Self::ContentRejected => "provider_content_rejected",
-            Self::UpstreamUnavailable => "provider_upstream_unavailable",
-            Self::ProtocolViolation => "provider_protocol_violation",
-            Self::ResponseLimit => "provider_response_limit",
-            Self::Internal => "provider_internal",
-        }
+    pub fn as_str(self) -> &'static str {
+        PROVIDER_FAILURE_CODES
+            .get(self as usize)
+            .copied()
+            .unwrap_or("provider_internal")
     }
 }
 
@@ -150,7 +156,7 @@ impl ProviderFailure {
 
     /// Returns the stable machine code.
     #[must_use]
-    pub const fn code(self) -> &'static str {
+    pub fn code(self) -> &'static str {
         self.class.as_str()
     }
 
