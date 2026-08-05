@@ -32,10 +32,19 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+mod attempt;
 mod contract;
+mod error;
 
+pub use attempt::{
+    AttemptProgressError, AttemptProgressErrorCode, ProviderAttempt, ProviderAttemptEvidence,
+    ProviderAttemptProgress, ProviderTransmission,
+};
 pub use contract::{
     MAX_PROVIDER_DELTA_BYTES, MAX_PROVIDER_REQUEST_BYTES, MAX_PROVIDER_STREAM_BYTES,
     MAX_PROVIDER_STREAM_EVENTS, ProviderCapabilities, ProviderCapability, ProviderContractError,
     ProviderContractErrorCode, ProviderDescriptor, ProviderId, ProviderLimits, ProviderModelId,
+};
+pub use error::{
+    MAX_PROVIDER_RETRY_AFTER, ProviderFailure, ProviderFailureClass, ProviderRetryAdvice,
 };
