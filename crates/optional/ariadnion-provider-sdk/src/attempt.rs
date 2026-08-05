@@ -210,13 +210,23 @@ impl Default for ProviderAttemptEvidence {
 }
 
 /// One immutable physical provider attempt.
-#[derive(Debug)]
 pub struct ProviderAttempt {
     attempt_id: AttemptId,
     model: ProviderModelId,
     request: ServiceRequest,
     context: RequestContext,
     evidence: ProviderAttemptEvidence,
+}
+
+impl fmt::Debug for ProviderAttempt {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ProviderAttempt")
+            .field("attempt_id", &self.attempt_id)
+            .field("model", &self.model)
+            .field("progress", &self.evidence.progress())
+            .finish_non_exhaustive()
+    }
 }
 
 impl ProviderAttempt {

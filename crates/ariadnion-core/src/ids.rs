@@ -227,10 +227,33 @@ impl AsRef<str> for CapabilityId {
     }
 }
 
+macro_rules! impl_context_id_debug {
+    ($name:ident, raw) => {
+        impl fmt::Debug for $name {
+            fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+                formatter
+                    .debug_tuple(stringify!($name))
+                    .field(&self.0)
+                    .finish()
+            }
+        }
+    };
+    ($name:ident, redacted) => {
+        impl fmt::Debug for $name {
+            fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+                formatter
+                    .debug_struct(stringify!($name))
+                    .field("bytes", &self.as_str().len())
+                    .finish_non_exhaustive()
+            }
+        }
+    };
+}
+
 macro_rules! define_context_id {
-    ($name:ident, $documentation:literal) => {
+    ($name:ident, $documentation:literal, $debug:ident) => {
         #[doc = $documentation]
-        #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+        #[derive(Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
         pub struct $name(BoundedId);
 
         impl $name {
@@ -268,19 +291,27 @@ macro_rules! define_context_id {
                 self.as_str()
             }
         }
+
+        impl_context_id_debug!($name, $debug);
     };
 }
 
-define_context_id!(TenantId, "A validated tenant identifier.");
-define_context_id!(RequestId, "A validated request correlation identifier.");
+define_context_id!(TenantId, "A validated tenant identifier.", raw);
+define_context_id!(
+    RequestId,
+    "A validated request correlation identifier.",
+    raw
+);
 define_context_id!(
     AttemptId,
-    "A validated physical provider-attempt identifier."
+    "A validated physical provider-attempt identifier.",
+    redacted
 );
-define_context_id!(TraceId, "A validated distributed trace identifier.");
+define_context_id!(TraceId, "A validated distributed trace identifier.", raw);
 define_context_id!(
     PrincipalId,
-    "A validated authenticated principal identifier."
+    "A validated authenticated principal identifier.",
+    raw
 );
 
 /// A semantic module implementation version.
