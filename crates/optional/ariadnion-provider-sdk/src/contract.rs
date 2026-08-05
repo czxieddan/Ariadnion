@@ -127,6 +127,20 @@ impl ProviderCapability {
     }
 }
 
+const PROVIDER_CAPABILITY_ORDER: [ProviderCapability; 11] = [
+    ProviderCapability::TextGeneration,
+    ProviderCapability::TextStreaming,
+    ProviderCapability::ToolCalls,
+    ProviderCapability::StructuredOutput,
+    ProviderCapability::VisionInput,
+    ProviderCapability::AudioInput,
+    ProviderCapability::AudioOutput,
+    ProviderCapability::Embeddings,
+    ProviderCapability::Files,
+    ProviderCapability::Realtime,
+    ProviderCapability::Batch,
+];
+
 /// A compact deterministic set of provider capabilities.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProviderCapabilities(u16);
@@ -148,6 +162,14 @@ impl ProviderCapabilities {
     #[must_use]
     pub const fn contains(self, capability: ProviderCapability) -> bool {
         self.0 & capability.bit() != 0
+    }
+
+    /// Iterates over present capabilities in stable declaration order.
+    pub fn iter(&self) -> impl Iterator<Item = ProviderCapability> + '_ {
+        PROVIDER_CAPABILITY_ORDER
+            .iter()
+            .copied()
+            .filter(|capability| self.contains(*capability))
     }
 
     /// Returns whether no capability is present.
