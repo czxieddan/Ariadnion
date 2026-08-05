@@ -166,6 +166,7 @@ dependencies = [
  "ariadnion-core",
  "ariadnion-diagnostics",
  "ariadnion-job-runner",
+ "ariadnion-provider-sdk",
  "ariadnion-storage-asset",
  "ariadnion-storage-backup",
  "ariadnion-storage-domain",
@@ -244,6 +245,14 @@ dependencies = [
  "ariadnion-organization",
  "ariadnion-user-domain",
  "sha2 0.10.9",
+]
+
+[[package]]
+name = "ariadnion-provider-sdk"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-api-domain",
+ "ariadnion-core",
 ]
 
 [[package]]
