@@ -35,6 +35,7 @@
 mod attempt;
 mod contract;
 mod error;
+mod stream;
 
 pub use attempt::{
     AttemptProgressError, AttemptProgressErrorCode, ProviderAttempt, ProviderAttemptEvidence,
@@ -47,4 +48,8 @@ pub use contract::{
 };
 pub use error::{
     MAX_PROVIDER_RETRY_AFTER, ProviderFailure, ProviderFailureClass, ProviderRetryAdvice,
+};
+pub use stream::{
+    ProviderStreamConfig, ProviderStreamEvent, ProviderStreamPublishError, ProviderStreamPublisher,
+    ProviderStreamSubscriber, bounded_provider_stream,
 };
