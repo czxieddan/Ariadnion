@@ -27,20 +27,34 @@
 //
 // SPDX-License-Identifier: LicenseRef-AHCL-1.0
 //
-//! Stable, redacted failures for transport-neutral service requests.
+//! Stable, redacted failures for transport-neutral service contracts.
 
 use std::fmt::{self, Debug, Display, Formatter};
 
-/// Stable machine-readable failures returned while constructing service requests.
+use ariadnion_core::{CoreError, ErrorCode};
+
+/// Stable machine-readable failures returned by service contract operations.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum ApiDomainErrorCode {
     /// A supplied value is empty or violates its documented syntax.
     InvalidArgument,
-    /// The caller requested a service-request version this crate does not support.
+    /// The caller requested a service contract version this runtime does not support.
     UnsupportedVersion,
     /// A supplied value exceeds its documented hard limit.
     LimitExceeded,
+    /// Current state conflicts with the requested operation.
+    Conflict,
+    /// Cancellation stopped the operation.
+    Cancelled,
+    /// The operation exceeded its declared deadline.
+    DeadlineExceeded,
+    /// A required service or capability is unavailable.
+    Unavailable,
+    /// A bounded resource budget was exhausted.
+    ResourceExhausted,
+    /// The operation failed without a safe external explanation.
+    Internal,
 }
 
 impl ApiDomainErrorCode {
@@ -51,7 +65,22 @@ impl ApiDomainErrorCode {
             Self::InvalidArgument => "API_DOMAIN_INVALID_ARGUMENT",
             Self::UnsupportedVersion => "API_DOMAIN_UNSUPPORTED_VERSION",
             Self::LimitExceeded => "API_DOMAIN_LIMIT_EXCEEDED",
+            Self::Conflict => "API_DOMAIN_CONFLICT",
+            Self::Cancelled => "API_DOMAIN_CANCELLED",
+            Self::DeadlineExceeded => "API_DOMAIN_DEADLINE_EXCEEDED",
+            Self::Unavailable | Self::ResourceExhausted | Self::Internal => {
+                service_failure_machine_code(self)
+            }
         }
+    }
+}
+
+const fn service_failure_machine_code(code: ApiDomainErrorCode) -> &'static str {
+    match code {
+        ApiDomainErrorCode::Unavailable => "API_DOMAIN_UNAVAILABLE",
+        ApiDomainErrorCode::ResourceExhausted => "API_DOMAIN_RESOURCE_EXHAUSTED",
+        ApiDomainErrorCode::Internal => "API_DOMAIN_INTERNAL",
+        _ => "API_DOMAIN_INTERNAL",
     }
 }
 
@@ -88,6 +117,24 @@ impl Display for ApiDomainError {
 }
 
 impl std::error::Error for ApiDomainError {}
+
+impl From<CoreError> for ApiDomainError {
+    fn from(value: CoreError) -> Self {
+        Self::new(project_core_error(value.code()))
+    }
+}
+
+const fn project_core_error(code: ErrorCode) -> ApiDomainErrorCode {
+    match code {
+        ErrorCode::InvalidArgument => ApiDomainErrorCode::InvalidArgument,
+        ErrorCode::Conflict => ApiDomainErrorCode::Conflict,
+        ErrorCode::Cancelled => ApiDomainErrorCode::Cancelled,
+        ErrorCode::DeadlineExceeded => ApiDomainErrorCode::DeadlineExceeded,
+        ErrorCode::Unavailable => ApiDomainErrorCode::Unavailable,
+        ErrorCode::ResourceExhausted => ApiDomainErrorCode::ResourceExhausted,
+        ErrorCode::Internal => ApiDomainErrorCode::Internal,
+    }
+}
 
 /// Builds a redacted invalid-argument failure.
 #[must_use]

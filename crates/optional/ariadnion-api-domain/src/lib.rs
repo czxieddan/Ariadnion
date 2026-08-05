@@ -27,17 +27,23 @@
 //
 // SPDX-License-Identifier: LicenseRef-AHCL-1.0
 //
-//! Transport-neutral public service request contracts.
+//! Transport-neutral public service contracts.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
 mod error;
 mod request;
+mod response;
+mod stream;
 
 pub use error::{ApiDomainError, ApiDomainErrorCode};
 pub use request::{
     IdempotencyKey, MAX_IDEMPOTENCY_KEY_BYTES, MAX_MODEL_SELECTOR_BYTES, MAX_OUTPUT_TOKENS,
-    MAX_TEXT_INPUT_BYTES, ModelSelector, OutputTokenLimit, ResponseMode, ServiceRequest,
-    ServiceRequestVersion, TextInput, TextServiceRequest,
+    MAX_TEXT_INPUT_BYTES, ModelSelector, OutputTokenLimit, ResponseMode, ServiceContractVersion,
+    ServiceRequest, ServiceRequestVersion, TextInput, TextServiceRequest,
 };
+pub use response::{
+    FinishReason, MAX_TEXT_OUTPUT_BYTES, ServiceResponse, TextOutput, TextServiceResponse,
+};
+pub use stream::{MAX_TEXT_DELTA_BYTES, ServiceStreamEvent, TextDelta, TextStreamEvent};

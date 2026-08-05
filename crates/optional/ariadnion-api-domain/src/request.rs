@@ -42,16 +42,16 @@ pub const MAX_TEXT_INPUT_BYTES: usize = 1_048_576;
 /// Maximum number of output tokens a text request may ask for.
 pub const MAX_OUTPUT_TOKENS: u32 = 1_048_576;
 
-/// Version of the transport-neutral service request contract.
+/// Version of the transport-neutral service contract.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
-pub enum ServiceRequestVersion {
-    /// The initial service request contract.
+pub enum ServiceContractVersion {
+    /// The initial service contract.
     V1,
 }
 
-impl ServiceRequestVersion {
-    /// Parses the numeric representation of a service request version.
+impl ServiceContractVersion {
+    /// Parses the numeric representation of a service contract version.
     ///
     /// # Errors
     ///
@@ -65,6 +65,9 @@ impl ServiceRequestVersion {
         }
     }
 }
+
+/// Backward-compatible name for the service contract version used by requests.
+pub type ServiceRequestVersion = ServiceContractVersion;
 
 /// A bounded model selector independent of provider-specific model types.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -205,7 +208,7 @@ pub enum ResponseMode {
 /// A fully validated request for a text service.
 #[derive(Clone, Eq, PartialEq)]
 pub struct TextServiceRequest {
-    version: ServiceRequestVersion,
+    version: ServiceContractVersion,
     model: ModelSelector,
     input: TextInput,
     output_token_limit: OutputTokenLimit,
@@ -221,7 +224,7 @@ impl TextServiceRequest {
     /// handles, trace state, or protocol metadata.
     #[must_use]
     pub const fn new(
-        version: ServiceRequestVersion,
+        version: ServiceContractVersion,
         model: ModelSelector,
         input: TextInput,
         output_token_limit: OutputTokenLimit,
@@ -240,7 +243,7 @@ impl TextServiceRequest {
 
     /// Returns the request contract version.
     #[must_use]
-    pub const fn version(&self) -> ServiceRequestVersion {
+    pub const fn version(&self) -> ServiceContractVersion {
         self.version
     }
 
