@@ -199,7 +199,9 @@ pub trait ServiceAuthenticationPort: Send + Sync {
 /// A transport-neutral service dispatch result.
 ///
 /// The variant must match the request's declared response mode. A mismatch is
-/// projected as a stable redacted internal HTTP error.
+/// projected as a stable redacted internal HTTP error. Future compatible
+/// variants may be added, so external consumers must retain a fallback arm.
+#[non_exhaustive]
 pub enum ServiceDispatchOutcome {
     /// A complete response ready for the existing JSON projection.
     Complete(ServiceResponse),
@@ -459,6 +461,13 @@ fn project_dispatch_outcome(
         (ResponseMode::Stream, ServiceDispatchOutcome::Stream(subscriber)) => {
             stream_dispatch_response(request, subscriber, bridge, permit)
         }
+        (ResponseMode::Complete, ServiceDispatchOutcome::Stream(subscriber)) => {
+            subscriber.cancellation().cancel();
+            Err(failure(
+                request.identity,
+                ApiHttpError::new(ApiHttpErrorCode::Internal),
+            ))
+        }
         _ => Err(failure(
             request.identity,
             ApiHttpError::new(ApiHttpErrorCode::Internal),
@@ -483,16 +492,17 @@ fn stream_dispatch_response(
     bridge: Option<&Arc<dyn ServiceStreamBridgePort>>,
     permit: OwnedSemaphorePermit,
 ) -> Result<Response, ResponseFailure> {
+    let subscriber_cancellation = SubscriberCancellation::new(subscriber.cancellation());
     let bridge = bridge.ok_or_else(|| {
         failure(
             request.identity.clone(),
             ApiHttpError::new(ApiHttpErrorCode::StreamUnavailable),
         )
     })?;
-    let channel_cancellation = subscriber.cancellation();
     let stream = bridge
         .bridge(subscriber, &request.context)
         .map_err(|error| failure(request.identity.clone(), error))?;
+    let channel_cancellation = subscriber_cancellation.into_retained_token();
     let lifecycle =
         HttpBodyLifecycleStream::new(stream, request.cancellation, channel_cancellation, permit);
     Ok(stream_response(&request.identity, lifecycle))
@@ -881,6 +891,11 @@ struct RequestCancellation {
     armed: bool,
 }
 
+struct SubscriberCancellation {
+    cancellation: CancellationToken,
+    armed: bool,
+}
+
 struct HttpBodyLifecycleStream {
     stream: BoxHttpBodyStream,
     _cancellation: RequestCancellation,
@@ -915,6 +930,28 @@ impl Stream for HttpBodyLifecycleStream {
 impl Drop for HttpBodyLifecycleStream {
     fn drop(&mut self) {
         self.channel_cancellation.cancel();
+    }
+}
+
+impl SubscriberCancellation {
+    fn new(cancellation: CancellationToken) -> Self {
+        Self {
+            cancellation,
+            armed: true,
+        }
+    }
+
+    fn into_retained_token(mut self) -> CancellationToken {
+        self.armed = false;
+        self.cancellation.clone()
+    }
+}
+
+impl Drop for SubscriberCancellation {
+    fn drop(&mut self) {
+        if self.armed {
+            self.cancellation.cancel();
+        }
     }
 }
 
