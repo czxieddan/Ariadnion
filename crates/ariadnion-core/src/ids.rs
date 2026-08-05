@@ -273,6 +273,10 @@ macro_rules! define_context_id {
 
 define_context_id!(TenantId, "A validated tenant identifier.");
 define_context_id!(RequestId, "A validated request correlation identifier.");
+define_context_id!(
+    AttemptId,
+    "A validated physical provider-attempt identifier."
+);
 define_context_id!(TraceId, "A validated distributed trace identifier.");
 define_context_id!(
     PrincipalId,

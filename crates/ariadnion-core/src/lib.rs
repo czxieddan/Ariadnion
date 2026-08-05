@@ -65,7 +65,8 @@ pub use event::{
 };
 pub use health::{HealthReasonCode, HealthReport, HealthStatus, ModuleHealthSnapshot};
 pub use ids::{
-    AbiVersion, CapabilityId, ModuleId, ModuleVersion, PrincipalId, RequestId, TenantId, TraceId,
+    AbiVersion, AttemptId, CapabilityId, ModuleId, ModuleVersion, PrincipalId, RequestId, TenantId,
+    TraceId,
 };
 pub use lifecycle::{LifecycleReport, LifecycleSupervisor, ModuleState, ModuleStatus};
 pub use module::{
