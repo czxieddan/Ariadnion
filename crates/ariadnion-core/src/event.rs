@@ -178,30 +178,46 @@ pub struct EventSubscriber<E> {
     cancellation: CancellationToken,
 }
 
+enum ReceiveStep<E> {
+    Continue,
+    Complete(ReceiveOutcome<E>),
+}
+
 impl<E> EventSubscriber<E> {
     /// Waits for an event while respecting cancellation and a bounded timeout.
     #[must_use]
     pub fn receive_timeout(&self, timeout: Duration) -> ReceiveOutcome<E> {
         let started = Instant::now();
         loop {
-            if self.cancellation.is_cancelled() {
-                return ReceiveOutcome::Cancelled;
-            }
-            let Some(wait) = next_receive_wait(started, timeout) else {
-                return ReceiveOutcome::TimedOut;
-            };
-            match self.receiver.recv_timeout(wait) {
-                Ok(event) => return ReceiveOutcome::Event(event),
-                Err(RecvTimeoutError::Disconnected) => return ReceiveOutcome::Closed,
-                Err(RecvTimeoutError::Timeout) => {}
+            match self.receive_step(started, timeout) {
+                ReceiveStep::Continue => {}
+                ReceiveStep::Complete(outcome) => return outcome,
             }
         }
+    }
+
+    fn receive_step(&self, started: Instant, timeout: Duration) -> ReceiveStep<E> {
+        if self.cancellation.is_cancelled() {
+            return ReceiveStep::Complete(ReceiveOutcome::Cancelled);
+        }
+        let Some(wait) = next_receive_wait(started, timeout) else {
+            return ReceiveStep::Complete(ReceiveOutcome::TimedOut);
+        };
+        map_receive_result(self.receiver.recv_timeout(wait))
     }
 
     /// Returns a clone of the subscriber cancellation token.
     #[must_use]
     pub fn cancellation(&self) -> CancellationToken {
         self.cancellation.clone()
+    }
+}
+
+fn map_receive_result<E>(result: Result<EventEnvelope<E>, RecvTimeoutError>) -> ReceiveStep<E> {
+    match result {
+        Ok(event) => ReceiveStep::Complete(ReceiveOutcome::Event(event)),
+        Err(RecvTimeoutError::Disconnected) => ReceiveStep::Complete(ReceiveOutcome::Closed),
+        Err(RecvTimeoutError::Timeout) => ReceiveStep::Continue,
     }
 }
 

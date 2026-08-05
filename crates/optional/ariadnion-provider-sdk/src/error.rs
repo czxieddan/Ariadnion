@@ -205,18 +205,10 @@ impl ProviderFailure {
         context: &RequestContext,
         now: SystemTime,
     ) -> ProviderRetryAdvice {
-        let remaining = match context.remaining_at(now) {
-            Ok(value) => value,
-            Err(_) => return ProviderRetryAdvice::Never,
-        };
-        let progress = match self.progress {
-            Some(progress) => progress,
-            None => return ProviderRetryAdvice::Never,
-        };
-        if response_started(progress) {
+        let Some((progress, remaining)) = retry_inputs(self.progress, context, now) else {
             return ProviderRetryAdvice::Never;
-        }
-        if !transmission_allows_retry(progress.transmission(), replayable) {
+        };
+        if !progress_allows_retry(progress, replayable) {
             return ProviderRetryAdvice::Never;
         }
         class_advice(self.class, self.retry_after, remaining)
@@ -230,6 +222,19 @@ impl Display for ProviderFailure {
 }
 
 impl std::error::Error for ProviderFailure {}
+
+fn retry_inputs(
+    progress: Option<ProviderAttemptProgress>,
+    context: &RequestContext,
+    now: SystemTime,
+) -> Option<(ProviderAttemptProgress, Option<Duration>)> {
+    let remaining = context.remaining_at(now).ok()?;
+    Some((progress?, remaining))
+}
+
+const fn progress_allows_retry(progress: ProviderAttemptProgress, replayable: bool) -> bool {
+    !response_started(progress) && transmission_allows_retry(progress.transmission(), replayable)
+}
 
 const fn response_started(progress: ProviderAttemptProgress) -> bool {
     progress.upstream_response_started() || progress.downstream_delivery_started()
