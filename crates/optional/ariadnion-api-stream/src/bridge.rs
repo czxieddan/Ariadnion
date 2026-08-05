@@ -61,6 +61,7 @@ const MAX_ACTIVE_STREAMS: usize = 64;
 type ReceiveTask = JoinHandle<(
     EventSubscriber<ServiceStreamEvent>,
     ReceiveOutcome<ServiceStreamEvent>,
+    OwnedSemaphorePermit,
 )>;
 
 /// Validated resource and liveness bounds for an [`SseBridge`].
@@ -160,7 +161,7 @@ enum StreamState {
 struct SseByteStream {
     subscriber: Option<EventSubscriber<ServiceStreamEvent>>,
     receive: Option<ReceiveTask>,
-    _permit: OwnedSemaphorePermit,
+    permit: Option<OwnedSemaphorePermit>,
     cancellation: CancellationToken,
     heartbeat_interval: Duration,
     last_sequence: Option<u64>,
@@ -177,7 +178,7 @@ impl SseByteStream {
         Self {
             subscriber: Some(subscriber),
             receive: None,
-            _permit: permit,
+            permit: Some(permit),
             cancellation,
             heartbeat_interval,
             last_sequence: None,
@@ -200,16 +201,29 @@ impl SseByteStream {
         if self.receive.is_some() {
             return Ok(());
         }
-        let Some(subscriber) = self.subscriber.take() else {
-            return Err(internal_failure());
-        };
         let handle = Handle::try_current().map_err(|_| internal_failure())?;
+        let (subscriber, permit) = self.take_receive_resources()?;
         let timeout = self.heartbeat_interval;
         self.receive = Some(handle.spawn_blocking(move || {
             let outcome = subscriber.receive_timeout(timeout);
-            (subscriber, outcome)
+            (subscriber, outcome, permit)
         }));
         Ok(())
+    }
+
+    fn take_receive_resources(
+        &mut self,
+    ) -> Result<(EventSubscriber<ServiceStreamEvent>, OwnedSemaphorePermit), ApiStreamError> {
+        let subscriber = self.subscriber.take();
+        let permit = self.permit.take();
+        match (subscriber, permit) {
+            (Some(subscriber), Some(permit)) => Ok((subscriber, permit)),
+            (subscriber, permit) => {
+                self.subscriber = subscriber;
+                self.permit = permit;
+                Err(internal_failure())
+            }
+        }
     }
 
     fn poll_receive(
@@ -224,8 +238,9 @@ impl SseByteStream {
                 self.receive = Some(receive);
                 Poll::Pending
             }
-            Poll::Ready(Ok((subscriber, outcome))) => {
+            Poll::Ready(Ok((subscriber, outcome, permit))) => {
                 self.subscriber = Some(subscriber);
+                self.permit = Some(permit);
                 self.handle_outcome(outcome)
             }
             Poll::Ready(Err(_)) => self.internal_terminal(None),
@@ -364,6 +379,7 @@ impl SseByteStream {
         self.state = StreamState::Done;
         self.cancellation.cancel();
         self.subscriber.take();
+        self.permit.take();
     }
 }
 
