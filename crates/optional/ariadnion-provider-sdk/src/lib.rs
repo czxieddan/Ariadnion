@@ -31,3 +31,11 @@
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
+
+mod contract;
+
+pub use contract::{
+    MAX_PROVIDER_DELTA_BYTES, MAX_PROVIDER_REQUEST_BYTES, MAX_PROVIDER_STREAM_BYTES,
+    MAX_PROVIDER_STREAM_EVENTS, ProviderCapabilities, ProviderCapability, ProviderContractError,
+    ProviderContractErrorCode, ProviderDescriptor, ProviderId, ProviderLimits, ProviderModelId,
+};
