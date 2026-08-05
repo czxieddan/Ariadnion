@@ -35,14 +35,17 @@ use std::fmt::{self, Debug, Formatter};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use ariadnion_api_domain::{
     ApiDomainError, ApiDomainErrorCode, FinishReason, IdempotencyKey, ModelSelector,
     OutputTokenLimit, ResponseMode, ServiceContractVersion, ServiceRequest, ServiceResponse,
-    TextInput, TextServiceRequest,
+    ServiceStreamEvent, TextInput, TextServiceRequest,
 };
-use ariadnion_core::{CancellationToken, PrincipalContext, RequestContext, RequestId, TraceId};
+use ariadnion_core::{
+    CancellationToken, EventSubscriber, PrincipalContext, RequestContext, RequestId, TraceId,
+};
 use ariadnion_principal_binding::AuthenticatedPrincipalEvidence;
 use axum::body::{Body, to_bytes};
 use axum::extract::State;
@@ -50,14 +53,16 @@ use axum::http::{HeaderMap, HeaderValue, Request, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Json, Router};
+use bytes::Bytes;
+use futures_core::Stream;
 use serde::{Deserialize, Serialize};
-use tokio::sync::Semaphore;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use zeroize::Zeroize;
 
 pub use error::{ApiHttpError, ApiHttpErrorCode};
 use error::{
     AuthenticationFailure, BodyFailure, ResponseFailure, domain_failure, failure, invalid_request,
-    response_from_projection, unauthenticated,
+    response_with_request_id, unauthenticated,
 };
 
 /// Maximum encoded body admitted by the public HTTP ingress.
@@ -82,6 +87,15 @@ const REQUEST_ID_HEADER: &str = "x-request-id";
 
 /// Boxed asynchronous result used by public HTTP adapter ports.
 pub type BoxHttpFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+/// A non-buffering HTTP response body stream produced by a transport bridge.
+///
+/// Each item is one already encoded body fragment or a redacted transport
+/// failure. Dropping the owning HTTP body cancels the request and releases its
+/// shared admission permit. Implementations must not retain request secrets in
+/// diagnostics and must remain compatible with Axum's streaming body contract.
+pub type BoxHttpBodyStream =
+    Pin<Box<dyn Stream<Item = Result<Bytes, ApiHttpError>> + Send + 'static>>;
 
 /// A server-issued request and trace identity pair.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -182,7 +196,18 @@ pub trait ServiceAuthenticationPort: Send + Sync {
     ) -> BoxHttpFuture<'a, Result<AuthenticatedPrincipalEvidence, ApiHttpError>>;
 }
 
-/// Dispatches a validated complete public-service request.
+/// A transport-neutral service dispatch result.
+///
+/// The variant must match the request's declared response mode. A mismatch is
+/// projected as a stable redacted internal HTTP error.
+pub enum ServiceDispatchOutcome {
+    /// A complete response ready for the existing JSON projection.
+    Complete(ServiceResponse),
+    /// A bounded event subscriber requiring an installed stream bridge.
+    Stream(EventSubscriber<ServiceStreamEvent>),
+}
+
+/// Dispatches a validated public-service request.
 pub trait ServiceDispatchPort: Send + Sync {
     /// Executes one request with independent authentication evidence and context.
     ///
@@ -194,7 +219,26 @@ pub trait ServiceDispatchPort: Send + Sync {
         request: ServiceRequest,
         evidence: &'a AuthenticatedPrincipalEvidence,
         context: &'a RequestContext,
-    ) -> BoxHttpFuture<'a, Result<ServiceResponse, ApiDomainError>>;
+    ) -> BoxHttpFuture<'a, Result<ServiceDispatchOutcome, ApiDomainError>>;
+}
+
+/// Converts a service event subscriber into a non-buffering HTTP body stream.
+///
+/// The bridge receives the authenticated request context, including its
+/// deadline and cancellation token. It must return only redacted transport
+/// errors. The HTTP adapter owns the returned stream and cancels the request
+/// and subscriber channel when the response body is dropped.
+pub trait ServiceStreamBridgePort: Send + Sync {
+    /// Builds the encoded HTTP body stream for one service subscriber.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable [`ApiHttpError`] when the subscriber cannot be bridged.
+    fn bridge(
+        &self,
+        subscriber: EventSubscriber<ServiceStreamEvent>,
+        context: &RequestContext,
+    ) -> Result<BoxHttpBodyStream, ApiHttpError>;
 }
 
 /// Shared ports and shutdown state for the public HTTP router.
@@ -203,6 +247,7 @@ pub struct HttpApiState {
     identity: Arc<dyn RequestIdentityPort>,
     authentication: Arc<dyn ServiceAuthenticationPort>,
     dispatch: Arc<dyn ServiceDispatchPort>,
+    stream_bridge: Option<Arc<dyn ServiceStreamBridgePort>>,
     shutdown: CancellationToken,
     admission: Arc<Semaphore>,
 }
@@ -225,9 +270,22 @@ impl HttpApiState {
             identity,
             authentication,
             dispatch,
+            stream_bridge: None,
             shutdown,
             admission: Arc::new(Semaphore::new(MAX_PUBLIC_IN_FLIGHT_REQUESTS)),
         }
+    }
+
+    /// Installs the optional service-to-HTTP response stream bridge.
+    ///
+    /// Without this capability, stream-mode requests fail with a stable 503
+    /// before service dispatch. Installing a bridge does not change complete
+    /// response bytes or headers. Returned stream bodies retain request
+    /// cancellation and shared admission until body drop.
+    #[must_use]
+    pub fn with_stream_bridge(mut self, bridge: Arc<dyn ServiceStreamBridgePort>) -> Self {
+        self.stream_bridge = Some(bridge);
+        self
     }
 }
 
@@ -238,8 +296,8 @@ impl HttpApiState {
 /// absolute UTC deadline, and idempotency key are propagated when present.
 /// Header, body, credential, deadline-window, and aggregate in-flight limits are
 /// enforced before the relevant allocation or service call. Complete responses
-/// and all failures use stable redacted JSON; streaming fails with a stable 503
-/// until the independent stream bridge is installed in P4.3.
+/// and all failures use stable redacted JSON. Streaming requires an explicitly
+/// installed bridge and uses non-buffering server-sent-event response bodies.
 ///
 /// Handler drop and timeout cancel the request child token. Authentication and
 /// dispatch ports receive the same deadline and cancellation context and must
@@ -254,7 +312,7 @@ pub fn public_router(state: HttpApiState) -> Router {
 
 async fn handle_text(State(state): State<HttpApiState>, request: Request<Body>) -> Response {
     let generated = state.identity.issue();
-    let _permit = match state.admission.clone().try_acquire_owned() {
+    let permit = match state.admission.clone().try_acquire_owned() {
         Ok(permit) => permit,
         Err(_) => {
             return failure(
@@ -264,7 +322,7 @@ async fn handle_text(State(state): State<HttpApiState>, request: Request<Body>) 
             .into_response();
         }
     };
-    match execute_text(&state, generated.clone(), request).await {
+    match execute_text(&state, generated.clone(), request, permit).await {
         Ok(response) => response,
         Err(failure) => failure.into_response(),
     }
@@ -274,10 +332,11 @@ async fn execute_text(
     state: &HttpApiState,
     generated: HttpRequestIdentity,
     request: Request<Body>,
+    permit: OwnedSemaphorePermit,
 ) -> Result<Response, ResponseFailure> {
     let admission = admit_request(state, generated, request).await?;
     let authenticated = authenticate_request(state, admission).await?;
-    dispatch_request(state, authenticated).await
+    dispatch_request(state, authenticated, permit).await
 }
 
 async fn admit_request(
@@ -334,8 +393,11 @@ async fn authenticate_request(
     )
     .await
     .map_err(|error| error.with_identity(admission.identity.clone()))?;
-    reject_stream(admission.domain.response_mode)
-        .map_err(|error| failure(admission.identity.clone(), error))?;
+    require_stream_bridge(
+        admission.domain.response_mode,
+        state.stream_bridge.is_some(),
+    )
+    .map_err(|error| failure(admission.identity.clone(), error))?;
     let context = authenticated_context(
         &admission.identity,
         admission.deadline,
@@ -347,6 +409,7 @@ async fn authenticate_request(
         deadline: admission.deadline,
         cancellation: admission.cancellation,
         request: admission.domain.request,
+        response_mode: admission.domain.response_mode,
         evidence,
         context,
     })
@@ -354,23 +417,100 @@ async fn authenticate_request(
 
 async fn dispatch_request(
     state: &HttpApiState,
-    mut request: AuthenticatedRequest,
+    request: AuthenticatedRequest,
+    permit: OwnedSemaphorePermit,
 ) -> Result<Response, ResponseFailure> {
+    let AuthenticatedRequest {
+        identity,
+        deadline,
+        cancellation,
+        request,
+        response_mode,
+        evidence,
+        context,
+    } = request;
     let result = within_deadline(
-        request.deadline,
-        state
-            .dispatch
-            .dispatch(request.request, &request.evidence, &request.context),
+        deadline,
+        state.dispatch.dispatch(request, &evidence, &context),
     )
     .await;
-    if result.is_ok() {
-        request.cancellation.disarm();
+    let outcome = result
+        .map_err(|error| domain_failure(identity.clone(), error))?
+        .map_err(|error| domain_failure(identity.clone(), error))?;
+    let dispatched = DispatchedRequest {
+        identity,
+        cancellation,
+        response_mode,
+        context,
+    };
+    project_dispatch_outcome(dispatched, outcome, state.stream_bridge.as_ref(), permit)
+}
+
+fn project_dispatch_outcome(
+    request: DispatchedRequest,
+    outcome: ServiceDispatchOutcome,
+    bridge: Option<&Arc<dyn ServiceStreamBridgePort>>,
+    permit: OwnedSemaphorePermit,
+) -> Result<Response, ResponseFailure> {
+    match (request.response_mode, outcome) {
+        (ResponseMode::Complete, ServiceDispatchOutcome::Complete(response)) => {
+            complete_dispatch_response(request, response, permit)
+        }
+        (ResponseMode::Stream, ServiceDispatchOutcome::Stream(subscriber)) => {
+            stream_dispatch_response(request, subscriber, bridge, permit)
+        }
+        _ => Err(failure(
+            request.identity,
+            ApiHttpError::new(ApiHttpErrorCode::Internal),
+        )),
     }
-    let response = result
-        .map_err(|error| domain_failure(request.identity.clone(), error))?
-        .map_err(|error| domain_failure(request.identity.clone(), error))?;
-    project_service_response(&request.identity, response)
-        .map_err(|error| failure(request.identity, error))
+}
+
+fn complete_dispatch_response(
+    mut request: DispatchedRequest,
+    response: ServiceResponse,
+    _permit: OwnedSemaphorePermit,
+) -> Result<Response, ResponseFailure> {
+    let projected = project_service_response(&request.identity, response)
+        .map_err(|error| failure(request.identity.clone(), error))?;
+    request.cancellation.disarm();
+    Ok(projected)
+}
+
+fn stream_dispatch_response(
+    request: DispatchedRequest,
+    subscriber: EventSubscriber<ServiceStreamEvent>,
+    bridge: Option<&Arc<dyn ServiceStreamBridgePort>>,
+    permit: OwnedSemaphorePermit,
+) -> Result<Response, ResponseFailure> {
+    let bridge = bridge.ok_or_else(|| {
+        failure(
+            request.identity.clone(),
+            ApiHttpError::new(ApiHttpErrorCode::StreamUnavailable),
+        )
+    })?;
+    let channel_cancellation = subscriber.cancellation();
+    let stream = bridge
+        .bridge(subscriber, &request.context)
+        .map_err(|error| failure(request.identity.clone(), error))?;
+    let lifecycle =
+        HttpBodyLifecycleStream::new(stream, request.cancellation, channel_cancellation, permit);
+    Ok(stream_response(&request.identity, lifecycle))
+}
+
+fn stream_response(identity: &HttpRequestIdentity, stream: HttpBodyLifecycleStream) -> Response {
+    let mut response = Body::from_stream(stream).into_response();
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/event-stream"),
+    );
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    response
+        .headers_mut()
+        .insert("x-accel-buffering", HeaderValue::from_static("no"));
+    response_with_request_id(identity, response)
 }
 
 async fn authenticate(
@@ -554,8 +694,8 @@ fn parse_idempotency(headers: &HeaderMap) -> Result<Option<IdempotencyKey>, Body
         .transpose()
 }
 
-fn reject_stream(mode: ResponseMode) -> Result<(), ApiHttpError> {
-    if mode == ResponseMode::Stream {
+fn require_stream_bridge(mode: ResponseMode, available: bool) -> Result<(), ApiHttpError> {
+    if mode == ResponseMode::Stream && !available {
         return Err(ApiHttpError::new(ApiHttpErrorCode::StreamUnavailable));
     }
     Ok(())
@@ -660,7 +800,15 @@ struct AuthenticatedRequest {
     deadline: SystemTime,
     cancellation: RequestCancellation,
     request: ServiceRequest,
+    response_mode: ResponseMode,
     evidence: AuthenticatedPrincipalEvidence,
+    context: RequestContext,
+}
+
+struct DispatchedRequest {
+    identity: HttpRequestIdentity,
+    cancellation: RequestCancellation,
+    response_mode: ResponseMode,
     context: RequestContext,
 }
 
@@ -685,7 +833,7 @@ fn project_service_response(
                 finish_reason,
             })
             .into_response();
-            Ok(response_from_projection(identity, projected))
+            Ok(response_with_request_id(identity, projected))
         }
         _ => Err(ApiHttpError::new(ApiHttpErrorCode::Internal)),
     }
@@ -731,6 +879,43 @@ fn static_route_error(
 struct RequestCancellation {
     cancellation: CancellationToken,
     armed: bool,
+}
+
+struct HttpBodyLifecycleStream {
+    stream: BoxHttpBodyStream,
+    _cancellation: RequestCancellation,
+    channel_cancellation: CancellationToken,
+    _permit: OwnedSemaphorePermit,
+}
+
+impl HttpBodyLifecycleStream {
+    fn new(
+        stream: BoxHttpBodyStream,
+        cancellation: RequestCancellation,
+        channel_cancellation: CancellationToken,
+        permit: OwnedSemaphorePermit,
+    ) -> Self {
+        Self {
+            stream,
+            _cancellation: cancellation,
+            channel_cancellation,
+            _permit: permit,
+        }
+    }
+}
+
+impl Stream for HttpBodyLifecycleStream {
+    type Item = Result<Bytes, ApiHttpError>;
+
+    fn poll_next(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.stream.as_mut().poll_next(context)
+    }
+}
+
+impl Drop for HttpBodyLifecycleStream {
+    fn drop(&mut self) {
+        self.channel_cancellation.cancel();
+    }
 }
 
 impl RequestCancellation {

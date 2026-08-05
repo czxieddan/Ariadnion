@@ -399,7 +399,7 @@ const fn domain_retryable(code: ApiDomainErrorCode) -> bool {
     )
 }
 
-pub(super) fn response_from_projection(
+pub(super) fn response_with_request_id(
     identity: &HttpRequestIdentity,
     mut response: Response,
 ) -> Response {
@@ -421,7 +421,7 @@ fn projected_response(identity: &HttpRequestIdentity, projection: ErrorProjectio
         }),
     )
         .into_response();
-    response = response_from_projection(identity, response);
+    response = response_with_request_id(identity, response);
     if challenge {
         response
             .headers_mut()
