@@ -39,6 +39,7 @@ publish = false
 
 [dependencies]
 ariadnion-api-http = { path = "../../crates/optional/ariadnion-api-http" }
+ariadnion-api-stream = { path = "../../crates/optional/ariadnion-api-stream" }
 ariadnion-cli-user = { path = "../../crates/optional/ariadnion-cli-user" }
 ariadnion-core = { path = "../../crates/ariadnion-core" }
 ariadnion-compose = { path = "../../crates/optional/ariadnion-compose" }
