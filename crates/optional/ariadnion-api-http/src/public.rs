@@ -29,7 +29,9 @@
 //
 //! Axum ingress for bounded, transport-neutral public service requests.
 
-use std::fmt::{self, Debug, Display, Formatter};
+mod error;
+
+use std::fmt::{self, Debug, Formatter};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -44,13 +46,19 @@ use ariadnion_core::{CancellationToken, PrincipalContext, RequestContext, Reques
 use ariadnion_principal_binding::AuthenticatedPrincipalEvidence;
 use axum::body::{Body, to_bytes};
 use axum::extract::State;
-use axum::http::{HeaderMap, HeaderValue, Request, StatusCode, header};
+use axum::http::{HeaderMap, HeaderValue, Request, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
 use zeroize::Zeroize;
+
+pub use error::{ApiHttpError, ApiHttpErrorCode};
+use error::{
+    AuthenticationFailure, BodyFailure, ResponseFailure, domain_failure, failure, invalid_request,
+    response_from_projection, unauthenticated,
+};
 
 /// Maximum encoded body admitted by the public HTTP ingress.
 pub const MAX_PUBLIC_BODY_BYTES: usize = 8 * 1024 * 1024;
@@ -158,119 +166,6 @@ impl Drop for PresentedBearer {
         self.credential.zeroize();
     }
 }
-
-/// Stable transport failures produced before or around service dispatch.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-#[non_exhaustive]
-pub enum ApiHttpErrorCode {
-    /// Request syntax, headers, or framing are invalid.
-    InvalidRequest,
-    /// Authentication evidence is absent or invalid.
-    Unauthenticated,
-    /// The authenticated principal lacks permission.
-    Forbidden,
-    /// The request context was cancelled.
-    Cancelled,
-    /// The absolute request deadline elapsed.
-    DeadlineExceeded,
-    /// No public route matches the request target.
-    NotFound,
-    /// The route does not support the request method.
-    MethodNotAllowed,
-    /// The encoded request body exceeds its hard limit.
-    PayloadTooLarge,
-    /// Every public ingress execution permit is in use.
-    ResourceExhausted,
-    /// An authoritative authentication dependency is unavailable.
-    Unavailable,
-    /// The request media type is not supported.
-    UnsupportedMediaType,
-    /// The optional response-stream bridge is unavailable.
-    StreamUnavailable,
-    /// The transport failed without a safe external explanation.
-    Internal,
-}
-
-impl ApiHttpErrorCode {
-    /// Returns the stable transport machine code.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::InvalidRequest => "API_HTTP_INVALID_REQUEST",
-            Self::Unauthenticated => "API_HTTP_UNAUTHENTICATED",
-            Self::Forbidden => "API_HTTP_FORBIDDEN",
-            Self::NotFound => "API_HTTP_NOT_FOUND",
-            Self::MethodNotAllowed => "API_HTTP_METHOD_NOT_ALLOWED",
-            Self::PayloadTooLarge
-            | Self::Cancelled
-            | Self::DeadlineExceeded
-            | Self::ResourceExhausted
-            | Self::Unavailable
-            | Self::UnsupportedMediaType
-            | Self::StreamUnavailable
-            | Self::Internal => extended_http_code(self),
-        }
-    }
-}
-
-const fn extended_http_code(code: ApiHttpErrorCode) -> &'static str {
-    match code {
-        ApiHttpErrorCode::PayloadTooLarge => "API_HTTP_PAYLOAD_TOO_LARGE",
-        ApiHttpErrorCode::UnsupportedMediaType => "API_HTTP_UNSUPPORTED_MEDIA_TYPE",
-        ApiHttpErrorCode::StreamUnavailable => "API_HTTP_STREAM_UNAVAILABLE",
-        ApiHttpErrorCode::Cancelled
-        | ApiHttpErrorCode::DeadlineExceeded
-        | ApiHttpErrorCode::ResourceExhausted
-        | ApiHttpErrorCode::Unavailable
-        | ApiHttpErrorCode::Internal => service_http_code(code),
-        _ => "API_HTTP_INTERNAL",
-    }
-}
-
-const fn service_http_code(code: ApiHttpErrorCode) -> &'static str {
-    match code {
-        ApiHttpErrorCode::Cancelled => "API_HTTP_CANCELLED",
-        ApiHttpErrorCode::DeadlineExceeded => "API_HTTP_DEADLINE_EXCEEDED",
-        ApiHttpErrorCode::ResourceExhausted => "API_HTTP_RESOURCE_EXHAUSTED",
-        ApiHttpErrorCode::Unavailable => "API_HTTP_UNAVAILABLE",
-        ApiHttpErrorCode::Internal => "API_HTTP_INTERNAL",
-        _ => "API_HTTP_INTERNAL",
-    }
-}
-
-/// A redacted HTTP adapter error that retains no request material.
-#[derive(Clone, Copy, Eq, PartialEq)]
-pub struct ApiHttpError {
-    code: ApiHttpErrorCode,
-}
-
-impl ApiHttpError {
-    /// Creates a redacted error from its stable code.
-    #[must_use]
-    pub const fn new(code: ApiHttpErrorCode) -> Self {
-        Self { code }
-    }
-
-    /// Returns the stable transport error code.
-    #[must_use]
-    pub const fn code(self) -> ApiHttpErrorCode {
-        self.code
-    }
-}
-
-impl Debug for ApiHttpError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        write!(formatter, "ApiHttpError({})", self.code.as_str())
-    }
-}
-
-impl Display for ApiHttpError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.code.as_str())
-    }
-}
-
-impl std::error::Error for ApiHttpError {}
 
 /// Authenticates one public request against bounded Bearer material.
 pub trait ServiceAuthenticationPort: Send + Sync {
@@ -784,14 +679,13 @@ fn project_service_response(
         ServiceResponse::Text(response) => {
             let version = project_version(response.version())?;
             let finish_reason = project_finish_reason(response.finish_reason())?;
-            let mut projected = Json(TextResponseDto {
+            let projected = Json(TextResponseDto {
                 version,
                 output: response.output().as_str(),
                 finish_reason,
             })
             .into_response();
-            attach_request_id(&mut projected, identity.request_id());
-            Ok(projected)
+            Ok(response_from_projection(identity, projected))
         }
         _ => Err(ApiHttpError::new(ApiHttpErrorCode::Internal)),
     }
@@ -809,245 +703,6 @@ const fn project_finish_reason(reason: FinishReason) -> Result<&'static str, Api
         FinishReason::Completed => Ok("completed"),
         FinishReason::OutputLimitReached => Ok("output_limit_reached"),
         _ => Err(ApiHttpError::new(ApiHttpErrorCode::Internal)),
-    }
-}
-
-#[derive(Serialize)]
-struct ErrorBody {
-    code: &'static str,
-    message: &'static str,
-    request_id: String,
-    details: EmptyDetails,
-    retryable: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    retry_after_ms: Option<u64>,
-}
-
-#[derive(Serialize)]
-struct EmptyDetails {}
-
-struct ErrorProjection {
-    status: StatusCode,
-    code: &'static str,
-    message: &'static str,
-    retryable: bool,
-}
-
-fn project_http_error(error: ApiHttpError) -> ErrorProjection {
-    let code = error.code();
-    ErrorProjection {
-        status: http_status(code),
-        code: code.as_str(),
-        message: http_message(code),
-        retryable: matches!(
-            code,
-            ApiHttpErrorCode::DeadlineExceeded
-                | ApiHttpErrorCode::ResourceExhausted
-                | ApiHttpErrorCode::StreamUnavailable
-                | ApiHttpErrorCode::Unavailable
-        ),
-    }
-}
-
-fn project_domain_error(error: ApiDomainError) -> ErrorProjection {
-    let code = error.code();
-    ErrorProjection {
-        status: domain_status(code),
-        code: code.as_str(),
-        message: domain_message(code),
-        retryable: domain_retryable(code),
-    }
-}
-
-const fn http_status(code: ApiHttpErrorCode) -> StatusCode {
-    match code {
-        ApiHttpErrorCode::InvalidRequest => StatusCode::BAD_REQUEST,
-        ApiHttpErrorCode::Unauthenticated => StatusCode::UNAUTHORIZED,
-        ApiHttpErrorCode::Forbidden => StatusCode::FORBIDDEN,
-        ApiHttpErrorCode::NotFound => StatusCode::NOT_FOUND,
-        ApiHttpErrorCode::MethodNotAllowed => StatusCode::METHOD_NOT_ALLOWED,
-        ApiHttpErrorCode::PayloadTooLarge
-        | ApiHttpErrorCode::Cancelled
-        | ApiHttpErrorCode::DeadlineExceeded
-        | ApiHttpErrorCode::ResourceExhausted
-        | ApiHttpErrorCode::Unavailable
-        | ApiHttpErrorCode::UnsupportedMediaType
-        | ApiHttpErrorCode::StreamUnavailable
-        | ApiHttpErrorCode::Internal => extended_http_status(code),
-    }
-}
-
-const fn extended_http_status(code: ApiHttpErrorCode) -> StatusCode {
-    match code {
-        ApiHttpErrorCode::PayloadTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
-        ApiHttpErrorCode::UnsupportedMediaType => StatusCode::UNSUPPORTED_MEDIA_TYPE,
-        ApiHttpErrorCode::StreamUnavailable => StatusCode::SERVICE_UNAVAILABLE,
-        ApiHttpErrorCode::Cancelled
-        | ApiHttpErrorCode::DeadlineExceeded
-        | ApiHttpErrorCode::ResourceExhausted
-        | ApiHttpErrorCode::Unavailable
-        | ApiHttpErrorCode::Internal => service_http_status(code),
-        _ => StatusCode::INTERNAL_SERVER_ERROR,
-    }
-}
-
-const fn service_http_status(code: ApiHttpErrorCode) -> StatusCode {
-    match code {
-        ApiHttpErrorCode::Cancelled => status_499(),
-        ApiHttpErrorCode::DeadlineExceeded => StatusCode::GATEWAY_TIMEOUT,
-        ApiHttpErrorCode::ResourceExhausted => StatusCode::TOO_MANY_REQUESTS,
-        ApiHttpErrorCode::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
-        ApiHttpErrorCode::Internal => StatusCode::INTERNAL_SERVER_ERROR,
-        _ => StatusCode::INTERNAL_SERVER_ERROR,
-    }
-}
-
-const fn domain_status(code: ApiDomainErrorCode) -> StatusCode {
-    match code {
-        ApiDomainErrorCode::InvalidArgument
-        | ApiDomainErrorCode::UnsupportedVersion
-        | ApiDomainErrorCode::LimitExceeded => StatusCode::UNPROCESSABLE_ENTITY,
-        ApiDomainErrorCode::Conflict => StatusCode::CONFLICT,
-        ApiDomainErrorCode::Cancelled => status_499(),
-        ApiDomainErrorCode::DeadlineExceeded => StatusCode::GATEWAY_TIMEOUT,
-        ApiDomainErrorCode::Unavailable
-        | ApiDomainErrorCode::ResourceExhausted
-        | ApiDomainErrorCode::Internal => service_domain_status(code),
-        _ => StatusCode::INTERNAL_SERVER_ERROR,
-    }
-}
-
-const fn service_domain_status(code: ApiDomainErrorCode) -> StatusCode {
-    match code {
-        ApiDomainErrorCode::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
-        ApiDomainErrorCode::ResourceExhausted => StatusCode::TOO_MANY_REQUESTS,
-        ApiDomainErrorCode::Internal => StatusCode::INTERNAL_SERVER_ERROR,
-        _ => StatusCode::INTERNAL_SERVER_ERROR,
-    }
-}
-
-const fn status_499() -> StatusCode {
-    match StatusCode::from_u16(499) {
-        Ok(status) => status,
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
-    }
-}
-
-const fn http_message(code: ApiHttpErrorCode) -> &'static str {
-    match code {
-        ApiHttpErrorCode::InvalidRequest => "The request is invalid.",
-        ApiHttpErrorCode::Unauthenticated => "Authentication is required.",
-        ApiHttpErrorCode::Forbidden => "The request is not permitted.",
-        ApiHttpErrorCode::NotFound => "The requested endpoint was not found.",
-        ApiHttpErrorCode::MethodNotAllowed => "The request method is not supported.",
-        ApiHttpErrorCode::PayloadTooLarge
-        | ApiHttpErrorCode::Cancelled
-        | ApiHttpErrorCode::DeadlineExceeded
-        | ApiHttpErrorCode::ResourceExhausted
-        | ApiHttpErrorCode::Unavailable
-        | ApiHttpErrorCode::UnsupportedMediaType
-        | ApiHttpErrorCode::StreamUnavailable
-        | ApiHttpErrorCode::Internal => extended_http_message(code),
-    }
-}
-
-const fn extended_http_message(code: ApiHttpErrorCode) -> &'static str {
-    match code {
-        ApiHttpErrorCode::PayloadTooLarge => "The request body is too large.",
-        ApiHttpErrorCode::UnsupportedMediaType => "The request media type is not supported.",
-        ApiHttpErrorCode::StreamUnavailable => "Response streaming is unavailable.",
-        ApiHttpErrorCode::Cancelled
-        | ApiHttpErrorCode::DeadlineExceeded
-        | ApiHttpErrorCode::ResourceExhausted
-        | ApiHttpErrorCode::Unavailable
-        | ApiHttpErrorCode::Internal => service_http_message(code),
-        _ => "The request could not be completed.",
-    }
-}
-
-const fn service_http_message(code: ApiHttpErrorCode) -> &'static str {
-    match code {
-        ApiHttpErrorCode::Cancelled => "The request was cancelled.",
-        ApiHttpErrorCode::DeadlineExceeded => "The request deadline was exceeded.",
-        ApiHttpErrorCode::ResourceExhausted => "Public request capacity is exhausted.",
-        ApiHttpErrorCode::Unavailable => "An authentication dependency is unavailable.",
-        ApiHttpErrorCode::Internal => "The request could not be completed.",
-        _ => "The request could not be completed.",
-    }
-}
-
-const fn domain_message(code: ApiDomainErrorCode) -> &'static str {
-    match code {
-        ApiDomainErrorCode::InvalidArgument
-        | ApiDomainErrorCode::UnsupportedVersion
-        | ApiDomainErrorCode::LimitExceeded
-        | ApiDomainErrorCode::Conflict => request_domain_message(code),
-        ApiDomainErrorCode::Cancelled => "The request was cancelled.",
-        ApiDomainErrorCode::DeadlineExceeded => "The request deadline was exceeded.",
-        ApiDomainErrorCode::Unavailable
-        | ApiDomainErrorCode::ResourceExhausted
-        | ApiDomainErrorCode::Internal => service_domain_message(code),
-        _ => "The request could not be completed.",
-    }
-}
-
-const fn request_domain_message(code: ApiDomainErrorCode) -> &'static str {
-    match code {
-        ApiDomainErrorCode::InvalidArgument => "A request value is invalid.",
-        ApiDomainErrorCode::UnsupportedVersion => "The request version is not supported.",
-        ApiDomainErrorCode::LimitExceeded => "A request limit was exceeded.",
-        ApiDomainErrorCode::Conflict => "The request conflicts with current state.",
-        _ => "The request could not be completed.",
-    }
-}
-
-const fn service_domain_message(code: ApiDomainErrorCode) -> &'static str {
-    match code {
-        ApiDomainErrorCode::Unavailable => "A required service is unavailable.",
-        ApiDomainErrorCode::ResourceExhausted => "A request resource was exhausted.",
-        ApiDomainErrorCode::Internal => "The request could not be completed.",
-        _ => "The request could not be completed.",
-    }
-}
-
-const fn domain_retryable(code: ApiDomainErrorCode) -> bool {
-    matches!(
-        code,
-        ApiDomainErrorCode::DeadlineExceeded
-            | ApiDomainErrorCode::Unavailable
-            | ApiDomainErrorCode::ResourceExhausted
-    )
-}
-
-fn response_from_projection(
-    identity: &HttpRequestIdentity,
-    projection: ErrorProjection,
-) -> Response {
-    let challenge = projection.status == StatusCode::UNAUTHORIZED;
-    let mut response = (
-        projection.status,
-        Json(ErrorBody {
-            code: projection.code,
-            message: projection.message,
-            request_id: identity.request_id.as_str().to_owned(),
-            details: EmptyDetails {},
-            retryable: projection.retryable,
-            retry_after_ms: None,
-        }),
-    )
-        .into_response();
-    attach_request_id(&mut response, identity.request_id());
-    if challenge {
-        response
-            .headers_mut()
-            .insert(header::WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
-    }
-    response
-}
-
-fn attach_request_id(response: &mut Response, request_id: &RequestId) {
-    if let Ok(value) = HeaderValue::from_str(request_id.as_str()) {
-        response.headers_mut().insert(REQUEST_ID_HEADER, value);
     }
 }
 
@@ -1070,46 +725,7 @@ fn static_route_error(
 ) -> Response {
     let generated = state.identity.issue();
     let identity = resolve_identity(generated.clone(), headers).unwrap_or(generated);
-    response_from_projection(&identity, project_http_error(ApiHttpError::new(code)))
-}
-
-struct ResponseFailure {
-    identity: HttpRequestIdentity,
-    projection: ErrorProjection,
-}
-
-impl ResponseFailure {
-    fn into_response(self) -> Response {
-        response_from_projection(&self.identity, self.projection)
-    }
-}
-
-enum AuthenticationFailure {
-    Http(ApiHttpError),
-    Domain(ApiDomainError),
-}
-
-enum BodyFailure {
-    Http(ApiHttpError),
-    Domain(ApiDomainError),
-}
-
-impl BodyFailure {
-    fn with_identity(self, identity: HttpRequestIdentity) -> ResponseFailure {
-        match self {
-            Self::Http(error) => failure(identity, error),
-            Self::Domain(error) => domain_failure(identity, error),
-        }
-    }
-}
-
-impl AuthenticationFailure {
-    fn with_identity(self, identity: HttpRequestIdentity) -> ResponseFailure {
-        match self {
-            Self::Http(error) => failure(identity, error),
-            Self::Domain(error) => domain_failure(identity, error),
-        }
-    }
+    failure(identity, ApiHttpError::new(code)).into_response()
 }
 
 struct RequestCancellation {
@@ -1140,28 +756,6 @@ impl Drop for RequestCancellation {
             self.cancellation.cancel();
         }
     }
-}
-
-fn failure(identity: HttpRequestIdentity, error: ApiHttpError) -> ResponseFailure {
-    ResponseFailure {
-        identity,
-        projection: project_http_error(error),
-    }
-}
-
-fn domain_failure(identity: HttpRequestIdentity, error: ApiDomainError) -> ResponseFailure {
-    ResponseFailure {
-        identity,
-        projection: project_domain_error(error),
-    }
-}
-
-const fn invalid_request() -> ApiHttpError {
-    ApiHttpError::new(ApiHttpErrorCode::InvalidRequest)
-}
-
-const fn unauthenticated() -> ApiHttpError {
-    ApiHttpError::new(ApiHttpErrorCode::Unauthenticated)
 }
 
 fn valid_bearer_token(field: &[u8], token: &[u8]) -> bool {
