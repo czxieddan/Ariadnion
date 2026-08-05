@@ -27,15 +27,22 @@
 //
 // SPDX-License-Identifier: LicenseRef-AHCL-1.0
 //
-//! Bounded framework-independent HTTP administration adapters.
+//! Bounded administration and public HTTP adapters.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
 mod admin;
+mod public;
 
 pub use admin::{
     HttpAdminAdapter, HttpAdminResponse, HttpAuthenticationPort, HttpAuthorization,
     HttpRequestMetadata, HttpSuspendUserBody, HttpSuspendUserRequest, MAX_AUTHORIZATION_BYTES,
     MAX_ENCODED_BODY_BYTES, MAX_ENCODED_HEADER_BYTES,
+};
+pub use public::{
+    ApiHttpError, ApiHttpErrorCode, BoxHttpFuture, HttpApiState, HttpRequestIdentity,
+    MAX_PRESENTED_BEARER_BYTES, MAX_PUBLIC_BODY_BYTES, MAX_PUBLIC_HEADER_BYTES, MAX_PUBLIC_HEADERS,
+    MAX_PUBLIC_IN_FLIGHT_REQUESTS, PresentedBearer, RequestIdentityPort, ServiceAuthenticationPort,
+    ServiceDispatchPort, public_router,
 };
