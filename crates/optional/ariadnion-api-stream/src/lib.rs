@@ -31,3 +31,12 @@
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
+
+mod bridge;
+mod encode;
+mod error;
+
+pub use bridge::{
+    DEFAULT_HEARTBEAT_INTERVAL, DEFAULT_MAX_ACTIVE_STREAMS, SseBridge, SseBridgeConfig,
+};
+pub use error::{ApiStreamError, ApiStreamErrorCode};
