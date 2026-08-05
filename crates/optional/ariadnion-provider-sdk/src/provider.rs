@@ -42,6 +42,9 @@ use crate::{
 };
 
 /// A boxed runtime-neutral provider call returned by a trusted adapter.
+///
+/// Returned failures contain provider classification facts only. The checked
+/// call wrapper binds current attempt evidence before exposing an outcome.
 pub type BoxProviderCall<'a> =
     Pin<Box<dyn Future<Output = Result<ProviderRawOutcome, ProviderFailure>> + Send + 'a>>;
 
@@ -105,7 +108,7 @@ pub trait ProviderPort: Send + Sync {
     ///
     /// This method must only construct a lazy future. The future must check the
     /// supplied attempt context before each external side effect and must return
-    /// only bounded domain values or classified failures.
+    /// only bounded domain values or unbound classified failure facts.
     fn start_raw<'a>(&'a self, attempt: ProviderAttempt) -> BoxProviderCall<'a>;
 
     /// Starts a checked provider call with cancellation and mode enforcement.
@@ -115,7 +118,7 @@ pub trait ProviderPort: Send + Sync {
         let expected_mode = attempt.response_mode();
         let evidence = attempt.evidence();
         let context = attempt.context().clone();
-        let initial_failure = inactive_failure(&context, &evidence);
+        let initial_failure = inactive_failure(&context);
         let inner = initial_failure.is_none().then(|| self.start_raw(attempt));
         ProviderCallFuture {
             inner,
@@ -149,7 +152,7 @@ impl Future for ProviderCallFuture<'_> {
             return Poll::Ready(outcome);
         }
         let Some(inner) = this.inner.as_mut() else {
-            return Poll::Ready(this.complete_failure(internal_failure(&this.evidence)));
+            return Poll::Ready(this.complete_failure(internal_failure()));
         };
         match inner.as_mut().poll(task) {
             Poll::Pending => Poll::Pending,
@@ -172,7 +175,7 @@ impl ProviderCallFuture<'_> {
         let failure = self
             .initial_failure
             .take()
-            .or_else(|| inactive_failure(&self.context, &self.evidence))?;
+            .or_else(|| inactive_failure(&self.context))?;
         Some(self.complete_failure(failure))
     }
 
@@ -182,7 +185,7 @@ impl ProviderCallFuture<'_> {
         self.completed = true;
         ProviderAttemptOutcome::Failed {
             attempt_id: self.attempt_id.clone(),
-            failure,
+            failure: failure.bind_progress(self.evidence.progress()),
         }
     }
 }
@@ -202,7 +205,7 @@ fn correlate_outcome(
     outcome: Result<ProviderRawOutcome, ProviderFailure>,
 ) -> ProviderAttemptOutcome {
     match (expected_mode, outcome) {
-        (_, Err(failure)) => failed(attempt_id, failure),
+        (_, Err(failure)) => failed(attempt_id, evidence, failure),
         (Some(ResponseMode::Complete), Ok(ProviderRawOutcome::Complete(response))) => {
             ProviderAttemptOutcome::Complete {
                 attempt_id: attempt_id.clone(),
@@ -215,25 +218,26 @@ fn correlate_outcome(
                 stream,
             }
         }
-        (_, Ok(_)) => failed(attempt_id, protocol_failure(evidence)),
+        (_, Ok(_)) => failed(attempt_id, evidence, protocol_failure()),
     }
 }
 
-fn failed(attempt_id: &AttemptId, failure: ProviderFailure) -> ProviderAttemptOutcome {
+fn failed(
+    attempt_id: &AttemptId,
+    evidence: &ProviderAttemptEvidence,
+    failure: ProviderFailure,
+) -> ProviderAttemptOutcome {
     ProviderAttemptOutcome::Failed {
         attempt_id: attempt_id.clone(),
-        failure,
+        failure: failure.bind_progress(evidence.progress()),
     }
 }
 
-fn inactive_failure(
-    context: &RequestContext,
-    evidence: &ProviderAttemptEvidence,
-) -> Option<ProviderFailure> {
+fn inactive_failure(context: &RequestContext) -> Option<ProviderFailure> {
     context
         .check_active()
         .err()
-        .map(|error| ProviderFailure::new(failure_class(error.code()), evidence.progress()))
+        .map(|error| ProviderFailure::new(failure_class(error.code())))
 }
 
 const fn failure_class(code: ErrorCode) -> ProviderFailureClass {
@@ -244,10 +248,10 @@ const fn failure_class(code: ErrorCode) -> ProviderFailureClass {
     }
 }
 
-fn protocol_failure(evidence: &ProviderAttemptEvidence) -> ProviderFailure {
-    ProviderFailure::new(ProviderFailureClass::ProtocolViolation, evidence.progress())
+const fn protocol_failure() -> ProviderFailure {
+    ProviderFailure::new(ProviderFailureClass::ProtocolViolation)
 }
 
-fn internal_failure(evidence: &ProviderAttemptEvidence) -> ProviderFailure {
-    ProviderFailure::new(ProviderFailureClass::Internal, evidence.progress())
+const fn internal_failure() -> ProviderFailure {
+    ProviderFailure::new(ProviderFailureClass::Internal)
 }

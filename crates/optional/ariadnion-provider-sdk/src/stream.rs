@@ -61,6 +61,9 @@ pub enum ProviderStreamEvent {
         finish_reason: FinishReason,
     },
     /// Reports one classified terminal provider failure.
+    ///
+    /// Adapters provide unbound failure facts. The publisher binds current
+    /// authoritative attempt evidence before the event becomes observable.
     Failed(ProviderFailure),
 }
 
@@ -220,9 +223,10 @@ impl ProviderStreamPublisher {
         }
         let mut state = lock_state(&self.state);
         let accepted = validate_event(&state, &event, self.limits)?;
+        mark_upstream_started(&self.evidence);
+        let event = bind_failure(event, self.evidence.progress());
         self.inner.try_publish(event).map_err(map_publish_error)?;
         apply_accepted(&mut state, accepted);
-        mark_upstream_started(&self.evidence);
         Ok(())
     }
 
@@ -384,6 +388,18 @@ fn map_publish_error(error: PublishError<ProviderStreamEvent>) -> ProviderStream
         PublishError::Closed(event) => ProviderStreamPublishError::Closed(event),
         PublishError::OutOfOrder(event) => ProviderStreamPublishError::OutOfOrder(event),
     }
+}
+
+fn bind_failure(
+    event: EventEnvelope<ProviderStreamEvent>,
+    progress: crate::ProviderAttemptProgress,
+) -> EventEnvelope<ProviderStreamEvent> {
+    event.map_payload(|payload| match payload {
+        ProviderStreamEvent::Failed(failure) => {
+            ProviderStreamEvent::Failed(failure.bind_progress(progress))
+        }
+        other => other,
+    })
 }
 
 fn mark_upstream_started(evidence: &ProviderAttemptEvidence) {

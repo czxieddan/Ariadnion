@@ -85,6 +85,17 @@ impl<E> EventEnvelope<E> {
         &self.payload
     }
 
+    /// Transforms the payload while preserving all envelope metadata.
+    #[must_use]
+    pub fn map_payload<T>(self, map: impl FnOnce(E) -> T) -> EventEnvelope<T> {
+        EventEnvelope {
+            sequence: self.sequence,
+            version: self.version,
+            occurred_at: self.occurred_at,
+            payload: map(self.payload),
+        }
+    }
+
     /// Consumes the envelope and returns its payload.
     #[must_use]
     pub fn into_payload(self) -> E {

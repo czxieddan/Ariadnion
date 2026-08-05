@@ -30,10 +30,11 @@
 //! Stable redacted provider failures and factual retry advice.
 
 use std::fmt::{self, Display, Formatter};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use crate::attempt::{ProviderAttemptProgress, ProviderTransmission};
 use crate::contract::{ProviderContractError, ProviderContractErrorCode};
+use ariadnion_core::RequestContext;
 
 /// The maximum accepted provider retry delay.
 pub const MAX_PROVIDER_RETRY_AFTER: Duration = Duration::from_secs(86_400);
@@ -115,21 +116,25 @@ pub enum ProviderRetryAdvice {
     After(Duration),
 }
 
-/// A redacted provider failure with immutable attempt evidence.
+/// A redacted provider failure with optionally bound authoritative evidence.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProviderFailure {
     class: ProviderFailureClass,
-    progress: ProviderAttemptProgress,
+    progress: Option<ProviderAttemptProgress>,
     retry_after: Option<Duration>,
 }
 
 impl ProviderFailure {
-    /// Creates a classified failure without raw provider diagnostics.
+    /// Creates an unbound classified failure without raw provider diagnostics.
+    ///
+    /// Unbound failures always return [`ProviderRetryAdvice::Never`]. The SDK
+    /// binds authoritative attempt evidence only when accepting the failure at
+    /// a checked provider-call or provider-stream boundary.
     #[must_use]
-    pub const fn new(class: ProviderFailureClass, progress: ProviderAttemptProgress) -> Self {
+    pub const fn new(class: ProviderFailureClass) -> Self {
         Self {
             class,
-            progress,
+            progress: None,
             retry_after: None,
         }
     }
@@ -160,9 +165,9 @@ impl ProviderFailure {
         self.class.as_str()
     }
 
-    /// Returns immutable attempt evidence captured for this failure.
+    /// Returns authoritative attempt evidence when an SDK boundary bound it.
     #[must_use]
-    pub const fn progress(self) -> ProviderAttemptProgress {
+    pub const fn progress(self) -> Option<ProviderAttemptProgress> {
         self.progress
     }
 
@@ -172,19 +177,49 @@ impl ProviderFailure {
         self.retry_after
     }
 
-    /// Derives factual retry advice from the failure and replayability evidence.
+    /// Replaces untrusted adapter progress with evidence from an SDK boundary.
+    pub(crate) const fn bind_progress(mut self, progress: ProviderAttemptProgress) -> Self {
+        self.progress = Some(progress);
+        self
+    }
+
+    /// Derives factual retry advice from active request and replayability evidence.
     ///
-    /// Routing remains responsible for deadline checks, account selection,
-    /// attempt budgets, billing, and the final retry decision.
+    /// Cancellation and deadline failures return [`ProviderRetryAdvice::Never`].
+    /// Routing remains responsible for account selection, attempt budgets,
+    /// billing, and the final retry decision.
     #[must_use]
-    pub const fn retry_advice(self, replayable: bool) -> ProviderRetryAdvice {
-        if response_started(self.progress) {
+    pub fn retry_advice(self, replayable: bool, context: &RequestContext) -> ProviderRetryAdvice {
+        self.retry_advice_at(replayable, context, SystemTime::now())
+    }
+
+    /// Derives retry advice against a supplied UTC instant.
+    ///
+    /// This deterministic form is useful for tests and callers that already
+    /// hold a trusted clock sample. A bounded rate-limit delay is rejected when
+    /// it would reach or outlive the remaining request deadline.
+    #[must_use]
+    pub fn retry_advice_at(
+        self,
+        replayable: bool,
+        context: &RequestContext,
+        now: SystemTime,
+    ) -> ProviderRetryAdvice {
+        let remaining = match context.remaining_at(now) {
+            Ok(value) => value,
+            Err(_) => return ProviderRetryAdvice::Never,
+        };
+        let progress = match self.progress {
+            Some(progress) => progress,
+            None => return ProviderRetryAdvice::Never,
+        };
+        if response_started(progress) {
             return ProviderRetryAdvice::Never;
         }
-        if !transmission_allows_retry(self.progress.transmission(), replayable) {
+        if !transmission_allows_retry(progress.transmission(), replayable) {
             return ProviderRetryAdvice::Never;
         }
-        class_advice(self.class, self.retry_after)
+        class_advice(self.class, self.retry_after, remaining)
     }
 }
 
@@ -208,16 +243,27 @@ const fn transmission_allows_retry(transmission: ProviderTransmission, replayabl
     }
 }
 
-const fn class_advice(
+fn class_advice(
     class: ProviderFailureClass,
     retry_after: Option<Duration>,
+    remaining: Option<Duration>,
 ) -> ProviderRetryAdvice {
     match (class, retry_after) {
-        (ProviderFailureClass::RateLimited, Some(delay)) => ProviderRetryAdvice::After(delay),
+        (ProviderFailureClass::RateLimited, Some(delay)) if delay_fits(delay, remaining) => {
+            ProviderRetryAdvice::After(delay)
+        }
+        (ProviderFailureClass::RateLimited, Some(_)) => ProviderRetryAdvice::Never,
         (ProviderFailureClass::RateLimited, None)
         | (ProviderFailureClass::QuotaExhausted, _)
         | (ProviderFailureClass::AttemptTimeout, _)
         | (ProviderFailureClass::UpstreamUnavailable, _) => ProviderRetryAdvice::AlternateProvider,
         _ => ProviderRetryAdvice::Never,
+    }
+}
+
+fn delay_fits(delay: Duration, remaining: Option<Duration>) -> bool {
+    match remaining {
+        Some(budget) => delay < budget,
+        None => true,
     }
 }
