@@ -609,6 +609,7 @@ impl ProviderHttpProfileBuilder {
     where
         I: IntoIterator<Item = ProviderHttpHeader>,
     {
+        self.header_overflow = false;
         let mut bounded = Vec::with_capacity(MAX_HEADERS);
         let mut iterator = headers.into_iter();
         for _ in 0..=MAX_HEADERS {
@@ -706,7 +707,7 @@ fn validate_header_name(name: &str) -> Result<(), ProviderHttpProfileError> {
 }
 
 fn validate_component_length(value: &str, maximum: usize) -> Result<(), ProviderHttpProfileError> {
-    if value.is_empty() || value.len() > maximum {
+    if value.len() > maximum {
         return Err(ProviderHttpProfileError::new(
             ProviderHttpProfileErrorCode::LimitExceeded,
         ));
