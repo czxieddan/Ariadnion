@@ -7,6 +7,12 @@
 // to the AHCL provisions concerning Continuous AHCL Licensing Segments and
 // migration to later official versions.
 //
+// After having a reasonable opportunity to read AHCL, all applicable Additional
+// Restrictions, and all version notices, a person accepts the corresponding terms,
+// to the extent permitted by applicable law, by using, copying, modifying, building,
+// using this file as a dependency, deploying, distributing, or operating this file
+// over a network.
+//
 // Official AHCL English text and public notices: https://ahcl.aperip.com
 // Repository verbatim AHCL copy:                 AHCL/AHCL-1.0.md
 // Project canonical repository:                  https://github.com/czxieddan/Ariadnion
@@ -21,46 +27,305 @@
 // SPDX-License-Identifier: LicenseRef-AHCL-1.0
 
 use std::collections::BTreeSet;
+use std::future::Future;
 use std::net::{IpAddr, Ipv4Addr};
+use std::pin::Pin;
 use std::time::Instant;
 
 use ariadnion_core::{
     MAX_OUTBOUND_RESOLVED_ADDRESSES, OutboundHost, OutboundPolicyRevision, OutboundTarget,
+    RequestContext,
 };
 
+use crate::config::ProviderHttpTimeouts;
 use crate::egress::EgressError;
+use crate::timeout::run_with_timeout;
 
-/// A bounded resolver implementation supplied by the runtime adapter.
+const MAX_RESOLUTION_HOST_ITERATIONS: usize = MAX_OUTBOUND_RESOLVED_ADDRESSES * 4;
+
+/// Nonzero resolver-configuration generation used to reject rebinding races.
+///
+/// A generation remains stable across lookups and changes only when the resolver
+/// configuration is replaced or reloaded.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct ResolutionEpoch(u64);
+
+impl ResolutionEpoch {
+    /// Creates a nonzero epoch.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EgressError::ResolutionEpochInvalid`] when `value` is zero.
+    pub fn new(value: u64) -> Result<Self, EgressError> {
+        if value == 0 {
+            Err(EgressError::ResolutionEpochInvalid)
+        } else {
+            Ok(Self(value))
+        }
+    }
+    /// Returns the epoch value.
+    #[must_use]
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
+/// A checked, deduplicated resolver answer set bound to one resolver epoch.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResolvedAddresses {
+    host: OutboundHost,
+    addresses: Box<[IpAddr]>,
+    epoch: ResolutionEpoch,
+    resolved_at: Instant,
+}
+
+impl ResolvedAddresses {
+    fn from_checked_answers(
+        host: OutboundHost,
+        addresses: Vec<IpAddr>,
+        epoch: ResolutionEpoch,
+        resolved_at: Instant,
+    ) -> Result<Self, EgressError> {
+        validate_record_addresses(&addresses)?;
+        Ok(Self {
+            host,
+            addresses: addresses.into_boxed_slice(),
+            epoch,
+            resolved_at,
+        })
+    }
+    /// Returns the canonical host used for this resolution.
+    #[must_use]
+    pub const fn host(&self) -> &OutboundHost {
+        &self.host
+    }
+    /// Returns the complete validated address set.
+    #[must_use]
+    pub fn addresses(&self) -> &[IpAddr] {
+        &self.addresses
+    }
+    /// Returns the resolver epoch.
+    #[must_use]
+    pub const fn epoch(&self) -> ResolutionEpoch {
+        self.epoch
+    }
+    /// Returns the monotonic completion instant.
+    #[must_use]
+    pub const fn resolved_at(&self) -> Instant {
+        self.resolved_at
+    }
+}
+
+/// An asynchronous bounded resolver implementation supplied by the runtime adapter.
 pub trait BoundedResolver: Send + Sync {
-    /// Resolves a canonical host into a complete, bounded answer set.
-    fn resolve(&self, host: &OutboundHost) -> Result<Vec<IpAddr>, EgressError>;
+    /// Streams numeric answers and returns the configuration epoch that produced them.
+    ///
+    /// Implementations must stop returning answers after cancellation, a request
+    /// deadline, or the configured resolution phase budget. Each answer is passed
+    /// directly to `visitor`; implementations must not retain an unbounded copy.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable [`EgressError`] for resolution failures, visitor rejection,
+    /// cancellation, deadlines, phase exhaustion, or an unavailable runtime.
+    fn resolve<'a>(
+        &'a self,
+        host: &'a OutboundHost,
+        context: &'a RequestContext,
+        timeouts: ProviderHttpTimeouts,
+        visitor: &'a mut (dyn FnMut(IpAddr) -> Result<(), EgressError> + Send),
+    ) -> Pin<Box<dyn Future<Output = Result<ResolutionEpoch, EgressError>> + Send + 'a>>;
+
+    /// Returns the active resolver-configuration epoch.
+    ///
+    /// Lookup activity must not change this value. A different value indicates
+    /// that records produced under the prior resolver configuration are stale.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EgressError::ResolutionEpochInvalid`] when an implementation
+    /// cannot provide a nonzero configuration generation.
+    fn current_epoch(&self) -> Result<ResolutionEpoch, EgressError>;
+
+    /// Resolves one host into a checked, deduplicated, bounded answer set.
+    ///
+    /// At most [`MAX_OUTBOUND_RESOLVED_ADDRESSES`] unique numeric addresses are
+    /// retained. The operation observes request cancellation, the request deadline,
+    /// and the independent resolution phase budget.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable [`EgressError`] when resolution fails, any answer is
+    /// forbidden, the answer stream exceeds its CPU or allocation bounds, the
+    /// resolver configuration changes, the request stops, or Tokio is unavailable.
+    fn resolve_checked<'a>(
+        &'a self,
+        host: &'a OutboundHost,
+        context: &'a RequestContext,
+        timeouts: ProviderHttpTimeouts,
+    ) -> Pin<Box<dyn Future<Output = Result<ResolvedAddresses, EgressError>> + Send + 'a>> {
+        Box::pin(async move {
+            let mut addresses = Vec::with_capacity(MAX_OUTBOUND_RESOLVED_ADDRESSES);
+            let mut seen = BTreeSet::new();
+            let mut iterations = 0_usize;
+            let mut visitor = |address| {
+                retain_resolved_address(address, &mut iterations, &mut seen, &mut addresses)
+            };
+            let resolution = self.resolve(host, context, timeouts, &mut visitor);
+            let epoch = run_with_timeout(
+                context,
+                timeouts.resolution(),
+                timeouts.cancellation_poll(),
+                resolution,
+            )
+            .await?;
+            if self.current_epoch()? != epoch {
+                return Err(EgressError::StaleResolution);
+            }
+            ResolvedAddresses::from_checked_answers(host.clone(), addresses, epoch, Instant::now())
+        })
+    }
+}
+
+/// Tokio DNS resolver without an internal cache or textual-address output.
+#[derive(Debug)]
+pub struct TokioSystemResolver {
+    epoch: ResolutionEpoch,
+}
+
+impl TokioSystemResolver {
+    /// Creates an uncached system resolver in the initial configuration epoch.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            epoch: ResolutionEpoch(1),
+        }
+    }
+
+    /// Creates an uncached resolver for an explicit configuration generation.
+    ///
+    /// The supplied generation remains unchanged for the lifetime of this resolver.
+    #[must_use]
+    pub const fn with_epoch(epoch: ResolutionEpoch) -> Self {
+        Self { epoch }
+    }
+}
+
+impl Default for TokioSystemResolver {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl BoundedResolver for TokioSystemResolver {
+    fn resolve<'a>(
+        &'a self,
+        host: &'a OutboundHost,
+        context: &'a RequestContext,
+        timeouts: ProviderHttpTimeouts,
+        visitor: &'a mut (dyn FnMut(IpAddr) -> Result<(), EgressError> + Send),
+    ) -> Pin<Box<dyn Future<Output = Result<ResolutionEpoch, EgressError>> + Send + 'a>> {
+        let lookup = async move {
+            let entries = tokio::net::lookup_host((host.as_str(), 0))
+                .await
+                .map_err(|_| EgressError::ResolutionFailed)?;
+            for entry in entries {
+                visitor(entry.ip())?;
+            }
+            Ok(self.epoch)
+        };
+        Box::pin(run_with_timeout(
+            context,
+            timeouts.resolution(),
+            timeouts.cancellation_poll(),
+            lookup,
+        ))
+    }
+
+    fn current_epoch(&self) -> Result<ResolutionEpoch, EgressError> {
+        Ok(self.epoch)
+    }
+}
+
+fn retain_resolved_address(
+    address: IpAddr,
+    iterations: &mut usize,
+    seen: &mut BTreeSet<IpAddr>,
+    addresses: &mut Vec<IpAddr>,
+) -> Result<(), EgressError> {
+    validate_resolution_iterations(*iterations)?;
+    *iterations += 1;
+    if classify_address(address).is_forbidden() {
+        return Err(EgressError::ForbiddenAddress);
+    }
+    if !seen.insert(address) {
+        return Ok(());
+    }
+    if addresses.len() == MAX_OUTBOUND_RESOLVED_ADDRESSES {
+        return Err(EgressError::TooManyAddresses);
+    }
+    addresses.push(address);
+    Ok(())
 }
 
 /// Returns a stable, duplicate-free host sequence, rejecting empty or oversized input.
+///
+/// Processing stops after a bounded number of input items even when every item is
+/// a duplicate, and at most `limit` canonical hosts are retained.
+///
+/// # Errors
+///
+/// Returns [`EgressError::TooManyAddresses`] for invalid bounds or excessive input,
+/// [`EgressError::InvalidHost`] for a noncanonical host, and
+/// [`EgressError::ResolutionEmpty`] when no usable host remains.
 pub fn resolve_bounded<I, S>(hosts: I, limit: usize) -> Result<Vec<String>, EgressError>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
 {
-    if limit == 0 || limit > MAX_OUTBOUND_RESOLVED_ADDRESSES {
-        return Err(EgressError::TooManyAddresses);
-    }
+    validate_host_limit(limit)?;
     let mut seen = BTreeSet::new();
     let mut output = Vec::new();
-    for item in hosts {
-        let value = item.as_ref();
-        if value.is_empty() || !seen.insert(value.to_owned()) {
-            continue;
-        }
-        if output.len() == limit {
-            return Err(EgressError::TooManyAddresses);
-        }
-        output.push(value.to_owned());
+    for (iterations, item) in hosts.into_iter().enumerate() {
+        validate_resolution_iterations(iterations)?;
+        retain_host(item.as_ref(), &mut seen, &mut output, limit)?;
     }
     if output.is_empty() {
         return Err(EgressError::ResolutionEmpty);
     }
     Ok(output)
+}
+
+fn validate_host_limit(limit: usize) -> Result<(), EgressError> {
+    if limit == 0 || limit > MAX_OUTBOUND_RESOLVED_ADDRESSES {
+        return Err(EgressError::TooManyAddresses);
+    }
+    Ok(())
+}
+
+fn validate_resolution_iterations(iterations: usize) -> Result<(), EgressError> {
+    if iterations == MAX_RESOLUTION_HOST_ITERATIONS {
+        return Err(EgressError::TooManyAddresses);
+    }
+    Ok(())
+}
+
+fn retain_host(
+    value: &str,
+    seen: &mut BTreeSet<String>,
+    output: &mut Vec<String>,
+    limit: usize,
+) -> Result<(), EgressError> {
+    if value.is_empty() || seen.contains(value) {
+        return Ok(());
+    }
+    if output.len() == limit {
+        return Err(EgressError::TooManyAddresses);
+    }
+    OutboundHost::parse(value).map_err(|_| EgressError::InvalidHost)?;
+    seen.insert(value.to_owned());
+    output.push(value.to_owned());
+    Ok(())
 }
 
 /// Address classification used by the fail-closed egress gate.
@@ -83,34 +348,90 @@ impl AddressClass {
 /// Classifies loopback, private, local, special-use, and metadata ranges.
 #[must_use]
 pub fn classify_address(address: IpAddr) -> AddressClass {
-    match address {
-        IpAddr::V4(value) => {
-            if forbidden_v4(value) {
-                AddressClass::Forbidden
-            } else {
-                AddressClass::Allowed
-            }
-        }
-        IpAddr::V6(value) => {
-            if value.is_loopback()
-                || value.is_unspecified()
-                || (value.segments()[0] & 0xfe00) == 0xfc00
-                || (value.segments()[0] & 0xffc0) == 0xfe80
-                || (value.segments()[0] & 0xff00) == 0xff00
-                || is_ipv6_documentation(value)
-                || value.to_ipv4_mapped().is_some_and(forbidden_v4)
-            {
-                AddressClass::Forbidden
-            } else {
-                AddressClass::Allowed
-            }
-        }
+    if address_is_forbidden(address) {
+        AddressClass::Forbidden
+    } else {
+        AddressClass::Allowed
     }
+}
+
+fn address_is_forbidden(address: IpAddr) -> bool {
+    match address {
+        IpAddr::V4(value) => forbidden_v4(value),
+        IpAddr::V6(value) => forbidden_v6(value),
+    }
+}
+
+fn forbidden_v6(value: std::net::Ipv6Addr) -> bool {
+    value.is_loopback()
+        || value.is_unspecified()
+        || (value.segments()[0] & 0xfe00) == 0xfc00
+        || (value.segments()[0] & 0xffc0) == 0xfe80
+        || (value.segments()[0] & 0xffc0) == 0xfec0
+        || (value.segments()[0] & 0xff00) == 0xff00
+        || is_ipv6_special_use(value)
+        || value.to_ipv4_mapped().is_some()
 }
 
 fn is_ipv6_documentation(value: std::net::Ipv6Addr) -> bool {
     let segments = value.segments();
     segments[0] == 0x2001 && segments[1] == 0x0db8
+}
+
+fn is_ipv6_special_use(value: std::net::Ipv6Addr) -> bool {
+    let s = value.segments();
+    is_protocol_assignment_block(s)
+        || is_ipv6_documentation(value)
+        || is_ipv6_transition(s)
+        || is_ipv6_special_prefix(s)
+}
+
+fn is_protocol_assignment_block(s: [u16; 8]) -> bool {
+    s[0] == 0x2001 && (s[1] & 0xfe00) == 0
+}
+
+fn is_ipv6_transition(s: [u16; 8]) -> bool {
+    is_teredo(s) || s[0] == 0x2002 || is_ipv4_compatible(s) || is_nat64_well_known(s)
+}
+
+fn is_ipv6_special_prefix(s: [u16; 8]) -> bool {
+    is_ipv6_benchmark(s)
+        || is_orchid(s)
+        || is_orchid_v2(s)
+        || is_discard_only(s)
+        || is_ipv6_documentation_3fff(s)
+        || is_additional_ipv6_special_use(s)
+}
+
+fn is_additional_ipv6_special_use(s: [u16; 8]) -> bool {
+    s[0..4] == [0x0100, 0, 0, 1]
+        || (s[0] == 0x2620 && s[1] == 0x004f && s[2] == 0x8000)
+        || s[0] == 0x5f00
+}
+
+fn is_teredo(s: [u16; 8]) -> bool {
+    s[0] == 0x2001 && s[1] == 0
+}
+fn is_ipv6_benchmark(s: [u16; 8]) -> bool {
+    s[0] == 0x2001 && s[1] == 2 && s[2] == 0
+}
+fn is_orchid(s: [u16; 8]) -> bool {
+    s[0] == 0x2001 && (s[1] & 0xfff0) == 0x0010
+}
+fn is_orchid_v2(s: [u16; 8]) -> bool {
+    s[0] == 0x2001 && (s[1] & 0xfff0) == 0x0020
+}
+fn is_discard_only(s: [u16; 8]) -> bool {
+    s[0..4] == [0x0100, 0, 0, 0]
+}
+fn is_ipv6_documentation_3fff(s: [u16; 8]) -> bool {
+    s[0] == 0x3fff && (s[1] & 0xf000) == 0
+}
+fn is_ipv4_compatible(s: [u16; 8]) -> bool {
+    s[0..6] == [0, 0, 0, 0, 0, 0]
+}
+fn is_nat64_well_known(s: [u16; 8]) -> bool {
+    s[0..6] == [0x0064, 0xff9b, 0, 0, 0, 0] || (s[0] == 0x0064 && s[1] == 0xff9b && s[2] == 1)
 }
 
 fn forbidden_v4(value: Ipv4Addr) -> bool {
@@ -130,50 +451,55 @@ fn broadcast_or_cgnat(o: [u8; 4]) -> bool {
 }
 
 fn documentation_range(o: [u8; 4]) -> bool {
-    (o[0] == 192 && o[1] == 0 && o[2] == 2)
-        || (o[0] == 198 && o[1] == 51 && o[2] == 100)
-        || (o[0] == 203 && o[1] == 0 && o[2] == 113)
+    matches!(o, [192, 0, 2, _] | [198, 51, 100, _] | [203, 0, 113, _])
 }
 
 fn metadata_or_reserved(o: [u8; 4]) -> bool {
-    (o[0] == 169 && o[1] == 254)
-        || o[0] == 0
-        || (o[0] == 192 && o[1] == 0 && o[2] == 0)
-        || (o[0] == 198 && (18..=19).contains(&o[1]))
+    matches!(
+        o,
+        [0, _, _, _]
+            | [240..=255, _, _, _]
+            | [169, 254, _, _]
+            | [192, 88, 99, _]
+            | [192, 31, 196, _]
+            | [192, 52, 193, _]
+            | [192, 175, 48, _]
+            | [192, 0, 0, _]
+            | [198, 18..=19, _, _]
+    )
 }
 
 /// A validated complete resolution with policy revision and monotonic timestamp.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ResolutionRecord {
     target: OutboundTarget,
-    addresses: Vec<IpAddr>,
+    addresses: Box<[IpAddr]>,
     revision: OutboundPolicyRevision,
+    epoch: ResolutionEpoch,
     resolved_at: Instant,
 }
 
 impl ResolutionRecord {
-    /// Creates a record, rejecting empty, duplicate, oversized, or forbidden answers.
-    pub fn new(
+    /// Binds one checked resolver result to its target and policy revision.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EgressError::ResolutionTargetMismatch`] when the checked answer
+    /// set was produced for a different canonical host.
+    pub fn from_resolution(
         target: OutboundTarget,
-        addresses: Vec<IpAddr>,
+        answers: ResolvedAddresses,
         revision: OutboundPolicyRevision,
-        resolved_at: Instant,
     ) -> Result<Self, EgressError> {
-        if addresses.is_empty() || addresses.len() > MAX_OUTBOUND_RESOLVED_ADDRESSES {
-            return Err(EgressError::ResolutionEmpty);
-        }
-        let mut unique = BTreeSet::new();
-        if addresses
-            .iter()
-            .any(|address| classify_address(*address).is_forbidden() || !unique.insert(*address))
-        {
-            return Err(EgressError::ForbiddenAddress);
+        if target.host() != answers.host() {
+            return Err(EgressError::ResolutionTargetMismatch);
         }
         Ok(Self {
             target,
-            addresses,
+            addresses: answers.addresses,
             revision,
-            resolved_at,
+            epoch: answers.epoch,
+            resolved_at: answers.resolved_at,
         })
     }
     /// Returns the target.
@@ -191,9 +517,48 @@ impl ResolutionRecord {
     pub const fn revision(&self) -> OutboundPolicyRevision {
         self.revision
     }
+    /// Returns the resolver epoch captured by this record.
+    #[must_use]
+    pub const fn epoch(&self) -> ResolutionEpoch {
+        self.epoch
+    }
     /// Returns the monotonic completion instant.
     #[must_use]
     pub const fn resolved_at(&self) -> Instant {
         self.resolved_at
     }
+}
+
+fn validate_record_addresses(addresses: &[IpAddr]) -> Result<(), EgressError> {
+    validate_answer_count(addresses)?;
+    validate_answer_duplicates(addresses)?;
+    validate_answer_ranges(addresses)
+}
+
+fn validate_answer_count(addresses: &[IpAddr]) -> Result<(), EgressError> {
+    if addresses.is_empty() {
+        return Err(EgressError::ResolutionEmpty);
+    }
+    if addresses.len() > MAX_OUTBOUND_RESOLVED_ADDRESSES {
+        return Err(EgressError::TooManyAddresses);
+    }
+    Ok(())
+}
+
+fn validate_answer_duplicates(addresses: &[IpAddr]) -> Result<(), EgressError> {
+    let unique = addresses.iter().copied().collect::<BTreeSet<_>>();
+    if unique.len() != addresses.len() {
+        return Err(EgressError::DuplicateAddress);
+    }
+    Ok(())
+}
+
+fn validate_answer_ranges(addresses: &[IpAddr]) -> Result<(), EgressError> {
+    if addresses
+        .iter()
+        .any(|address| classify_address(*address).is_forbidden())
+    {
+        return Err(EgressError::ForbiddenAddress);
+    }
+    Ok(())
 }

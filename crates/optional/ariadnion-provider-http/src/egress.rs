@@ -35,17 +35,30 @@ use ariadnion_core::{
     OutboundAuthorizationRequest, OutboundPolicyDecision, OutboundPolicyPort, RequestContext,
 };
 
-use crate::dns::{ResolutionRecord, classify_address};
+use crate::config::ProviderHttpTimeouts;
+use crate::dns::{BoundedResolver, ResolutionRecord, classify_address};
+use crate::timeout::{check_context, ensure_time_runtime};
 
 /// Stable fail-closed egress errors.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[repr(u8)]
 pub enum EgressError {
     /// Resolver returned no usable addresses.
     ResolutionEmpty,
+    /// System resolution failed without exposing host or platform details.
+    ResolutionFailed,
+    /// A checked resolution was rebound to a different canonical host.
+    ResolutionTargetMismatch,
+    /// Resolver input host is not canonical and bounded.
+    InvalidHost,
     /// A configured answer bound was exceeded.
     TooManyAddresses,
     /// At least one answer belongs to a forbidden range.
     ForbiddenAddress,
+    /// Resolver returned a duplicate answer.
+    DuplicateAddress,
+    /// Resolver epoch is invalid.
+    ResolutionEpochInvalid,
     /// Policy denied the complete resolution.
     PolicyDenied,
     /// The policy revision changed during authorization.
@@ -56,28 +69,44 @@ pub enum EgressError {
     Cancelled,
     /// Request deadline expired before work completed.
     DeadlineExceeded,
+    /// The operation requires a Tokio runtime that is not active.
+    RuntimeUnavailable,
+}
+
+const EGRESS_ERROR_CODES: [&str; 14] = [
+    "resolution_empty",
+    "resolution_failed",
+    "resolution_target_mismatch",
+    "invalid_host",
+    "too_many_addresses",
+    "forbidden_address",
+    "duplicate_address",
+    "resolution_epoch_invalid",
+    "policy_denied",
+    "policy_changed",
+    "stale_resolution",
+    "cancelled",
+    "deadline_exceeded",
+    "runtime_unavailable",
+];
+
+impl EgressError {
+    /// Returns the stable machine-readable error code.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        EGRESS_ERROR_CODES[self as usize]
+    }
 }
 
 impl Display for EgressError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::ResolutionEmpty => "resolution_empty",
-            Self::TooManyAddresses => "too_many_addresses",
-            Self::ForbiddenAddress => "forbidden_address",
-            Self::PolicyDenied => "policy_denied",
-            Self::PolicyChanged => "policy_changed",
-            Self::StaleResolution => "stale_resolution",
-            Self::Cancelled => "cancelled",
-            Self::DeadlineExceeded => "deadline_exceeded",
-        })
+        f.write_str(self.as_str())
     }
 }
 
 impl std::error::Error for EgressError {}
 
-/// Selects the first allowed numeric address in resolver order.
-#[must_use]
-pub fn select_numeric_address(addresses: &[IpAddr]) -> Option<IpAddr> {
+fn select_numeric_address(addresses: &[IpAddr]) -> Option<IpAddr> {
     addresses
         .iter()
         .copied()
@@ -85,66 +114,99 @@ pub fn select_numeric_address(addresses: &[IpAddr]) -> Option<IpAddr> {
 }
 
 impl ResolutionRecord {
-    /// Authorizes the exact complete resolution before numeric address selection.
-    pub fn authorize(&self, policy: &dyn OutboundPolicyPort) -> Result<IpAddr, EgressError> {
-        if policy.revision() != self.revision() {
-            return Err(EgressError::PolicyChanged);
-        }
-        let request =
-            OutboundAuthorizationRequest::new(self.target(), self.addresses(), self.revision())
-                .map_err(|_| EgressError::PolicyDenied)?;
-        match policy.authorize(&request) {
-            OutboundPolicyDecision::Allow => {
-                select_numeric_address(self.addresses()).ok_or(EgressError::ForbiddenAddress)
-            }
-            OutboundPolicyDecision::Deny(_) => Err(EgressError::PolicyDenied),
-            _ => Err(EgressError::PolicyDenied),
-        }
-    }
-    /// Rejects records older than the configured maximum age.
-    pub fn ensure_fresh(&self, now: Instant, max_age: Duration) -> Result<(), EgressError> {
-        if now.saturating_duration_since(self.resolved_at()) > max_age {
-            Err(EgressError::StaleResolution)
-        } else {
-            Ok(())
-        }
+    /// Authorizes only when the caller still observes the captured resolver epoch.
+    ///
+    /// The complete checked address set is authorized before one numeric address
+    /// is selected, and no stale record or changed policy revision is accepted.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable [`EgressError`] when the record is stale, the policy changed
+    /// or denied the complete set, the resolver epoch is unavailable, or no allowed
+    /// numeric address can be selected.
+    pub fn authorize(
+        &self,
+        now: Instant,
+        max_age: Duration,
+        resolver: &dyn BoundedResolver,
+        policy: &dyn OutboundPolicyPort,
+    ) -> Result<IpAddr, EgressError> {
+        validate_authorization_freshness(self, now, max_age, resolver)?;
+        authorize_policy(policy, self)?;
+        select_numeric_address(self.addresses()).ok_or(EgressError::ForbiddenAddress)
     }
 }
 
-/// Checks cancellation first, then deadline, before waiting for a bounded interval.
-pub fn wait_for(context: &RequestContext, duration: Duration) -> Result<(), EgressError> {
-    context.check_active().map_err(|error| {
-        if error.code() == ariadnion_core::ErrorCode::Cancelled {
-            EgressError::Cancelled
-        } else {
-            EgressError::DeadlineExceeded
-        }
-    })?;
+fn validate_authorization_freshness(
+    record: &ResolutionRecord,
+    now: Instant,
+    max_age: Duration,
+    resolver: &dyn BoundedResolver,
+) -> Result<(), EgressError> {
+    let epoch = resolver.current_epoch()?;
+    if now < record.resolved_at()
+        || epoch != record.epoch()
+        || now.saturating_duration_since(record.resolved_at()) > max_age
+    {
+        Err(EgressError::StaleResolution)
+    } else {
+        Ok(())
+    }
+}
+
+fn authorize_policy(
+    policy: &dyn OutboundPolicyPort,
+    record: &ResolutionRecord,
+) -> Result<(), EgressError> {
+    if policy.revision() != record.revision() {
+        return Err(EgressError::PolicyChanged);
+    }
+    let request =
+        OutboundAuthorizationRequest::new(record.target(), record.addresses(), record.revision())
+            .map_err(|_| EgressError::PolicyDenied)?;
+    if decision_allows(policy.authorize(&request)) {
+        Ok(())
+    } else {
+        Err(EgressError::PolicyDenied)
+    }
+}
+
+fn decision_allows(decision: OutboundPolicyDecision) -> bool {
+    match decision {
+        OutboundPolicyDecision::Allow => true,
+        OutboundPolicyDecision::Deny(_) | _ => false,
+    }
+}
+
+/// Asynchronously waits in bounded cancellation and deadline-aware increments.
+///
+/// The future must be polled by a Tokio runtime with its time driver enabled.
+///
+/// # Errors
+///
+/// Returns [`EgressError::Cancelled`] or [`EgressError::DeadlineExceeded`] when
+/// the request stops being active. Returns [`EgressError::RuntimeUnavailable`]
+/// when polled without an active Tokio runtime.
+pub async fn wait_for(
+    context: &RequestContext,
+    timeouts: ProviderHttpTimeouts,
+    duration: Duration,
+) -> Result<(), EgressError> {
+    check_context(context)?;
+    ensure_time_runtime()?;
     let start = Instant::now();
-    let poll = Duration::from_millis(25);
+    let poll = timeouts.cancellation_poll();
     while start.elapsed() < duration {
-        context.check_active().map_err(|error| {
-            if error.code() == ariadnion_core::ErrorCode::Cancelled {
-                EgressError::Cancelled
-            } else {
-                EgressError::DeadlineExceeded
-            }
-        })?;
+        check_context(context)?;
         let remaining = poll.min(duration.saturating_sub(start.elapsed()));
         let sleep_for = context
             .deadline()
             .and_then(|deadline| deadline.duration_since(std::time::SystemTime::now()).ok())
             .map_or(remaining, |deadline| remaining.min(deadline));
         if sleep_for.is_zero() {
-            return Err(EgressError::DeadlineExceeded);
+            return check_context(context);
         }
-        std::thread::sleep(sleep_for);
+        tokio::time::sleep(sleep_for).await;
     }
-    context.check_active().map_err(|error| {
-        if error.code() == ariadnion_core::ErrorCode::Cancelled {
-            EgressError::Cancelled
-        } else {
-            EgressError::DeadlineExceeded
-        }
-    })
+    check_context(context)
 }

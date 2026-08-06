@@ -27,13 +27,94 @@
 //
 // SPDX-License-Identifier: LicenseRef-AHCL-1.0
 
-use std::time::{Duration, SystemTime};
+use std::future::Future;
+use std::pin::Pin;
+use std::time::{Duration, Instant, SystemTime};
 
 use ariadnion_core::RequestContext;
 
 use crate::egress::EgressError;
 
+pub(crate) fn check_context(context: &RequestContext) -> Result<(), EgressError> {
+    context.check_active().map_err(|error| {
+        if error.code() == ariadnion_core::ErrorCode::Cancelled {
+            EgressError::Cancelled
+        } else {
+            EgressError::DeadlineExceeded
+        }
+    })
+}
+
+pub(crate) fn ensure_time_runtime() -> Result<(), EgressError> {
+    tokio::runtime::Handle::try_current()
+        .map(|_| ())
+        .map_err(|_| EgressError::RuntimeUnavailable)
+}
+
+pub(crate) async fn run_with_timeout<T, F>(
+    context: &RequestContext,
+    phase: Duration,
+    cancellation_poll: Duration,
+    future: F,
+) -> Result<T, EgressError>
+where
+    F: Future<Output = Result<T, EgressError>>,
+{
+    check_context(context)?;
+    ensure_time_runtime()?;
+    tokio::pin!(future);
+    poll_with_timeout(
+        context,
+        Instant::now(),
+        phase,
+        cancellation_poll,
+        future.as_mut(),
+    )
+    .await
+}
+
+async fn poll_with_timeout<T, F>(
+    context: &RequestContext,
+    started: Instant,
+    phase: Duration,
+    cancellation_poll: Duration,
+    mut future: Pin<&mut F>,
+) -> Result<T, EgressError>
+where
+    F: Future<Output = Result<T, EgressError>> + ?Sized,
+{
+    loop {
+        let wait = next_wait(context, started, phase, cancellation_poll)?;
+        match tokio::time::timeout(wait, future.as_mut()).await {
+            Ok(result) => {
+                check_context(context)?;
+                return result;
+            }
+            Err(_) => continue,
+        }
+    }
+}
+
+fn next_wait(
+    context: &RequestContext,
+    started: Instant,
+    phase: Duration,
+    cancellation_poll: Duration,
+) -> Result<Duration, EgressError> {
+    check_context(context)?;
+    let remaining = phase
+        .checked_sub(started.elapsed())
+        .ok_or(EgressError::DeadlineExceeded)?;
+    let bounded = bounded_timeout(context, remaining, SystemTime::now())?;
+    Ok(cancellation_poll.min(bounded))
+}
+
 /// Returns the smaller phase budget and request deadline remainder.
+///
+/// # Errors
+///
+/// Returns [`EgressError::Cancelled`] when cancellation has been observed and
+/// [`EgressError::DeadlineExceeded`] when `now` reaches the request deadline.
 pub fn bounded_timeout(
     context: &RequestContext,
     phase: Duration,

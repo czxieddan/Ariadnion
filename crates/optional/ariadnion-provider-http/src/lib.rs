@@ -45,8 +45,11 @@ pub use config::{
     ProviderHttpMethod, ProviderHttpPool, ProviderHttpProfile, ProviderHttpProfileBuilder,
     ProviderHttpProxy, ProviderHttpTimeouts, ProviderHttpTrust,
 };
-pub use dns::{AddressClass, BoundedResolver, ResolutionRecord, classify_address, resolve_bounded};
-pub use egress::{EgressError, select_numeric_address, wait_for};
+pub use dns::{
+    AddressClass, BoundedResolver, ResolutionEpoch, ResolutionRecord, ResolvedAddresses,
+    TokioSystemResolver, classify_address, resolve_bounded,
+};
+pub use egress::{EgressError, wait_for};
 pub use endpoint::ProviderHttpEndpoint;
 pub use error::{
     ProviderHttpError, ProviderHttpErrorCode, ProviderHttpPhase, ProviderHttpProfileError,

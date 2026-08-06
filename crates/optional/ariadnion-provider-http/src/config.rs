@@ -54,6 +54,7 @@ const MAX_CONNECTIONS: usize = 64;
 const MAX_IDLE: usize = 64;
 const MAX_WAITERS: usize = 128;
 const MAX_RESOLUTION_AGE_MILLIS: u64 = 60_000;
+const MAX_RESOLUTION_MILLIS: u64 = 60_000;
 const MAX_CANCELLATION_POLL_MILLIS: u64 = 25;
 const MAX_CONNECT_MILLIS: u64 = 5_000;
 const MAX_TLS_MILLIS: u64 = 10_000;
@@ -291,6 +292,7 @@ impl Default for ProviderHttpLimits {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct ProviderHttpTimeouts {
     max_resolution_age: BoundedDuration<MAX_RESOLUTION_AGE_MILLIS>,
+    resolution: BoundedDuration<MAX_RESOLUTION_MILLIS>,
     cancellation_poll: BoundedDuration<MAX_CANCELLATION_POLL_MILLIS>,
     connect: BoundedDuration<MAX_CONNECT_MILLIS>,
     tls_handshake: BoundedDuration<MAX_TLS_MILLIS>,
@@ -298,7 +300,10 @@ pub struct ProviderHttpTimeouts {
 }
 
 impl ProviderHttpTimeouts {
-    /// Creates nonzero resolution, cancellation, and phase budgets.
+    /// Creates nonzero freshness, cancellation, and transport phase budgets.
+    ///
+    /// The independent DNS lookup budget starts at five seconds and can be
+    /// replaced with [`Self::with_resolution_timeout`].
     ///
     /// # Errors
     ///
@@ -316,6 +321,7 @@ impl ProviderHttpTimeouts {
                 max_resolution_age,
                 ProviderHttpProfileErrorCode::InvalidTimeout,
             )?,
+            resolution: BoundedDuration(Duration::from_secs(5)),
             cancellation_poll: BoundedDuration::new(
                 cancellation_poll,
                 ProviderHttpProfileErrorCode::InvalidTimeout,
@@ -336,6 +342,26 @@ impl ProviderHttpTimeouts {
     #[must_use]
     pub const fn max_resolution_age(self) -> Duration {
         self.max_resolution_age.get()
+    }
+
+    /// Replaces the DNS lookup phase budget without changing other budgets.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable error when the duration is zero or exceeds 60 seconds.
+    pub fn with_resolution_timeout(
+        mut self,
+        resolution: Duration,
+    ) -> Result<Self, ProviderHttpProfileError> {
+        self.resolution =
+            BoundedDuration::new(resolution, ProviderHttpProfileErrorCode::InvalidTimeout)?;
+        Ok(self)
+    }
+
+    /// Returns the DNS lookup phase budget.
+    #[must_use]
+    pub const fn resolution(self) -> Duration {
+        self.resolution.get()
     }
 
     /// Returns the maximum delay before a cancellable operation observes cancellation.
@@ -367,6 +393,7 @@ impl Default for ProviderHttpTimeouts {
     fn default() -> Self {
         Self {
             max_resolution_age: BoundedDuration(Duration::from_secs(60)),
+            resolution: BoundedDuration(Duration::from_secs(5)),
             cancellation_poll: BoundedDuration(Duration::from_millis(25)),
             connect: BoundedDuration(Duration::from_secs(5)),
             tls_handshake: BoundedDuration(Duration::from_secs(10)),
@@ -694,7 +721,7 @@ fn validate_header_name(name: &str) -> Result<(), ProviderHttpProfileError> {
             ProviderHttpProfileErrorCode::SensitiveHeader,
         ));
     }
-    if name.is_empty() || !name.is_ascii() || name.bytes().any(is_not_header_token) {
+    if header_name_syntax_is_invalid(name) {
         return Err(ProviderHttpProfileError::new(
             ProviderHttpProfileErrorCode::InvalidHeader,
         ));
@@ -705,6 +732,10 @@ fn validate_header_name(name: &str) -> Result<(), ProviderHttpProfileError> {
         ));
     }
     Ok(())
+}
+
+fn header_name_syntax_is_invalid(name: &str) -> bool {
+    name.is_empty() || !name.is_ascii() || name.bytes().any(is_not_header_token)
 }
 
 fn validate_component_length(value: &str, maximum: usize) -> Result<(), ProviderHttpProfileError> {
