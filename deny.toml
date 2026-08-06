@@ -37,7 +37,7 @@ wildcards = "deny"
 
 [licenses]
 confidence-threshold = 0.8
-allow = ["Apache-2.0", "MIT", "Zlib"]
+allow = ["Apache-2.0", "CDLA-Permissive-2.0", "ISC", "MIT", "Zlib"]
 private = { ignore = true }
 
 # cargo-deny evaluates public package metadata and cannot inspect a confidential

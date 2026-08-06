@@ -1,4 +1,4 @@
-# tools/dependency-policy/versions.toml - Ariadnion repository configuration.
+# crates/optional/ariadnion-provider-http/Cargo.toml - Provider HTTP transport manifest for Ariadnion.
 #
 # Copyright (C) 2026 czxieddan
 #
@@ -27,35 +27,38 @@
 #
 # SPDX-License-Identifier: LicenseRef-AHCL-1.0
 #
-schema_version = 1
-rust = "1.95.0"
+[package]
+name = "ariadnion-provider-http"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95.0"
+license = "LicenseRef-AHCL-1.0"
+publish = false
 
-[core]
-abi = "rust-1.0.0/wit-1"
+[workspace]
 
-[licenses]
-allowed = ["Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "CDLA-Permissive-2.0", "ISC", "MIT", "Unicode-3.0", "Unlicense", "Zlib"]
-allowed_exceptions = ["LLVM-exception"]
-forbidden = ["GPL-2.0-only", "GPL-2.0-or-later", "GPL-3.0-only", "GPL-3.0-or-later", "AGPL-3.0-only", "AGPL-3.0-or-later"]
+[dependencies]
+ariadnion-core = { path = "../../ariadnion-core" }
+ariadnion-provider-sdk = { path = "../ariadnion-provider-sdk" }
+bytes = "=1.12.1"
+http = "=1.5.0"
+http-body = "=1.1.0"
+http-body-util = "=0.1.4"
+hyper = { version = "=1.11.0", default-features = false, features = ["client", "http1"] }
+hyper-util = { version = "=0.1.20", default-features = false, features = ["tokio"] }
+rustls = { version = "=0.23.41", default-features = false, features = ["ring", "std", "tls12"] }
+tokio = { version = "=1.52.3", default-features = false, features = ["io-util", "net", "rt", "sync", "time"] }
+tokio-rustls = { version = "=0.26.4", default-features = false }
+webpki-roots = "=1.0.8"
 
-[rnmdb_commercial_authorization]
-authorization = "special-commercial-authorization-from-project-owner"
-public_notice = "AHCL/AHCL-SPECIAL-AUTHORIZATIONS.md"
-repository = "https://github.com/czxieddan/RNovModularDB.git"
-commit = "013ec2f48a1dab89997430d72c2b176be2c29d47"
-package_prefix = "rnmdb-"
-packages = ["rnmdb-common", "rnmdb-types", "rnmdb-sql", "rnmdb-planner", "rnmdb-executor", "rnmdb-txn", "rnmdb-index", "rnmdb-fts", "rnmdb-catalog", "rnmdb-storage", "rnmdb-udf", "rnmdb-security", "rnmdb-instance", "rnmdb-server", "rnmdb-cli"]
-scope = "ariadnion-and-reasonable-functional-forks"
+[dev-dependencies]
+tokio = { version = "=1.52.3", default-features = false, features = ["macros", "rt-multi-thread", "sync", "time"] }
 
-[versions]
-bytes = "1.12.1"
-ctrlc = "3.5.2"
-http = "1.5.0"
-http-body = "1.1.0"
-http-body-util = "0.1.4"
-hyper = "1.11.0"
-hyper-util = "0.1.20"
-rustls = "0.23.41"
-tokio = "1.52.3"
-tokio-rustls = "0.26.4"
-webpki-roots = "1.0.8"
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
