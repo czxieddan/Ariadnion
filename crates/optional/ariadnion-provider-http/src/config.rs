@@ -33,7 +33,7 @@ use std::collections::BTreeSet;
 use std::fmt::{self, Debug, Formatter};
 use std::time::Duration;
 
-use ariadnion_core::OutboundTarget;
+use ariadnion_core::{MAX_OUTBOUND_RESOLVED_ADDRESSES, OutboundTarget};
 
 use crate::endpoint::ProviderHttpEndpoint;
 use crate::error::{ProviderHttpProfileError, ProviderHttpProfileErrorCode};
@@ -45,7 +45,7 @@ pub const MAX_PROVIDER_HTTP_HEADER_NAME_BYTES: usize = 256;
 /// Maximum static header-value bytes before allocation.
 pub const MAX_PROVIDER_HTTP_HEADER_VALUE_BYTES: usize = 8 * 1024;
 
-const MAX_DNS_ANSWERS: usize = 32;
+const MAX_DNS_ANSWERS: usize = MAX_OUTBOUND_RESOLVED_ADDRESSES;
 const MAX_HEADERS: usize = 64;
 const MAX_HEADER_BYTES: usize = 8 * 1024;
 const MAX_BODY_BYTES: usize = 16 * 1024 * 1024;
@@ -149,8 +149,8 @@ impl ProviderHttpHeader {
     /// or the name is secret-bearing.
     pub fn new(name: &str, value: &str) -> Result<Self, ProviderHttpProfileError> {
         validate_component_length(name, MAX_PROVIDER_HTTP_HEADER_NAME_BYTES)?;
-        validate_component_length(value, MAX_PROVIDER_HTTP_HEADER_VALUE_BYTES)?;
         validate_header_name(name)?;
+        validate_component_length(value, MAX_PROVIDER_HTTP_HEADER_VALUE_BYTES)?;
         validate_header_value(value)?;
         Ok(Self {
             name: name.into(),
@@ -199,8 +199,8 @@ impl ProviderHttpLimits {
     ///
     /// # Errors
     ///
-    /// Returns a stable error code when a bound is zero or DNS answers exceed
-    /// the core maximum.
+    /// Returns a stable error code when a bound is zero or exceeds its hard
+    /// transport ceiling, including the core DNS-answer maximum.
     pub fn new(
         max_dns_answers: usize,
         max_headers: usize,
@@ -302,7 +302,8 @@ impl ProviderHttpTimeouts {
     ///
     /// # Errors
     ///
-    /// Returns a stable error code when any duration is zero.
+    /// Returns a stable error code when any duration is zero or exceeds its
+    /// hard phase ceiling.
     pub fn new(
         max_resolution_age: Duration,
         cancellation_poll: Duration,

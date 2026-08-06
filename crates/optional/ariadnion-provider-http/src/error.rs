@@ -129,8 +129,9 @@ impl Display for ProviderHttpPhase {
 
 /// A redacted provider HTTP failure.
 ///
-/// Formatting this error emits only its stable code. It never exposes a host,
-/// request target, header name, header value, or proxy target.
+/// Formatting this error emits only its stable code and, when present, its
+/// stable phase. It never exposes a host, request target, header name, header
+/// value, or proxy target.
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub struct ProviderHttpError {
     code: ProviderHttpErrorCode,
