@@ -47,6 +47,7 @@ mod health;
 mod ids;
 mod lifecycle;
 mod module;
+mod outbound;
 mod port;
 mod resource;
 mod shutdown;
@@ -73,6 +74,11 @@ pub use module::{
     ConfigurationContract, ModuleConfigurationSnapshot, ModuleContext, ModuleDescriptor,
     ModuleDescriptorInput, ModuleFactory, ModuleHandle, ModuleShutdownReport,
     SecretCapabilityRequirement, ShutdownPriority,
+};
+pub use outbound::{
+    MAX_OUTBOUND_HOST_BYTES, MAX_OUTBOUND_RESOLVED_ADDRESSES, OutboundAuthorizationRequest,
+    OutboundDenyReason, OutboundHost, OutboundPolicyDecision, OutboundPolicyPort,
+    OutboundPolicyRevision, OutboundTarget,
 };
 pub use port::{PortHandle, PortKey, PortSlot};
 pub use resource::{
