@@ -1,4 +1,4 @@
-// crates/optional/ariadnion-provider-http/src/lib.rs - Provider HTTP transport for Ariadnion.
+// crates/optional/ariadnion-provider-http/src/timeout.rs - Provider timeout helpers for Ariadnion.
 //
 // Copyright (C) 2026 czxieddan
 //
@@ -26,30 +26,28 @@
 //                                                   AHCL/AHCL-RESTRICTIONS/ARIADNION-AR-2026-002.md (ARIADNION-AR-2026-002)
 //
 // SPDX-License-Identifier: LicenseRef-AHCL-1.0
-//
-//! Provider-neutral bounded HTTPS transport contracts and implementation.
 
-#![forbid(unsafe_code)]
-#![deny(missing_docs)]
+use std::time::{Duration, SystemTime};
 
-mod config;
-mod dns;
-mod egress;
-mod endpoint;
-mod error;
-mod timeout;
+use ariadnion_core::RequestContext;
 
-pub use config::{
-    MAX_PROVIDER_HTTP_HEADER_NAME_BYTES, MAX_PROVIDER_HTTP_HEADER_VALUE_BYTES,
-    MAX_PROVIDER_HTTP_PATH_AND_QUERY_BYTES, ProviderHttpHeader, ProviderHttpLimits,
-    ProviderHttpMethod, ProviderHttpPool, ProviderHttpProfile, ProviderHttpProfileBuilder,
-    ProviderHttpProxy, ProviderHttpTimeouts, ProviderHttpTrust,
-};
-pub use dns::{AddressClass, BoundedResolver, ResolutionRecord, classify_address, resolve_bounded};
-pub use egress::{EgressError, select_numeric_address, wait_for};
-pub use endpoint::ProviderHttpEndpoint;
-pub use error::{
-    ProviderHttpError, ProviderHttpErrorCode, ProviderHttpPhase, ProviderHttpProfileError,
-    ProviderHttpProfileErrorCode,
-};
-pub use timeout::bounded_timeout;
+use crate::egress::EgressError;
+
+/// Returns the smaller phase budget and request deadline remainder.
+pub fn bounded_timeout(
+    context: &RequestContext,
+    phase: Duration,
+    now: SystemTime,
+) -> Result<Duration, EgressError> {
+    context.check_active_at(now).map_err(|error| {
+        if error.code() == ariadnion_core::ErrorCode::Cancelled {
+            EgressError::Cancelled
+        } else {
+            EgressError::DeadlineExceeded
+        }
+    })?;
+    let remainder = context
+        .deadline()
+        .and_then(|deadline| deadline.duration_since(now).ok());
+    Ok(remainder.map_or(phase, |value| phase.min(value)))
+}
