@@ -31,7 +31,7 @@
 
 use std::fmt::{self, Debug, Display, Formatter};
 
-const PROFILE_ERROR_CODES: [&str; 8] = [
+const HTTP_ERROR_CODES: [&str; 8] = [
     "provider_http_invalid_origin",
     "provider_http_invalid_path_and_query",
     "provider_http_invalid_header",
@@ -42,10 +42,11 @@ const PROFILE_ERROR_CODES: [&str; 8] = [
     "provider_http_invalid_proxy",
 ];
 
-/// Stable classifications for rejected provider HTTP profile material.
+/// Stable classifications for provider HTTP failures.
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 #[repr(u8)]
-pub enum ProviderHttpProfileErrorCode {
+#[non_exhaustive]
+pub enum ProviderHttpErrorCode {
     /// The fixed HTTPS origin is invalid.
     InvalidOrigin = 0,
     /// The fixed request path or query is invalid.
@@ -64,60 +65,131 @@ pub enum ProviderHttpProfileErrorCode {
     InvalidProxy = 7,
 }
 
-impl ProviderHttpProfileErrorCode {
+impl ProviderHttpErrorCode {
     /// Returns the stable machine-readable failure code.
     #[must_use]
     pub fn as_str(self) -> &'static str {
-        PROFILE_ERROR_CODES
+        HTTP_ERROR_CODES
             .get(self as usize)
             .copied()
             .unwrap_or("provider_http_invalid_profile")
     }
 }
 
-impl Debug for ProviderHttpProfileErrorCode {
+impl Debug for ProviderHttpErrorCode {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
     }
 }
 
-impl Display for ProviderHttpProfileErrorCode {
+impl Display for ProviderHttpErrorCode {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
     }
 }
 
-/// A redacted provider HTTP profile validation failure.
+/// The transport phase associated with an HTTP failure when one is known.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+pub enum ProviderHttpPhase {
+    /// DNS resolution or validation.
+    Resolution,
+    /// TCP connection establishment.
+    Connect,
+    /// HTTP CONNECT tunneling through the configured proxy.
+    ProxyConnect,
+    /// TLS peer verification and handshake.
+    TlsHandshake,
+    /// Request-header serialization and transmission.
+    RequestHeaders,
+    /// Response-header receipt and validation.
+    ResponseHeaders,
+}
+
+impl ProviderHttpPhase {
+    /// Returns the stable phase name.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Resolution => "resolution",
+            Self::Connect => "connect",
+            Self::ProxyConnect => "proxy_connect",
+            Self::TlsHandshake => "tls_handshake",
+            Self::RequestHeaders => "request_headers",
+            Self::ResponseHeaders => "response_headers",
+        }
+    }
+}
+
+impl Display for ProviderHttpPhase {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+/// A redacted provider HTTP failure.
 ///
 /// Formatting this error emits only its stable code. It never exposes a host,
 /// request target, header name, header value, or proxy target.
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
-pub struct ProviderHttpProfileError {
-    code: ProviderHttpProfileErrorCode,
+pub struct ProviderHttpError {
+    code: ProviderHttpErrorCode,
+    phase: Option<ProviderHttpPhase>,
 }
 
-impl ProviderHttpProfileError {
-    pub(crate) const fn new(code: ProviderHttpProfileErrorCode) -> Self {
-        Self { code }
+impl ProviderHttpError {
+    /// Creates an unphased provider HTTP failure.
+    #[must_use]
+    pub const fn new(code: ProviderHttpErrorCode) -> Self {
+        Self { code, phase: None }
+    }
+
+    /// Creates a provider HTTP failure associated with one transport phase.
+    #[must_use]
+    pub const fn with_phase(code: ProviderHttpErrorCode, phase: ProviderHttpPhase) -> Self {
+        Self {
+            code,
+            phase: Some(phase),
+        }
     }
 
     /// Returns the stable classification.
     #[must_use]
-    pub const fn code(self) -> ProviderHttpProfileErrorCode {
+    pub const fn code(self) -> ProviderHttpErrorCode {
         self.code
     }
-}
 
-impl Debug for ProviderHttpProfileError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.code.as_str())
+    /// Returns the associated transport phase when the failure is phase-specific.
+    #[must_use]
+    pub const fn phase(self) -> Option<ProviderHttpPhase> {
+        self.phase
     }
 }
 
-impl Display for ProviderHttpProfileError {
+impl Debug for ProviderHttpError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.code.as_str())
+        format_error(formatter, *self)
     }
 }
 
-impl std::error::Error for ProviderHttpProfileError {}
+impl Display for ProviderHttpError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        format_error(formatter, *self)
+    }
+}
+
+impl std::error::Error for ProviderHttpError {}
+
+/// Compatibility alias for profile validation failures.
+pub type ProviderHttpProfileError = ProviderHttpError;
+
+/// Compatibility alias for profile validation failure codes.
+pub type ProviderHttpProfileErrorCode = ProviderHttpErrorCode;
+
+fn format_error(formatter: &mut Formatter<'_>, error: ProviderHttpError) -> fmt::Result {
+    formatter.write_str(error.code.as_str())?;
+    match error.phase {
+        Some(phase) => write!(formatter, ":{phase}"),
+        None => Ok(()),
+    }
+}

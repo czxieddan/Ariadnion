@@ -37,9 +37,13 @@ mod endpoint;
 mod error;
 
 pub use config::{
-    ProviderHttpHeader, ProviderHttpLimits, ProviderHttpMethod, ProviderHttpPool,
-    ProviderHttpProfile, ProviderHttpProfileBuilder, ProviderHttpProxy, ProviderHttpTimeouts,
-    ProviderHttpTrust,
+    MAX_PROVIDER_HTTP_HEADER_NAME_BYTES, MAX_PROVIDER_HTTP_HEADER_VALUE_BYTES,
+    MAX_PROVIDER_HTTP_PATH_AND_QUERY_BYTES, ProviderHttpHeader, ProviderHttpLimits,
+    ProviderHttpMethod, ProviderHttpPool, ProviderHttpProfile, ProviderHttpProfileBuilder,
+    ProviderHttpProxy, ProviderHttpTimeouts, ProviderHttpTrust,
 };
 pub use endpoint::ProviderHttpEndpoint;
-pub use error::{ProviderHttpProfileError, ProviderHttpProfileErrorCode};
+pub use error::{
+    ProviderHttpError, ProviderHttpErrorCode, ProviderHttpPhase, ProviderHttpProfileError,
+    ProviderHttpProfileErrorCode,
+};

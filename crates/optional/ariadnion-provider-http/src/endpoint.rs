@@ -33,6 +33,7 @@ use std::fmt::{self, Debug, Formatter};
 
 use ariadnion_core::OutboundHost;
 
+use crate::config::MAX_PROVIDER_HTTP_PATH_AND_QUERY_BYTES;
 use crate::error::{ProviderHttpProfileError, ProviderHttpProfileErrorCode};
 
 /// A checked HTTPS origin and fixed path/query request target.
@@ -98,6 +99,11 @@ impl Debug for ProviderHttpEndpoint {
 }
 
 fn validate_path_and_query(value: &str) -> Result<(), ProviderHttpProfileError> {
+    if value.len() > MAX_PROVIDER_HTTP_PATH_AND_QUERY_BYTES {
+        return Err(ProviderHttpProfileError::new(
+            ProviderHttpProfileErrorCode::LimitExceeded,
+        ));
+    }
     if value.starts_with('/') && value.is_ascii() && !contains_disallowed_target_byte(value) {
         return Ok(());
     }

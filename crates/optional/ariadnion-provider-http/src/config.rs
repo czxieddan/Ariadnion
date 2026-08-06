@@ -33,24 +33,69 @@ use std::collections::BTreeSet;
 use std::fmt::{self, Debug, Formatter};
 use std::time::Duration;
 
-use ariadnion_core::{MAX_OUTBOUND_RESOLVED_ADDRESSES, OutboundTarget};
+use ariadnion_core::OutboundTarget;
 
 use crate::endpoint::ProviderHttpEndpoint;
 use crate::error::{ProviderHttpProfileError, ProviderHttpProfileErrorCode};
 
-const DEFAULT_MAX_DNS_ANSWERS: usize = 32;
-const DEFAULT_MAX_HEADERS: usize = 64;
-const DEFAULT_MAX_HEADER_BYTES: usize = 8 * 1024;
-const DEFAULT_MAX_BODY_BYTES: usize = 16 * 1024 * 1024;
-const DEFAULT_MAX_FRAME_BYTES: usize = 64 * 1024;
-const DEFAULT_MAX_CONNECTIONS: usize = 64;
-const DEFAULT_MAX_IDLE: usize = 64;
-const DEFAULT_MAX_WAITERS: usize = 128;
-const DEFAULT_MAX_RESOLUTION_AGE: Duration = Duration::from_secs(60);
-const DEFAULT_CANCELLATION_POLL: Duration = Duration::from_millis(25);
-const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
-const DEFAULT_TLS_TIMEOUT: Duration = Duration::from_secs(10);
-const DEFAULT_RESPONSE_HEADERS_TIMEOUT: Duration = Duration::from_secs(30);
+/// Maximum retained fixed path/query bytes before allocation.
+pub const MAX_PROVIDER_HTTP_PATH_AND_QUERY_BYTES: usize = 8 * 1024;
+/// Maximum static header-name bytes before allocation.
+pub const MAX_PROVIDER_HTTP_HEADER_NAME_BYTES: usize = 256;
+/// Maximum static header-value bytes before allocation.
+pub const MAX_PROVIDER_HTTP_HEADER_VALUE_BYTES: usize = 8 * 1024;
+
+const MAX_DNS_ANSWERS: usize = 32;
+const MAX_HEADERS: usize = 64;
+const MAX_HEADER_BYTES: usize = 8 * 1024;
+const MAX_BODY_BYTES: usize = 16 * 1024 * 1024;
+const MAX_FRAME_BYTES: usize = 64 * 1024;
+const MAX_CONNECTIONS: usize = 64;
+const MAX_IDLE: usize = 64;
+const MAX_WAITERS: usize = 128;
+const MAX_RESOLUTION_AGE_MILLIS: u64 = 60_000;
+const MAX_CANCELLATION_POLL_MILLIS: u64 = 25;
+const MAX_CONNECT_MILLIS: u64 = 5_000;
+const MAX_TLS_MILLIS: u64 = 10_000;
+const MAX_RESPONSE_HEADERS_MILLIS: u64 = 30_000;
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+struct BoundedCount<const MAX: usize>(usize);
+
+impl<const MAX: usize> BoundedCount<MAX> {
+    fn new(
+        value: usize,
+        code: ProviderHttpProfileErrorCode,
+    ) -> Result<Self, ProviderHttpProfileError> {
+        if value == 0 || value > MAX {
+            return Err(ProviderHttpProfileError::new(code));
+        }
+        Ok(Self(value))
+    }
+
+    const fn get(self) -> usize {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+struct BoundedDuration<const MAX_MILLIS: u64>(Duration);
+
+impl<const MAX_MILLIS: u64> BoundedDuration<MAX_MILLIS> {
+    fn new(
+        value: Duration,
+        code: ProviderHttpProfileErrorCode,
+    ) -> Result<Self, ProviderHttpProfileError> {
+        if value == Duration::ZERO || value > Duration::from_millis(MAX_MILLIS) {
+            return Err(ProviderHttpProfileError::new(code));
+        }
+        Ok(Self(value))
+    }
+
+    const fn get(self) -> Duration {
+        self.0
+    }
+}
 
 /// One HTTP method supported by a fixed provider HTTP profile.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -103,6 +148,8 @@ impl ProviderHttpHeader {
     /// Returns a redacted stable error code when either component is malformed
     /// or the name is secret-bearing.
     pub fn new(name: &str, value: &str) -> Result<Self, ProviderHttpProfileError> {
+        validate_component_length(name, MAX_PROVIDER_HTTP_HEADER_NAME_BYTES)?;
+        validate_component_length(value, MAX_PROVIDER_HTTP_HEADER_VALUE_BYTES)?;
         validate_header_name(name)?;
         validate_header_value(value)?;
         Ok(Self {
@@ -137,12 +184,12 @@ impl Debug for ProviderHttpHeader {
 /// Checked hard limits for one provider HTTP profile.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct ProviderHttpLimits {
-    max_dns_answers: usize,
-    max_headers: usize,
-    max_header_bytes: usize,
-    max_request_body_bytes: usize,
-    max_response_body_bytes: usize,
-    max_frame_bytes: usize,
+    max_dns_answers: BoundedCount<MAX_DNS_ANSWERS>,
+    max_headers: BoundedCount<MAX_HEADERS>,
+    max_header_bytes: BoundedCount<MAX_HEADER_BYTES>,
+    max_request_body_bytes: BoundedCount<MAX_BODY_BYTES>,
+    max_response_body_bytes: BoundedCount<MAX_BODY_BYTES>,
+    max_frame_bytes: BoundedCount<MAX_FRAME_BYTES>,
 }
 
 impl ProviderHttpLimits {
@@ -162,70 +209,80 @@ impl ProviderHttpLimits {
         max_response_body_bytes: usize,
         max_frame_bytes: usize,
     ) -> Result<Self, ProviderHttpProfileError> {
-        validate_dns_answer_limit(max_dns_answers)?;
-        validate_nonzero_limits(&[
-            max_headers,
-            max_header_bytes,
-            max_request_body_bytes,
-            max_response_body_bytes,
-            max_frame_bytes,
-        ])?;
         Ok(Self {
-            max_dns_answers,
-            max_headers,
-            max_header_bytes,
-            max_request_body_bytes,
-            max_response_body_bytes,
-            max_frame_bytes,
+            max_dns_answers: BoundedCount::new(
+                max_dns_answers,
+                ProviderHttpProfileErrorCode::LimitExceeded,
+            )?,
+            max_headers: BoundedCount::new(
+                max_headers,
+                ProviderHttpProfileErrorCode::LimitExceeded,
+            )?,
+            max_header_bytes: BoundedCount::new(
+                max_header_bytes,
+                ProviderHttpProfileErrorCode::LimitExceeded,
+            )?,
+            max_request_body_bytes: BoundedCount::new(
+                max_request_body_bytes,
+                ProviderHttpProfileErrorCode::LimitExceeded,
+            )?,
+            max_response_body_bytes: BoundedCount::new(
+                max_response_body_bytes,
+                ProviderHttpProfileErrorCode::LimitExceeded,
+            )?,
+            max_frame_bytes: BoundedCount::new(
+                max_frame_bytes,
+                ProviderHttpProfileErrorCode::LimitExceeded,
+            )?,
         })
     }
 
     /// Returns the maximum accepted DNS answers before policy authorization.
     #[must_use]
     pub const fn max_dns_answers(self) -> usize {
-        self.max_dns_answers
+        self.max_dns_answers.get()
     }
 
     /// Returns the maximum number of request headers.
     #[must_use]
     pub const fn max_headers(self) -> usize {
-        self.max_headers
+        self.max_headers.get()
     }
 
     /// Returns the aggregate encoded request-header limit.
     #[must_use]
     pub const fn max_header_bytes(self) -> usize {
-        self.max_header_bytes
+        self.max_header_bytes.get()
     }
 
     /// Returns the maximum request-body byte count.
     #[must_use]
     pub const fn max_request_body_bytes(self) -> usize {
-        self.max_request_body_bytes
+        self.max_request_body_bytes.get()
     }
 
     /// Returns the maximum response-body byte count.
     #[must_use]
     pub const fn max_response_body_bytes(self) -> usize {
-        self.max_response_body_bytes
+        self.max_response_body_bytes.get()
     }
 
     /// Returns the maximum decoded HTTP frame byte count.
     #[must_use]
     pub const fn max_frame_bytes(self) -> usize {
-        self.max_frame_bytes
+        self.max_frame_bytes.get()
     }
 }
 
 impl Default for ProviderHttpLimits {
     fn default() -> Self {
         Self {
-            max_dns_answers: DEFAULT_MAX_DNS_ANSWERS,
-            max_headers: DEFAULT_MAX_HEADERS,
-            max_header_bytes: DEFAULT_MAX_HEADER_BYTES,
-            max_request_body_bytes: DEFAULT_MAX_BODY_BYTES,
-            max_response_body_bytes: DEFAULT_MAX_BODY_BYTES,
-            max_frame_bytes: DEFAULT_MAX_FRAME_BYTES,
+            max_dns_answers: BoundedCount(MAX_DNS_ANSWERS),
+            max_headers: BoundedCount(MAX_HEADERS),
+            max_header_bytes: BoundedCount(MAX_HEADER_BYTES),
+            max_request_body_bytes: BoundedCount(MAX_BODY_BYTES),
+            max_response_body_bytes: BoundedCount(MAX_BODY_BYTES),
+            max_frame_bytes: BoundedCount(MAX_FRAME_BYTES),
         }
     }
 }
@@ -233,11 +290,11 @@ impl Default for ProviderHttpLimits {
 /// Checked phase and cancellation budgets for one provider HTTP profile.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct ProviderHttpTimeouts {
-    max_resolution_age: Duration,
-    cancellation_poll: Duration,
-    connect: Duration,
-    tls_handshake: Duration,
-    response_headers: Duration,
+    max_resolution_age: BoundedDuration<MAX_RESOLUTION_AGE_MILLIS>,
+    cancellation_poll: BoundedDuration<MAX_CANCELLATION_POLL_MILLIS>,
+    connect: BoundedDuration<MAX_CONNECT_MILLIS>,
+    tls_handshake: BoundedDuration<MAX_TLS_MILLIS>,
+    response_headers: BoundedDuration<MAX_RESPONSE_HEADERS_MILLIS>,
 }
 
 impl ProviderHttpTimeouts {
@@ -253,61 +310,66 @@ impl ProviderHttpTimeouts {
         tls_handshake: Duration,
         response_headers: Duration,
     ) -> Result<Self, ProviderHttpProfileError> {
-        validate_durations(&[
-            max_resolution_age,
-            cancellation_poll,
-            connect,
-            tls_handshake,
-            response_headers,
-        ])?;
         Ok(Self {
-            max_resolution_age,
-            cancellation_poll,
-            connect,
-            tls_handshake,
-            response_headers,
+            max_resolution_age: BoundedDuration::new(
+                max_resolution_age,
+                ProviderHttpProfileErrorCode::InvalidTimeout,
+            )?,
+            cancellation_poll: BoundedDuration::new(
+                cancellation_poll,
+                ProviderHttpProfileErrorCode::InvalidTimeout,
+            )?,
+            connect: BoundedDuration::new(connect, ProviderHttpProfileErrorCode::InvalidTimeout)?,
+            tls_handshake: BoundedDuration::new(
+                tls_handshake,
+                ProviderHttpProfileErrorCode::InvalidTimeout,
+            )?,
+            response_headers: BoundedDuration::new(
+                response_headers,
+                ProviderHttpProfileErrorCode::InvalidTimeout,
+            )?,
         })
     }
 
     /// Returns the maximum age of a completed DNS resolution.
     #[must_use]
     pub const fn max_resolution_age(self) -> Duration {
-        self.max_resolution_age
+        self.max_resolution_age.get()
     }
 
     /// Returns the maximum delay before a cancellable operation observes cancellation.
     #[must_use]
     pub const fn cancellation_poll(self) -> Duration {
-        self.cancellation_poll
+        self.cancellation_poll.get()
     }
 
     /// Returns the TCP connection phase budget.
     #[must_use]
     pub const fn connect(self) -> Duration {
-        self.connect
+        self.connect.get()
     }
 
     /// Returns the TLS handshake phase budget.
     #[must_use]
     pub const fn tls_handshake(self) -> Duration {
-        self.tls_handshake
+        self.tls_handshake.get()
     }
 
     /// Returns the response-header phase budget.
     #[must_use]
     pub const fn response_headers(self) -> Duration {
-        self.response_headers
+        self.response_headers.get()
     }
 }
 
 impl Default for ProviderHttpTimeouts {
     fn default() -> Self {
         Self {
-            max_resolution_age: DEFAULT_MAX_RESOLUTION_AGE,
-            cancellation_poll: DEFAULT_CANCELLATION_POLL,
-            connect: DEFAULT_CONNECT_TIMEOUT,
-            tls_handshake: DEFAULT_TLS_TIMEOUT,
-            response_headers: DEFAULT_RESPONSE_HEADERS_TIMEOUT,
+            max_resolution_age: BoundedDuration(Duration::from_secs(60)),
+            cancellation_poll: BoundedDuration(Duration::from_millis(25)),
+            connect: BoundedDuration(Duration::from_secs(5)),
+            tls_handshake: BoundedDuration(Duration::from_secs(10)),
+            response_headers: BoundedDuration(Duration::from_secs(30)),
         }
     }
 }
@@ -315,9 +377,9 @@ impl Default for ProviderHttpTimeouts {
 /// Checked connection-pool limits for one isolated provider HTTP profile.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct ProviderHttpPool {
-    max_connections: usize,
-    max_idle: usize,
-    max_waiters: usize,
+    max_connections: BoundedCount<MAX_CONNECTIONS>,
+    max_idle: BoundedCount<MAX_IDLE>,
+    max_waiters: BoundedCount<MAX_WAITERS>,
 }
 
 impl ProviderHttpPool {
@@ -332,43 +394,47 @@ impl ProviderHttpPool {
         max_idle: usize,
         max_waiters: usize,
     ) -> Result<Self, ProviderHttpProfileError> {
-        if max_connections == 0 || max_idle == 0 || max_waiters == 0 || max_idle > max_connections {
+        let connections =
+            BoundedCount::new(max_connections, ProviderHttpProfileErrorCode::InvalidPool)?;
+        let idle = BoundedCount::new(max_idle, ProviderHttpProfileErrorCode::InvalidPool)?;
+        let waiters = BoundedCount::new(max_waiters, ProviderHttpProfileErrorCode::InvalidPool)?;
+        if max_idle > max_connections {
             return Err(ProviderHttpProfileError::new(
                 ProviderHttpProfileErrorCode::InvalidPool,
             ));
         }
         Ok(Self {
-            max_connections,
-            max_idle,
-            max_waiters,
+            max_connections: connections,
+            max_idle: idle,
+            max_waiters: waiters,
         })
     }
 
     /// Returns the maximum live TCP connections for the profile.
     #[must_use]
     pub const fn max_connections(self) -> usize {
-        self.max_connections
+        self.max_connections.get()
     }
 
     /// Returns the maximum idle reusable connections for the profile.
     #[must_use]
     pub const fn max_idle(self) -> usize {
-        self.max_idle
+        self.max_idle.get()
     }
 
     /// Returns the maximum callers waiting for a pooled connection.
     #[must_use]
     pub const fn max_waiters(self) -> usize {
-        self.max_waiters
+        self.max_waiters.get()
     }
 }
 
 impl Default for ProviderHttpPool {
     fn default() -> Self {
         Self {
-            max_connections: DEFAULT_MAX_CONNECTIONS,
-            max_idle: DEFAULT_MAX_IDLE,
-            max_waiters: DEFAULT_MAX_WAITERS,
+            max_connections: BoundedCount(MAX_CONNECTIONS),
+            max_idle: BoundedCount(MAX_IDLE),
+            max_waiters: BoundedCount(MAX_WAITERS),
         }
     }
 }
@@ -390,7 +456,7 @@ impl ProviderHttpTrust {
 }
 
 /// A proxy boundary that never carries proxy credentials.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum ProviderHttpProxy {
     /// Connect directly to the fixed HTTPS origin.
@@ -400,6 +466,17 @@ pub enum ProviderHttpProxy {
         /// The canonical proxy DNS target authorized before the tunnel opens.
         target: OutboundTarget,
     },
+}
+
+impl Debug for ProviderHttpProxy {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Disabled => formatter.write_str("ProviderHttpProxy::Disabled"),
+            Self::UnauthenticatedConnect { .. } => {
+                formatter.write_str("ProviderHttpProxy::UnauthenticatedConnect { redacted }")
+            }
+        }
+    }
 }
 
 impl ProviderHttpProxy {
@@ -453,6 +530,7 @@ impl ProviderHttpProfile {
             pool: ProviderHttpPool::default(),
             trust: ProviderHttpTrust::webpki_roots(),
             proxy: ProviderHttpProxy::disabled(),
+            header_overflow: false,
         }
     }
 
@@ -521,6 +599,7 @@ pub struct ProviderHttpProfileBuilder {
     pool: ProviderHttpPool,
     trust: ProviderHttpTrust,
     proxy: ProviderHttpProxy,
+    header_overflow: bool,
 }
 
 impl ProviderHttpProfileBuilder {
@@ -530,7 +609,19 @@ impl ProviderHttpProfileBuilder {
     where
         I: IntoIterator<Item = ProviderHttpHeader>,
     {
-        self.headers = headers.into_iter().collect();
+        let mut bounded = Vec::with_capacity(MAX_HEADERS);
+        let mut iterator = headers.into_iter();
+        for _ in 0..=MAX_HEADERS {
+            let Some(header) = iterator.next() else {
+                break;
+            };
+            if bounded.len() == MAX_HEADERS {
+                self.header_overflow = true;
+                break;
+            }
+            bounded.push(header);
+        }
+        self.headers = bounded;
         self
     }
 
@@ -576,6 +667,11 @@ impl ProviderHttpProfileBuilder {
     /// Returns a stable redacted error when static headers violate the checked
     /// header count, size, or duplicate-name constraints.
     pub fn build(self) -> Result<ProviderHttpProfile, ProviderHttpProfileError> {
+        if self.header_overflow {
+            return Err(ProviderHttpProfileError::new(
+                ProviderHttpProfileErrorCode::LimitExceeded,
+            ));
+        }
         validate_headers(&self.headers, self.limits)?;
         Ok(ProviderHttpProfile {
             endpoint: self.endpoint,
@@ -601,7 +697,38 @@ fn validate_header_name(name: &str) -> Result<(), ProviderHttpProfileError> {
             ProviderHttpProfileErrorCode::InvalidHeader,
         ));
     }
+    if is_reserved_header(name) {
+        return Err(ProviderHttpProfileError::new(
+            ProviderHttpProfileErrorCode::InvalidHeader,
+        ));
+    }
     Ok(())
+}
+
+fn validate_component_length(value: &str, maximum: usize) -> Result<(), ProviderHttpProfileError> {
+    if value.is_empty() || value.len() > maximum {
+        return Err(ProviderHttpProfileError::new(
+            ProviderHttpProfileErrorCode::LimitExceeded,
+        ));
+    }
+    Ok(())
+}
+
+fn is_reserved_header(name: &str) -> bool {
+    const RESERVED: [&str; 8] = [
+        "host",
+        "content-length",
+        "transfer-encoding",
+        "connection",
+        "keep-alive",
+        "te",
+        "trailer",
+        "upgrade",
+    ];
+    name.to_ascii_lowercase().starts_with("proxy-")
+        || RESERVED
+            .iter()
+            .any(|reserved| name.eq_ignore_ascii_case(reserved))
 }
 
 fn is_sensitive_header(name: &str) -> bool {
@@ -645,39 +772,12 @@ fn is_invalid_header_value_byte(byte: u8) -> bool {
     byte.is_ascii_control() && byte != b'\t'
 }
 
-fn validate_dns_answer_limit(limit: usize) -> Result<(), ProviderHttpProfileError> {
-    if limit == 0 || limit > MAX_OUTBOUND_RESOLVED_ADDRESSES {
-        return Err(ProviderHttpProfileError::new(
-            ProviderHttpProfileErrorCode::LimitExceeded,
-        ));
-    }
-    Ok(())
-}
-
-fn validate_nonzero_limits(limits: &[usize]) -> Result<(), ProviderHttpProfileError> {
-    if limits.contains(&0) {
-        return Err(ProviderHttpProfileError::new(
-            ProviderHttpProfileErrorCode::LimitExceeded,
-        ));
-    }
-    Ok(())
-}
-
-fn validate_durations(durations: &[Duration]) -> Result<(), ProviderHttpProfileError> {
-    if durations.contains(&Duration::ZERO) {
-        return Err(ProviderHttpProfileError::new(
-            ProviderHttpProfileErrorCode::InvalidTimeout,
-        ));
-    }
-    Ok(())
-}
-
 fn validate_headers(
     headers: &[ProviderHttpHeader],
     limits: ProviderHttpLimits,
 ) -> Result<(), ProviderHttpProfileError> {
-    validate_header_count(headers.len(), limits.max_headers)?;
-    validate_header_bytes(headers, limits.max_header_bytes)?;
+    validate_header_count(headers.len(), limits.max_headers.get())?;
+    validate_header_bytes(headers, limits.max_header_bytes.get())?;
     validate_unique_header_names(headers)
 }
 
