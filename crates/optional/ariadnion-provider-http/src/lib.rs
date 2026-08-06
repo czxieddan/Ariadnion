@@ -31,3 +31,15 @@
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
+
+mod config;
+mod endpoint;
+mod error;
+
+pub use config::{
+    ProviderHttpHeader, ProviderHttpLimits, ProviderHttpMethod, ProviderHttpPool,
+    ProviderHttpProfile, ProviderHttpProfileBuilder, ProviderHttpProxy, ProviderHttpTimeouts,
+    ProviderHttpTrust,
+};
+pub use endpoint::ProviderHttpEndpoint;
+pub use error::{ProviderHttpProfileError, ProviderHttpProfileErrorCode};
