@@ -45,6 +45,7 @@ ariadnion-core = { path = "../../crates/ariadnion-core" }
 ariadnion-compose = { path = "../../crates/optional/ariadnion-compose" }
 ariadnion-diagnostics = { path = "../../crates/optional/ariadnion-diagnostics" }
 ariadnion-job-runner = { path = "../../crates/optional/ariadnion-job-runner" }
+ariadnion-provider-http = { path = "../../crates/optional/ariadnion-provider-http" }
 ariadnion-provider-sdk = { path = "../../crates/optional/ariadnion-provider-sdk" }
 ariadnion-storage-asset = { path = "../../crates/optional/ariadnion-storage-asset" }
 ariadnion-storage-backup = { path = "../../crates/optional/ariadnion-storage-backup" }

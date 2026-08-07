@@ -80,3 +80,6 @@ pub use response::{ProviderHttpResponse, ProviderHttpReusableConnection};
 pub use shutdown::ProviderHttpShutdownReport;
 pub use timeout::bounded_timeout;
 pub use tls::ProviderTlsVersion;
+
+/// Stable package version compiled into provider HTTP transport compositions.
+pub const PROVIDER_HTTP_TRANSPORT_VERSION: &str = env!("CARGO_PKG_VERSION");

@@ -38,6 +38,7 @@ use ariadnion_core::{
     PortHandle, PortSlot,
 };
 use ariadnion_diagnostics::{DEFAULT_CONFIGURATION_DIGEST, DiagnosticsModule, DiagnosticsReadPort};
+use ariadnion_provider_http::PROVIDER_HTTP_TRANSPORT_VERSION;
 use ariadnion_storage_rnmdb::{REVIEWED_RNMDB_COMMIT, StorageRnmdbModule};
 
 fn main() -> ExitCode {
@@ -61,14 +62,15 @@ fn run() -> Result<String, CoreError> {
     let snapshot = reader.service()?.read();
     let (storage_state, storage_error) = module_status(&report, &storage_id)?;
     Ok(format!(
-        "{} diagnostics_module={} diagnostics_version={} storage_module={} storage_state={} storage_error={} storage_rnmdb_revision={}",
+        "{} diagnostics_module={} diagnostics_version={} storage_module={} storage_state={} storage_error={} storage_rnmdb_revision={} provider_http_transport_version={}",
         report.render_line(),
         snapshot.module_id(),
         snapshot.version(),
         storage_id,
         storage_state,
         storage_error,
-        REVIEWED_RNMDB_COMMIT
+        REVIEWED_RNMDB_COMMIT,
+        PROVIDER_HTTP_TRANSPORT_VERSION
     ))
 }
 
