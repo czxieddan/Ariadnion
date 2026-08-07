@@ -33,17 +33,25 @@
 #![deny(missing_docs)]
 
 mod config;
+mod connector;
 mod dns;
 mod egress;
 mod endpoint;
 mod error;
 mod timeout;
+mod tls;
 
 pub use config::{
-    MAX_PROVIDER_HTTP_HEADER_NAME_BYTES, MAX_PROVIDER_HTTP_HEADER_VALUE_BYTES,
-    MAX_PROVIDER_HTTP_PATH_AND_QUERY_BYTES, ProviderHttpHeader, ProviderHttpLimits,
-    ProviderHttpMethod, ProviderHttpPool, ProviderHttpProfile, ProviderHttpProfileBuilder,
-    ProviderHttpProxy, ProviderHttpTimeouts, ProviderHttpTrust,
+    MAX_PROVIDER_HTTP_EXPLICIT_ROOTS, MAX_PROVIDER_HTTP_HEADER_NAME_BYTES,
+    MAX_PROVIDER_HTTP_HEADER_VALUE_BYTES, MAX_PROVIDER_HTTP_PATH_AND_QUERY_BYTES,
+    MAX_PROVIDER_HTTP_ROOT_DER_BYTES, ProviderHttpHeader, ProviderHttpLimits, ProviderHttpMethod,
+    ProviderHttpPool, ProviderHttpProfile, ProviderHttpProfileBuilder, ProviderHttpProxy,
+    ProviderHttpTimeouts, ProviderHttpTrust,
+};
+pub use connector::{
+    ProviderHttpConnectedSocket, ProviderHttpDialError, ProviderHttpDialFuture,
+    ProviderHttpDirectConnection, ProviderHttpDirectConnector, ProviderHttpNumericDialer,
+    ProviderHttpPreparedConnection, TokioNumericDialer,
 };
 pub use dns::{
     AddressClass, BoundedResolver, ResolutionEpoch, ResolutionRecord, ResolvedAddresses,
@@ -56,3 +64,4 @@ pub use error::{
     ProviderHttpProfileErrorCode,
 };
 pub use timeout::bounded_timeout;
+pub use tls::ProviderTlsVersion;

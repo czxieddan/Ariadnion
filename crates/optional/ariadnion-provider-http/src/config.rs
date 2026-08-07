@@ -31,9 +31,12 @@
 
 use std::collections::BTreeSet;
 use std::fmt::{self, Debug, Formatter};
+use std::sync::Arc;
 use std::time::Duration;
 
 use ariadnion_core::{MAX_OUTBOUND_RESOLVED_ADDRESSES, OutboundTarget};
+use rustls::RootCertStore;
+use rustls::pki_types::CertificateDer;
 
 use crate::endpoint::ProviderHttpEndpoint;
 use crate::error::{ProviderHttpProfileError, ProviderHttpProfileErrorCode};
@@ -58,7 +61,13 @@ const MAX_RESOLUTION_MILLIS: u64 = 60_000;
 const MAX_CANCELLATION_POLL_MILLIS: u64 = 25;
 const MAX_CONNECT_MILLIS: u64 = 5_000;
 const MAX_TLS_MILLIS: u64 = 10_000;
+const MAX_HTTP1_HANDSHAKE_MILLIS: u64 = 10_000;
 const MAX_RESPONSE_HEADERS_MILLIS: u64 = 30_000;
+/// Maximum number of explicit DER trust anchors retained by one profile.
+pub const MAX_PROVIDER_HTTP_EXPLICIT_ROOTS: usize = 32;
+/// Maximum encoded bytes retained for one explicit DER trust anchor.
+pub const MAX_PROVIDER_HTTP_ROOT_DER_BYTES: usize = 64 * 1024;
+const MAX_PROVIDER_HTTP_ROOT_DER_AGGREGATE_BYTES: usize = 512 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 struct BoundedCount<const MAX: usize>(usize);
@@ -296,6 +305,7 @@ pub struct ProviderHttpTimeouts {
     cancellation_poll: BoundedDuration<MAX_CANCELLATION_POLL_MILLIS>,
     connect: BoundedDuration<MAX_CONNECT_MILLIS>,
     tls_handshake: BoundedDuration<MAX_TLS_MILLIS>,
+    http1_handshake: BoundedDuration<MAX_HTTP1_HANDSHAKE_MILLIS>,
     response_headers: BoundedDuration<MAX_RESPONSE_HEADERS_MILLIS>,
 }
 
@@ -316,6 +326,8 @@ impl ProviderHttpTimeouts {
         tls_handshake: Duration,
         response_headers: Duration,
     ) -> Result<Self, ProviderHttpProfileError> {
+        let tls_handshake =
+            BoundedDuration::new(tls_handshake, ProviderHttpProfileErrorCode::InvalidTimeout)?;
         Ok(Self {
             max_resolution_age: BoundedDuration::new(
                 max_resolution_age,
@@ -327,8 +339,9 @@ impl ProviderHttpTimeouts {
                 ProviderHttpProfileErrorCode::InvalidTimeout,
             )?,
             connect: BoundedDuration::new(connect, ProviderHttpProfileErrorCode::InvalidTimeout)?,
-            tls_handshake: BoundedDuration::new(
-                tls_handshake,
+            tls_handshake,
+            http1_handshake: BoundedDuration::new(
+                tls_handshake.get(),
                 ProviderHttpProfileErrorCode::InvalidTimeout,
             )?,
             response_headers: BoundedDuration::new(
@@ -358,6 +371,25 @@ impl ProviderHttpTimeouts {
         Ok(self)
     }
 
+    /// Replaces the low-level HTTP/1 client handshake budget.
+    ///
+    /// This preserves the five-argument constructor while keeping the HTTP/1
+    /// setup phase independently bounded from TLS negotiation.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable error when the duration is zero or exceeds 10 seconds.
+    pub fn with_http1_handshake_timeout(
+        mut self,
+        http1_handshake: Duration,
+    ) -> Result<Self, ProviderHttpProfileError> {
+        self.http1_handshake = BoundedDuration::new(
+            http1_handshake,
+            ProviderHttpProfileErrorCode::InvalidTimeout,
+        )?;
+        Ok(self)
+    }
+
     /// Returns the DNS lookup phase budget.
     #[must_use]
     pub const fn resolution(self) -> Duration {
@@ -382,6 +414,12 @@ impl ProviderHttpTimeouts {
         self.tls_handshake.get()
     }
 
+    /// Returns the low-level HTTP/1 client handshake budget.
+    #[must_use]
+    pub const fn http1_handshake(self) -> Duration {
+        self.http1_handshake.get()
+    }
+
     /// Returns the response-header phase budget.
     #[must_use]
     pub const fn response_headers(self) -> Duration {
@@ -397,6 +435,7 @@ impl Default for ProviderHttpTimeouts {
             cancellation_poll: BoundedDuration(Duration::from_millis(25)),
             connect: BoundedDuration(Duration::from_secs(5)),
             tls_handshake: BoundedDuration(Duration::from_secs(10)),
+            http1_handshake: BoundedDuration(Duration::from_secs(10)),
             response_headers: BoundedDuration(Duration::from_secs(30)),
         }
     }
@@ -468,11 +507,16 @@ impl Default for ProviderHttpPool {
 }
 
 /// The root-store choice for provider TLS peer validation.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum ProviderHttpTrust {
     /// Validate against the versioned WebPKI root set bundled by this crate.
     WebPkiRoots,
+    /// Validate against a bounded set of caller-supplied DER trust anchors.
+    ExplicitDerRoots {
+        /// Owned trust-anchor DER retained without exposing it through diagnostics.
+        roots: Arc<[Box<[u8]>]>,
+    },
 }
 
 impl ProviderHttpTrust {
@@ -480,6 +524,45 @@ impl ProviderHttpTrust {
     #[must_use]
     pub const fn webpki_roots() -> Self {
         Self::WebPkiRoots
+    }
+
+    /// Validates and retains a bounded explicit DER root set.
+    ///
+    /// Certificate and hostname verification remain enabled for explicit roots.
+    /// Input is capped before each allocation and malformed trust anchors are
+    /// rejected rather than skipped.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable redacted error when the set is empty, excessive,
+    /// oversized, or contains malformed certificate DER.
+    pub fn explicit_der_roots<I, B>(roots: I) -> Result<Self, ProviderHttpProfileError>
+    where
+        I: IntoIterator<Item = B>,
+        B: AsRef<[u8]>,
+    {
+        let retained = validate_and_copy_roots(roots)?;
+        Ok(Self::ExplicitDerRoots {
+            roots: retained.into(),
+        })
+    }
+
+    pub(crate) fn explicit_roots(&self) -> Option<&[Box<[u8]>]> {
+        match self {
+            Self::WebPkiRoots => None,
+            Self::ExplicitDerRoots { roots } => Some(roots),
+        }
+    }
+}
+
+impl Debug for ProviderHttpTrust {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::WebPkiRoots => formatter.write_str("ProviderHttpTrust::WebPkiRoots"),
+            Self::ExplicitDerRoots { .. } => {
+                formatter.write_str("ProviderHttpTrust::ExplicitDerRoots { redacted }")
+            }
+        }
     }
 }
 
@@ -600,8 +683,8 @@ impl ProviderHttpProfile {
 
     /// Returns the TLS root-store choice.
     #[must_use]
-    pub const fn trust(&self) -> ProviderHttpTrust {
-        self.trust
+    pub fn trust(&self) -> ProviderHttpTrust {
+        self.trust.clone()
     }
 
     /// Returns the proxy boundary choice.
@@ -677,7 +760,7 @@ impl ProviderHttpProfileBuilder {
 
     /// Replaces the TLS root-store choice.
     #[must_use]
-    pub const fn trust(mut self, trust: ProviderHttpTrust) -> Self {
+    pub fn trust(mut self, trust: ProviderHttpTrust) -> Self {
         self.trust = trust;
         self
     }
@@ -713,6 +796,62 @@ impl ProviderHttpProfileBuilder {
             proxy: self.proxy,
         })
     }
+}
+
+fn validate_and_copy_roots<I, B>(roots: I) -> Result<Vec<Box<[u8]>>, ProviderHttpProfileError>
+where
+    I: IntoIterator<Item = B>,
+    B: AsRef<[u8]>,
+{
+    let mut retained = Vec::with_capacity(MAX_PROVIDER_HTTP_EXPLICIT_ROOTS);
+    let mut aggregate = 0_usize;
+    for root in roots.into_iter().take(MAX_PROVIDER_HTTP_EXPLICIT_ROOTS + 1) {
+        validate_root_capacity(&retained, root.as_ref(), &mut aggregate)?;
+        validate_root_der(root.as_ref())?;
+        if contains_root(&retained, root.as_ref()) {
+            return Err(invalid_trust());
+        }
+        retained.push(root.as_ref().into());
+    }
+    if retained.is_empty() {
+        return Err(invalid_trust());
+    }
+    Ok(retained)
+}
+
+fn contains_root(retained: &[Box<[u8]>], candidate: &[u8]) -> bool {
+    retained.iter().any(|root| root.as_ref() == candidate)
+}
+
+fn validate_root_capacity(
+    retained: &[Box<[u8]>],
+    root: &[u8],
+    aggregate: &mut usize,
+) -> Result<(), ProviderHttpProfileError> {
+    if retained.len() == MAX_PROVIDER_HTTP_EXPLICIT_ROOTS
+        || root.is_empty()
+        || root.len() > MAX_PROVIDER_HTTP_ROOT_DER_BYTES
+    {
+        return Err(invalid_trust());
+    }
+    *aggregate = aggregate
+        .checked_add(root.len())
+        .ok_or_else(invalid_trust)?;
+    if *aggregate > MAX_PROVIDER_HTTP_ROOT_DER_AGGREGATE_BYTES {
+        return Err(invalid_trust());
+    }
+    Ok(())
+}
+
+fn validate_root_der(root: &[u8]) -> Result<(), ProviderHttpProfileError> {
+    let mut store = RootCertStore::empty();
+    store
+        .add(CertificateDer::from(root))
+        .map_err(|_| invalid_trust())
+}
+
+const fn invalid_trust() -> ProviderHttpProfileError {
+    ProviderHttpProfileError::new(ProviderHttpProfileErrorCode::InvalidTrust)
 }
 
 fn validate_header_name(name: &str) -> Result<(), ProviderHttpProfileError> {

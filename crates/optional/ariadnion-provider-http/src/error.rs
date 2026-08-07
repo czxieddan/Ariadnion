@@ -31,7 +31,7 @@
 
 use std::fmt::{self, Debug, Display, Formatter};
 
-const HTTP_ERROR_CODES: [&str; 8] = [
+const HTTP_ERROR_CODES: [&str; 17] = [
     "provider_http_invalid_origin",
     "provider_http_invalid_path_and_query",
     "provider_http_invalid_header",
@@ -40,6 +40,15 @@ const HTTP_ERROR_CODES: [&str; 8] = [
     "provider_http_invalid_timeout",
     "provider_http_invalid_pool",
     "provider_http_invalid_proxy",
+    "provider_http_invalid_trust",
+    "provider_http_resolution_failed",
+    "provider_http_outbound_denied",
+    "provider_http_connect_failed",
+    "provider_http_tls_handshake_failed",
+    "provider_http_http1_handshake_failed",
+    "provider_http_cancelled",
+    "provider_http_deadline_exceeded",
+    "provider_http_runtime_unavailable",
 ];
 
 /// Stable classifications for provider HTTP failures.
@@ -63,6 +72,24 @@ pub enum ProviderHttpErrorCode {
     InvalidPool = 6,
     /// A proxy configuration is invalid for this transport profile.
     InvalidProxy = 7,
+    /// The explicit TLS trust-root configuration is invalid.
+    InvalidTrust = 8,
+    /// DNS resolution or answer validation failed.
+    ResolutionFailed = 9,
+    /// Outbound policy, freshness, or address authorization denied the connection.
+    OutboundDenied = 10,
+    /// Numeric TCP connection establishment failed.
+    ConnectFailed = 11,
+    /// TLS negotiation or peer verification failed.
+    TlsHandshakeFailed = 12,
+    /// The low-level HTTP/1 client handshake failed.
+    Http1HandshakeFailed = 13,
+    /// Request cancellation stopped the current phase.
+    Cancelled = 14,
+    /// A request deadline or phase timeout stopped the current phase.
+    DeadlineExceeded = 15,
+    /// The required Tokio runtime capability was unavailable.
+    RuntimeUnavailable = 16,
 }
 
 impl ProviderHttpErrorCode {
@@ -100,6 +127,8 @@ pub enum ProviderHttpPhase {
     ProxyConnect,
     /// TLS peer verification and handshake.
     TlsHandshake,
+    /// Low-level HTTP/1 client connection setup.
+    Http1Handshake,
     /// Request-header serialization and transmission.
     RequestHeaders,
     /// Response-header receipt and validation.
@@ -115,6 +144,7 @@ impl ProviderHttpPhase {
             Self::Connect => "connect",
             Self::ProxyConnect => "proxy_connect",
             Self::TlsHandshake => "tls_handshake",
+            Self::Http1Handshake => "http1_handshake",
             Self::RequestHeaders => "request_headers",
             Self::ResponseHeaders => "response_headers",
         }
