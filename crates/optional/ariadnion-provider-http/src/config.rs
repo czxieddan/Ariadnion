@@ -85,6 +85,16 @@ impl<const MAX: usize> BoundedCount<MAX> {
         Ok(Self(value))
     }
 
+    fn new_allow_zero(
+        value: usize,
+        error: ProviderHttpProfileErrorCode,
+    ) -> Result<Self, ProviderHttpProfileError> {
+        if value > MAX {
+            return Err(ProviderHttpProfileError::new(error));
+        }
+        Ok(Self(value))
+    }
+
     const fn get(self) -> usize {
         self.0
     }
@@ -535,8 +545,9 @@ impl ProviderHttpPool {
     ///
     /// # Errors
     ///
-    /// Returns a stable error code when a count is zero or idle connections
-    /// would exceed all connections.
+    /// Returns a stable error code when the connection or waiter count is zero,
+    /// a count exceeds its hard ceiling, or idle connections would exceed all
+    /// connections. A zero idle count explicitly disables reuse.
     pub fn new(
         max_connections: usize,
         max_idle: usize,
@@ -544,7 +555,8 @@ impl ProviderHttpPool {
     ) -> Result<Self, ProviderHttpProfileError> {
         let connections =
             BoundedCount::new(max_connections, ProviderHttpProfileErrorCode::InvalidPool)?;
-        let idle = BoundedCount::new(max_idle, ProviderHttpProfileErrorCode::InvalidPool)?;
+        let idle =
+            BoundedCount::new_allow_zero(max_idle, ProviderHttpProfileErrorCode::InvalidPool)?;
         let waiters = BoundedCount::new(max_waiters, ProviderHttpProfileErrorCode::InvalidPool)?;
         if max_idle > max_connections {
             return Err(ProviderHttpProfileError::new(
@@ -695,6 +707,7 @@ impl ProviderHttpProxy {
 }
 
 /// An immutable checked HTTP transport profile with no network side effects.
+#[derive(Clone)]
 pub struct ProviderHttpProfile {
     endpoint: ProviderHttpEndpoint,
     method: ProviderHttpMethod,

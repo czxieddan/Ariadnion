@@ -33,7 +33,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 
 use ariadnion_provider_sdk::{ProviderFailure, ProviderFailureClass};
 
-const HTTP_ERROR_CODES: [&str; 24] = [
+const HTTP_ERROR_CODES: [&str; 26] = [
     "provider_http_invalid_origin",
     "provider_http_invalid_path_and_query",
     "provider_http_invalid_header",
@@ -58,6 +58,8 @@ const HTTP_ERROR_CODES: [&str; 24] = [
     "provider_http_response_limit",
     "provider_http_response_body_failed",
     "provider_http_attempt_timeout",
+    "provider_http_pool_exhausted",
+    "provider_http_pool_shutdown",
 ];
 
 /// Stable classifications for provider HTTP failures.
@@ -113,6 +115,10 @@ pub enum ProviderHttpErrorCode {
     ResponseBodyFailed = 22,
     /// A per-attempt phase budget elapsed before the request deadline.
     AttemptTimeout = 23,
+    /// The bounded pool cannot admit another connection or waiter.
+    PoolExhausted = 24,
+    /// The pool has stopped accepting new exchanges.
+    PoolShutdown = 25,
 }
 
 impl ProviderHttpErrorCode {
@@ -279,7 +285,9 @@ const fn primary_failure_class(code: ProviderHttpErrorCode) -> ProviderFailureCl
         | ProviderHttpErrorCode::InvalidPool
         | ProviderHttpErrorCode::InvalidProxy
         | ProviderHttpErrorCode::InvalidTrust
-        | ProviderHttpErrorCode::RuntimeUnavailable => secondary_failure_class(code),
+        | ProviderHttpErrorCode::RuntimeUnavailable
+        | ProviderHttpErrorCode::PoolExhausted
+        | ProviderHttpErrorCode::PoolShutdown => secondary_failure_class(code),
     }
 }
 
@@ -293,13 +301,15 @@ const fn secondary_failure_class(code: ProviderHttpErrorCode) -> ProviderFailure
         | ProviderHttpErrorCode::Http1HandshakeFailed
         | ProviderHttpErrorCode::ProxyConnectFailed
         | ProviderHttpErrorCode::RequestFailed
-        | ProviderHttpErrorCode::ResponseBodyFailed => ProviderFailureClass::UpstreamUnavailable,
+        | ProviderHttpErrorCode::ResponseBodyFailed
+        | ProviderHttpErrorCode::PoolExhausted => ProviderFailureClass::UpstreamUnavailable,
         ProviderHttpErrorCode::InvalidOrigin
         | ProviderHttpErrorCode::InvalidTimeout
         | ProviderHttpErrorCode::InvalidPool
         | ProviderHttpErrorCode::InvalidProxy
         | ProviderHttpErrorCode::InvalidTrust
-        | ProviderHttpErrorCode::RuntimeUnavailable => ProviderFailureClass::Internal,
+        | ProviderHttpErrorCode::RuntimeUnavailable
+        | ProviderHttpErrorCode::PoolShutdown => ProviderFailureClass::Internal,
         ProviderHttpErrorCode::Cancelled
         | ProviderHttpErrorCode::DeadlineExceeded
         | ProviderHttpErrorCode::AttemptTimeout

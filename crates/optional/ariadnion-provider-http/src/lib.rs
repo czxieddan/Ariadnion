@@ -32,6 +32,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+mod authorization;
 mod config;
 mod connector;
 mod dns;
@@ -39,9 +40,11 @@ mod egress;
 mod endpoint;
 mod error;
 mod exchange;
+mod pool;
 mod proxy;
 mod request;
 mod response;
+mod shutdown;
 mod timeout;
 mod tls;
 
@@ -68,7 +71,12 @@ pub use error::{
     ProviderHttpProfileErrorCode,
 };
 pub use exchange::ProviderHttpExchange;
+pub use pool::{
+    ProviderHttpConnectionPool, ProviderHttpPartition, ProviderHttpPoolMetrics,
+    ProviderHttpPooledResponse,
+};
 pub use request::ProviderHttpRequest;
 pub use response::{ProviderHttpResponse, ProviderHttpReusableConnection};
+pub use shutdown::ProviderHttpShutdownReport;
 pub use timeout::bounded_timeout;
 pub use tls::ProviderTlsVersion;

@@ -63,6 +63,10 @@ impl ProviderHttpReusableConnection {
             _connection: connection,
         }
     }
+
+    pub(crate) fn into_connection(self) -> ProviderHttpDirectConnection {
+        self._connection
+    }
 }
 
 impl Debug for ProviderHttpReusableConnection {
@@ -151,6 +155,10 @@ impl ProviderHttpResponse {
     /// Clean extraction does not cancel the child request context.
     #[must_use]
     pub fn into_reusable_connection(mut self) -> Option<ProviderHttpReusableConnection> {
+        self.take_reusable_connection()
+    }
+
+    pub(crate) fn take_reusable_connection(&mut self) -> Option<ProviderHttpReusableConnection> {
         if !self.reusable {
             return None;
         }
