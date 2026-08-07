@@ -34,6 +34,7 @@ use std::time::{Duration, Instant, SystemTime};
 use ariadnion_core::RequestContext;
 
 use crate::egress::EgressError;
+use crate::error::ProviderHttpErrorCode;
 
 pub(crate) fn check_context(context: &RequestContext) -> Result<(), EgressError> {
     context.check_active().map_err(|error| {
@@ -71,6 +72,83 @@ where
         future.as_mut(),
     )
     .await
+}
+
+pub(crate) async fn run_exchange_phase<T, F>(
+    context: &RequestContext,
+    phase: Duration,
+    cancellation_poll: Duration,
+    future: F,
+) -> Result<T, ProviderHttpErrorCode>
+where
+    F: Future<Output = T>,
+{
+    check_exchange_context(context)?;
+    ensure_exchange_runtime()?;
+    tokio::pin!(future);
+    poll_exchange_phase(
+        context,
+        Instant::now(),
+        phase,
+        cancellation_poll,
+        future.as_mut(),
+    )
+    .await
+}
+
+async fn poll_exchange_phase<T, F>(
+    context: &RequestContext,
+    started: Instant,
+    phase: Duration,
+    cancellation_poll: Duration,
+    mut future: Pin<&mut F>,
+) -> Result<T, ProviderHttpErrorCode>
+where
+    F: Future<Output = T> + ?Sized,
+{
+    loop {
+        let wait = next_exchange_wait(context, started, phase, cancellation_poll)?;
+        match tokio::time::timeout(wait, future.as_mut()).await {
+            Ok(value) => {
+                check_exchange_context(context)?;
+                return Ok(value);
+            }
+            Err(_) => continue,
+        }
+    }
+}
+
+fn next_exchange_wait(
+    context: &RequestContext,
+    started: Instant,
+    phase: Duration,
+    cancellation_poll: Duration,
+) -> Result<Duration, ProviderHttpErrorCode> {
+    check_exchange_context(context)?;
+    let remaining = phase
+        .checked_sub(started.elapsed())
+        .ok_or(ProviderHttpErrorCode::AttemptTimeout)?;
+    let deadline = context.remaining().map_err(map_exchange_context_error)?;
+    let bounded = deadline.map_or(remaining, |value| value.min(remaining));
+    Ok(cancellation_poll.min(bounded))
+}
+
+fn check_exchange_context(context: &RequestContext) -> Result<(), ProviderHttpErrorCode> {
+    context.check_active().map_err(map_exchange_context_error)
+}
+
+fn map_exchange_context_error(error: ariadnion_core::CoreError) -> ProviderHttpErrorCode {
+    if error.code() == ariadnion_core::ErrorCode::Cancelled {
+        ProviderHttpErrorCode::Cancelled
+    } else {
+        ProviderHttpErrorCode::DeadlineExceeded
+    }
+}
+
+fn ensure_exchange_runtime() -> Result<(), ProviderHttpErrorCode> {
+    tokio::runtime::Handle::try_current()
+        .map(|_| ())
+        .map_err(|_| ProviderHttpErrorCode::RuntimeUnavailable)
 }
 
 async fn poll_with_timeout<T, F>(

@@ -34,12 +34,12 @@ use std::future::Future;
 use std::io;
 use std::net::{SocketAddr, TcpStream as StdTcpStream};
 use std::pin::Pin;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::task::{Context, Poll};
 use std::time::Instant;
 
-use ariadnion_core::{OutboundPolicyPort, OutboundTarget, RequestContext};
+use ariadnion_core::{OutboundHost, OutboundPolicyPort, OutboundTarget, RequestContext};
 use ariadnion_provider_sdk::{
     ProviderAttemptEvidence, ProviderAttemptProgress, ProviderTransmission,
 };
@@ -52,7 +52,9 @@ use tokio::net::TcpStream;
 use tokio::task::JoinHandle;
 use tokio_rustls::client::TlsStream;
 
-use crate::config::ProviderHttpProfile;
+use crate::config::{
+    ProviderHttpLimits, ProviderHttpProfile, ProviderHttpProxy, ProviderHttpTrust,
+};
 use crate::dns::{BoundedResolver, ResolutionRecord};
 use crate::egress::EgressError;
 use crate::error::{ProviderHttpError, ProviderHttpErrorCode, ProviderHttpPhase};
@@ -60,7 +62,10 @@ use crate::proxy;
 use crate::timeout::run_with_timeout;
 use crate::tls::{self, ProviderTlsVersion};
 
-type RequestBody = Full<Bytes>;
+pub(crate) type RequestBody = Full<Bytes>;
+
+const HTTP1_MAX_BUFFER_BYTES: usize = 16 * 1024;
+const GUARDED_READ_CHUNK_BYTES: usize = 1024;
 
 /// An opaque connected numeric TCP socket supplied by a trusted dial adapter.
 pub struct ProviderHttpConnectedSocket {
@@ -181,6 +186,10 @@ impl ProviderHttpDirectConnector {
     /// No request bytes are written by this operation, so every failure leaves
     /// `evidence` at `NotStarted`.
     ///
+    /// `evidence` must be pristine and reserved for this physical connection.
+    /// Sharing it with another connection or pretransitioning any progress
+    /// boundary makes the later first request write fail closed.
+    ///
     /// # Errors
     ///
     /// Returns a stable redacted phase failure for cancellation, timeout, DNS,
@@ -228,6 +237,10 @@ impl ProviderHttpDirectConnector {
             approved_peer,
             tls_version,
             timeouts,
+            origin_host: profile.endpoint().host().clone(),
+            origin_port: profile.endpoint().port(),
+            limits: profile.limits(),
+            security_key: ProviderHttpConnectionSecurityKey::from_profile(profile),
         })
     }
 
@@ -333,6 +346,10 @@ pub struct ProviderHttpPreparedConnection {
     approved_peer: SocketAddr,
     tls_version: ProviderTlsVersion,
     timeouts: crate::config::ProviderHttpTimeouts,
+    origin_host: OutboundHost,
+    origin_port: u16,
+    limits: ProviderHttpLimits,
+    security_key: ProviderHttpConnectionSecurityKey,
 }
 
 impl ProviderHttpPreparedConnection {
@@ -341,6 +358,8 @@ impl ProviderHttpPreparedConnection {
     /// This consumes the prepared TLS connection. Cancellation or deadline
     /// expiration before the handshake starts leaves `evidence` at
     /// `NotStarted`; the marker is armed only after successful setup.
+    /// The evidence handle must be pristine and exclusive to this physical
+    /// connection; otherwise its first request write fails closed.
     ///
     /// # Errors
     ///
@@ -352,24 +371,42 @@ impl ProviderHttpPreparedConnection {
         evidence: &ProviderAttemptEvidence,
     ) -> Result<ProviderHttpDirectConnection, ProviderHttpError> {
         let marker = ProviderTransmissionMarker::new(evidence.clone());
-        let io = TokioIo::new(MarkedTlsStream::new(self.tls_stream, marker.clone()));
+        let response_limit = Arc::new(AtomicBool::new(false));
+        let response_protocol = Arc::new(AtomicBool::new(false));
+        let response_head_bounds = Arc::new(ResponseHeadBounds::new(self.limits));
+        let io = TokioIo::new(MarkedTlsStream::new(
+            self.tls_stream,
+            marker.clone(),
+            response_head_bounds.clone(),
+            response_limit.clone(),
+            response_protocol.clone(),
+        ));
+        let mut builder = hyper::client::conn::http1::Builder::new();
+        builder.max_headers(ProviderHttpLimits::default().max_headers());
+        builder.max_buf_size(HTTP1_MAX_BUFFER_BYTES);
         let (sender, driver) = run_provider_phase(
             context,
             self.timeouts.http1_handshake(),
             self.timeouts.cancellation_poll(),
             ProviderHttpPhase::Http1Handshake,
             ProviderHttpErrorCode::Http1HandshakeFailed,
-            hyper::client::conn::http1::handshake::<_, RequestBody>(io),
+            builder.handshake::<_, RequestBody>(io),
         )
         .await?;
         marker.arm();
-        let driver = spawn_driver(driver, marker.clone());
+        let driver = spawn_driver(driver);
         Ok(ProviderHttpDirectConnection {
-            _sender: sender,
+            sender,
             driver,
             marker,
             approved_peer: self.approved_peer,
             tls_version: self.tls_version,
+            origin_host: self.origin_host,
+            origin_port: self.origin_port,
+            response_limit,
+            response_protocol,
+            response_head_bounds,
+            security_key: self.security_key,
         })
     }
 }
@@ -382,14 +419,50 @@ impl Debug for ProviderHttpPreparedConnection {
 
 /// One verified direct HTTP/1 connection with retained driver ownership.
 pub struct ProviderHttpDirectConnection {
-    _sender: SendRequest<RequestBody>,
+    sender: SendRequest<RequestBody>,
     driver: JoinHandle<()>,
     marker: ProviderTransmissionMarker,
     approved_peer: SocketAddr,
     tls_version: ProviderTlsVersion,
+    origin_host: OutboundHost,
+    origin_port: u16,
+    response_limit: Arc<AtomicBool>,
+    response_protocol: Arc<AtomicBool>,
+    response_head_bounds: Arc<ResponseHeadBounds>,
+    security_key: ProviderHttpConnectionSecurityKey,
 }
 
 impl ProviderHttpDirectConnection {
+    pub(crate) fn sender_mut(&mut self) -> &mut SendRequest<RequestBody> {
+        &mut self.sender
+    }
+
+    pub(crate) fn evidence(&self) -> ProviderAttemptEvidence {
+        self.marker.evidence.clone()
+    }
+
+    pub(crate) fn matches_origin(&self, profile: &ProviderHttpProfile) -> bool {
+        self.origin_host == *profile.endpoint().host()
+            && self.origin_port == profile.endpoint().port()
+            && self.security_key.matches(profile)
+    }
+
+    pub(crate) fn response_limit_observed(&self) -> bool {
+        self.response_limit.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn response_protocol_observed(&self) -> bool {
+        self.response_protocol.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn apply_execution_limits(&self, limits: ProviderHttpLimits) {
+        self.response_head_bounds.store(limits);
+    }
+
+    pub(crate) fn is_reusable(&self) -> bool {
+        !self.driver.is_finished() && !self.sender.is_closed()
+    }
+
     /// Returns the policy-approved numeric peer selected for the physical connection.
     #[must_use]
     pub const fn approved_peer(&self) -> SocketAddr {
@@ -415,9 +488,28 @@ impl ProviderHttpDirectConnection {
     }
 }
 
+#[derive(Clone, Eq, PartialEq)]
+struct ProviderHttpConnectionSecurityKey {
+    trust: ProviderHttpTrust,
+    proxy: ProviderHttpProxy,
+}
+
+impl ProviderHttpConnectionSecurityKey {
+    fn from_profile(profile: &ProviderHttpProfile) -> Self {
+        Self {
+            trust: profile.trust(),
+            proxy: profile.proxy().clone(),
+        }
+    }
+
+    fn matches(&self, profile: &ProviderHttpProfile) -> bool {
+        self.trust == profile.trust() && self.proxy == *profile.proxy()
+    }
+}
+
 impl Drop for ProviderHttpDirectConnection {
     fn drop(&mut self) {
-        self.marker.mark_unknown_if_started();
+        self.marker.close();
         self.driver.abort();
     }
 }
@@ -431,47 +523,378 @@ impl Debug for ProviderHttpDirectConnection {
 #[derive(Clone)]
 struct ProviderTransmissionMarker {
     evidence: ProviderAttemptEvidence,
-    armed: Arc<AtomicBool>,
+    lifecycle: Arc<Mutex<ProviderTransmissionLifecycle>>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ProviderTransmissionLifecycle {
+    Unarmed,
+    Idle,
+    Claimed,
+    Closed,
+}
+
+struct ProviderWriteGuard<'a> {
+    _lifecycle: MutexGuard<'a, ProviderTransmissionLifecycle>,
 }
 
 impl ProviderTransmissionMarker {
     fn new(evidence: ProviderAttemptEvidence) -> Self {
         Self {
             evidence,
-            armed: Arc::new(AtomicBool::new(false)),
+            lifecycle: Arc::new(Mutex::new(ProviderTransmissionLifecycle::Unarmed)),
         }
     }
 
     fn arm(&self) {
-        self.armed.store(true, Ordering::Release);
-    }
-
-    fn before_write(&self) -> io::Result<()> {
-        if !self.armed.load(Ordering::Acquire)
-            || self.evidence.progress().transmission() != ProviderTransmission::NotStarted
-        {
-            return Ok(());
+        let mut lifecycle = lock_transmission_lifecycle(&self.lifecycle);
+        if *lifecycle == ProviderTransmissionLifecycle::Unarmed {
+            *lifecycle = ProviderTransmissionLifecycle::Idle;
         }
-        self.evidence
-            .mark_transmission_started()
-            .map_err(|_| io::Error::other("provider transmission evidence rejected"))
     }
 
-    fn mark_unknown_if_started(&self) {
+    /// Acquires the lifecycle before the evidence mutex and retains it through
+    /// one synchronous transport poll. No code acquires these locks in reverse
+    /// order, and the guard never crosses an await boundary.
+    fn write_guard(&self) -> io::Result<ProviderWriteGuard<'_>> {
+        let mut lifecycle = lock_transmission_lifecycle(&self.lifecycle);
+        match *lifecycle {
+            ProviderTransmissionLifecycle::Idle => self.claim(&mut lifecycle)?,
+            ProviderTransmissionLifecycle::Claimed => {}
+            ProviderTransmissionLifecycle::Unarmed | ProviderTransmissionLifecycle::Closed => {
+                return Err(evidence_error());
+            }
+        }
+        Ok(ProviderWriteGuard {
+            _lifecycle: lifecycle,
+        })
+    }
+
+    fn claim(&self, lifecycle: &mut ProviderTransmissionLifecycle) -> io::Result<()> {
+        if !pristine_progress(self.evidence.progress()) {
+            *lifecycle = ProviderTransmissionLifecycle::Closed;
+            return Err(evidence_error());
+        }
+        if self.evidence.mark_transmission_started().is_err() {
+            *lifecycle = ProviderTransmissionLifecycle::Closed;
+            return Err(evidence_error());
+        }
+        if !claimed_progress(self.evidence.progress()) {
+            self.close_failed_claim(lifecycle);
+            return Err(evidence_error());
+        }
+        *lifecycle = ProviderTransmissionLifecycle::Claimed;
+        Ok(())
+    }
+
+    fn close_failed_claim(&self, lifecycle: &mut ProviderTransmissionLifecycle) {
         if self.evidence.progress().transmission() == ProviderTransmission::Started {
             let _result = self.evidence.mark_transmission_unknown();
         }
+        *lifecycle = ProviderTransmissionLifecycle::Closed;
+    }
+
+    fn close(&self) {
+        let mut lifecycle = lock_transmission_lifecycle(&self.lifecycle);
+        if *lifecycle == ProviderTransmissionLifecycle::Claimed
+            && self.evidence.progress().transmission() == ProviderTransmission::Started
+        {
+            let _result = self.evidence.mark_transmission_unknown();
+        }
+        *lifecycle = ProviderTransmissionLifecycle::Closed;
+    }
+
+    fn observe_response_bytes(&self) -> io::Result<()> {
+        let lifecycle = lock_transmission_lifecycle(&self.lifecycle);
+        if *lifecycle != ProviderTransmissionLifecycle::Claimed {
+            return Err(evidence_error());
+        }
+        self.commit_response()?;
+        self.mark_upstream_response()
+    }
+
+    fn commit_response(&self) -> io::Result<()> {
+        match self.evidence.progress().transmission() {
+            ProviderTransmission::Started => self
+                .evidence
+                .mark_request_committed()
+                .map_err(|_| evidence_error()),
+            ProviderTransmission::Committed => Ok(()),
+            ProviderTransmission::NotStarted | ProviderTransmission::Unknown => {
+                Err(evidence_error())
+            }
+            _ => Err(evidence_error()),
+        }
+    }
+
+    fn mark_upstream_response(&self) -> io::Result<()> {
+        if self.evidence.progress().upstream_response_started() {
+            return Ok(());
+        }
+        self.evidence
+            .mark_upstream_response_started()
+            .map_err(|_| evidence_error())
+    }
+}
+
+fn pristine_progress(progress: ProviderAttemptProgress) -> bool {
+    progress.transmission() == ProviderTransmission::NotStarted
+        && !progress.upstream_response_started()
+        && !progress.downstream_delivery_started()
+}
+
+fn claimed_progress(progress: ProviderAttemptProgress) -> bool {
+    progress.transmission() == ProviderTransmission::Started
+        && !progress.upstream_response_started()
+        && !progress.downstream_delivery_started()
+}
+
+fn lock_transmission_lifecycle(
+    lifecycle: &Mutex<ProviderTransmissionLifecycle>,
+) -> MutexGuard<'_, ProviderTransmissionLifecycle> {
+    match lifecycle.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
+fn evidence_error() -> io::Error {
+    io::Error::other("provider transmission evidence rejected")
+}
+
+struct ResponseHeadGuard {
+    bounds: Arc<ResponseHeadBounds>,
+    header_count: usize,
+    header_bytes: usize,
+    head_wire_bytes: usize,
+    line_bytes: usize,
+    previous_was_cr: bool,
+    saw_status_line: bool,
+    informational_status: bool,
+    complete: bool,
+    limit_violation: Arc<AtomicBool>,
+    protocol_violation: Arc<AtomicBool>,
+}
+
+impl ResponseHeadGuard {
+    fn new(
+        bounds: Arc<ResponseHeadBounds>,
+        limit_violation: Arc<AtomicBool>,
+        protocol_violation: Arc<AtomicBool>,
+    ) -> Self {
+        Self {
+            bounds,
+            header_count: 0,
+            header_bytes: 0,
+            head_wire_bytes: 0,
+            line_bytes: 0,
+            previous_was_cr: false,
+            saw_status_line: false,
+            informational_status: false,
+            complete: false,
+            limit_violation,
+            protocol_violation,
+        }
+    }
+
+    fn observe(&mut self, bytes: &[u8]) -> io::Result<()> {
+        for byte in bytes {
+            if self.complete {
+                break;
+            }
+            self.observe_byte(*byte)?;
+        }
+        Ok(())
+    }
+
+    fn observe_byte(&mut self, byte: u8) -> io::Result<()> {
+        self.charge_wire_byte()?;
+        self.observe_status_byte(byte);
+        if self.advance_line(byte) {
+            self.finish_line()
+        } else {
+            Ok(())
+        }
+    }
+
+    fn charge_wire_byte(&mut self) -> io::Result<()> {
+        self.head_wire_bytes = self.head_wire_bytes.saturating_add(1);
+        self.line_bytes = self.line_bytes.saturating_add(1);
+        self.ensure_absolute_head_limit()?;
+        self.ensure_current_header_limit()
+    }
+
+    fn ensure_absolute_head_limit(&self) -> io::Result<()> {
+        if self.head_wire_bytes > HTTP1_MAX_BUFFER_BYTES {
+            return self.reject_limit();
+        }
+        Ok(())
+    }
+
+    fn ensure_current_header_limit(&self) -> io::Result<()> {
+        if self.current_header_bytes_exceeded() {
+            return self.reject_limit();
+        }
+        Ok(())
+    }
+
+    fn advance_line(&mut self, byte: u8) -> bool {
+        let ended = self.previous_was_cr && byte == b'\n';
+        self.previous_was_cr = byte == b'\r';
+        ended
+    }
+
+    fn observe_status_byte(&mut self, byte: u8) {
+        if !self.saw_status_line && self.line_bytes == 10 {
+            self.informational_status = byte == b'1';
+        }
+    }
+
+    fn current_header_bytes_exceeded(&self) -> bool {
+        self.saw_status_line
+            && self.line_bytes > 2
+            && self
+                .header_bytes
+                .saturating_add(self.line_bytes)
+                .gt(&self.bounds.max_header_bytes())
+    }
+
+    fn finish_line(&mut self) -> io::Result<()> {
+        let line_bytes = std::mem::take(&mut self.line_bytes);
+        if !self.saw_status_line {
+            self.saw_status_line = true;
+            return self.finish_status_line();
+        }
+        if line_bytes == 2 {
+            self.complete = true;
+            return Ok(());
+        }
+        self.header_count = self.header_count.saturating_add(1);
+        self.header_bytes = self.header_bytes.saturating_add(line_bytes);
+        if self.header_count > self.bounds.max_headers()
+            || self.header_bytes > self.bounds.max_header_bytes()
+        {
+            return self.reject_limit();
+        }
+        Ok(())
+    }
+
+    fn finish_status_line(&self) -> io::Result<()> {
+        if self.informational_status {
+            return self.reject_protocol();
+        }
+        Ok(())
+    }
+
+    fn reject_limit<T>(&self) -> io::Result<T> {
+        self.limit_violation.store(true, Ordering::Release);
+        Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "provider response head exceeded its checked boundary",
+        ))
+    }
+
+    fn reject_protocol<T>(&self) -> io::Result<T> {
+        self.protocol_violation.store(true, Ordering::Release);
+        Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "provider response head violated its checked protocol",
+        ))
+    }
+}
+
+struct ResponseHeadBounds {
+    max_headers: AtomicUsize,
+    max_header_bytes: AtomicUsize,
+}
+
+impl ResponseHeadBounds {
+    fn new(limits: ProviderHttpLimits) -> Self {
+        Self {
+            max_headers: AtomicUsize::new(limits.max_headers()),
+            max_header_bytes: AtomicUsize::new(limits.max_header_bytes()),
+        }
+    }
+
+    fn store(&self, limits: ProviderHttpLimits) {
+        self.max_headers
+            .store(limits.max_headers(), Ordering::Release);
+        self.max_header_bytes
+            .store(limits.max_header_bytes(), Ordering::Release);
+    }
+
+    fn max_headers(&self) -> usize {
+        self.max_headers.load(Ordering::Acquire)
+    }
+
+    fn max_header_bytes(&self) -> usize {
+        self.max_header_bytes.load(Ordering::Acquire)
     }
 }
 
 struct MarkedTlsStream {
     stream: TlsStream<TcpStream>,
     marker: ProviderTransmissionMarker,
+    head_guard: ResponseHeadGuard,
+    scratch: Box<[u8; GUARDED_READ_CHUNK_BYTES]>,
 }
 
 impl MarkedTlsStream {
-    fn new(stream: TlsStream<TcpStream>, marker: ProviderTransmissionMarker) -> Self {
-        Self { stream, marker }
+    fn new(
+        stream: TlsStream<TcpStream>,
+        marker: ProviderTransmissionMarker,
+        bounds: Arc<ResponseHeadBounds>,
+        limit_violation: Arc<AtomicBool>,
+        protocol_violation: Arc<AtomicBool>,
+    ) -> Self {
+        Self {
+            stream,
+            marker,
+            head_guard: ResponseHeadGuard::new(bounds, limit_violation, protocol_violation),
+            scratch: Box::new([0_u8; GUARDED_READ_CHUNK_BYTES]),
+        }
+    }
+
+    fn poll_response_head(
+        &mut self,
+        context: &mut Context<'_>,
+        buffer: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        let capacity = self.scratch.len().min(buffer.remaining());
+        if capacity == 0 {
+            return Poll::Ready(Ok(()));
+        }
+        let (result, count) = {
+            let mut guarded = ReadBuf::new(&mut self.scratch[..capacity]);
+            let result = Pin::new(&mut self.stream).poll_read(context, &mut guarded);
+            (result, guarded.filled().len())
+        };
+        self.finish_guarded_poll(result, count, buffer)
+    }
+
+    fn finish_guarded_poll(
+        &mut self,
+        result: Poll<io::Result<()>>,
+        count: usize,
+        buffer: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        match result {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(result) => {
+                Poll::Ready(result.and_then(|()| self.forward_response_bytes(count, buffer)))
+            }
+        }
+    }
+
+    fn forward_response_bytes(&mut self, count: usize, buffer: &mut ReadBuf<'_>) -> io::Result<()> {
+        if count == 0 {
+            return Ok(());
+        }
+        self.marker.observe_response_bytes()?;
+        let bytes = &self.scratch[..count];
+        self.head_guard.observe(bytes)?;
+        buffer.put_slice(bytes);
+        Ok(())
     }
 }
 
@@ -481,7 +904,10 @@ impl AsyncRead for MarkedTlsStream {
         context: &mut Context<'_>,
         buffer: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
-        Pin::new(&mut self.stream).poll_read(context, buffer)
+        if self.head_guard.complete {
+            return Pin::new(&mut self.stream).poll_read(context, buffer);
+        }
+        self.poll_response_head(context, buffer)
     }
 }
 
@@ -491,9 +917,11 @@ impl AsyncWrite for MarkedTlsStream {
         context: &mut Context<'_>,
         buffer: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
-        if let Err(error) = self.marker.before_write() {
-            return Poll::Ready(Err(error));
-        }
+        let marker = self.marker.clone();
+        let _write_guard = match marker.write_guard() {
+            Ok(guard) => guard,
+            Err(error) => return Poll::Ready(Err(error)),
+        };
         Pin::new(&mut self.stream).poll_write(context, buffer)
     }
 
@@ -520,21 +948,21 @@ impl AsyncWrite for MarkedTlsStream {
         context: &mut Context<'_>,
         buffers: &[io::IoSlice<'_>],
     ) -> Poll<Result<usize, io::Error>> {
-        if let Err(error) = self.marker.before_write() {
-            return Poll::Ready(Err(error));
-        }
+        let marker = self.marker.clone();
+        let _write_guard = match marker.write_guard() {
+            Ok(guard) => guard,
+            Err(error) => return Poll::Ready(Err(error)),
+        };
         Pin::new(&mut self.stream).poll_write_vectored(context, buffers)
     }
 }
 
-fn spawn_driver<F>(driver: F, marker: ProviderTransmissionMarker) -> JoinHandle<()>
+fn spawn_driver<F>(driver: F) -> JoinHandle<()>
 where
     F: Future<Output = Result<(), hyper::Error>> + Send + 'static,
 {
-    let driver_marker = marker.clone();
     tokio::spawn(async move {
         let _result = driver.await;
-        driver_marker.mark_unknown_if_started();
     })
 }
 

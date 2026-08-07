@@ -64,6 +64,7 @@ const MAX_TLS_MILLIS: u64 = 10_000;
 const MAX_PROXY_CONNECT_MILLIS: u64 = MAX_TLS_MILLIS;
 const MAX_HTTP1_HANDSHAKE_MILLIS: u64 = 10_000;
 const MAX_RESPONSE_HEADERS_MILLIS: u64 = 30_000;
+const MAX_BODY_IDLE_MILLIS: u64 = 30_000;
 /// Maximum number of explicit DER trust anchors retained by one profile.
 pub const MAX_PROVIDER_HTTP_EXPLICIT_ROOTS: usize = 32;
 /// Maximum encoded bytes retained for one explicit DER trust anchor.
@@ -309,6 +310,7 @@ pub struct ProviderHttpTimeouts {
     tls_handshake: BoundedDuration<MAX_TLS_MILLIS>,
     http1_handshake: BoundedDuration<MAX_HTTP1_HANDSHAKE_MILLIS>,
     response_headers: BoundedDuration<MAX_RESPONSE_HEADERS_MILLIS>,
+    body_idle: BoundedDuration<MAX_BODY_IDLE_MILLIS>,
 }
 
 impl ProviderHttpTimeouts {
@@ -328,8 +330,8 @@ impl ProviderHttpTimeouts {
         tls_handshake: Duration,
         response_headers: Duration,
     ) -> Result<Self, ProviderHttpProfileError> {
-        let tls_handshake =
-            BoundedDuration::new(tls_handshake, ProviderHttpProfileErrorCode::InvalidTimeout)?;
+        let (tls_handshake, proxy_connect, http1_handshake) = checked_tls_timeouts(tls_handshake)?;
+        let (response_headers, body_idle) = checked_response_timeouts(response_headers)?;
         Ok(Self {
             max_resolution_age: BoundedDuration::new(
                 max_resolution_age,
@@ -341,19 +343,11 @@ impl ProviderHttpTimeouts {
                 ProviderHttpProfileErrorCode::InvalidTimeout,
             )?,
             connect: BoundedDuration::new(connect, ProviderHttpProfileErrorCode::InvalidTimeout)?,
-            proxy_connect: BoundedDuration::new(
-                tls_handshake.get(),
-                ProviderHttpProfileErrorCode::InvalidTimeout,
-            )?,
+            proxy_connect,
             tls_handshake,
-            http1_handshake: BoundedDuration::new(
-                tls_handshake.get(),
-                ProviderHttpProfileErrorCode::InvalidTimeout,
-            )?,
-            response_headers: BoundedDuration::new(
-                response_headers,
-                ProviderHttpProfileErrorCode::InvalidTimeout,
-            )?,
+            http1_handshake,
+            response_headers,
+            body_idle,
         })
     }
 
@@ -455,6 +449,61 @@ impl ProviderHttpTimeouts {
     pub const fn response_headers(self) -> Duration {
         self.response_headers.get()
     }
+
+    /// Replaces the maximum idle wait between response body frames.
+    ///
+    /// The five-argument constructor initializes this budget from the checked
+    /// response-header value, preserving a finite body bound for existing
+    /// callers.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable error when the duration is zero or exceeds 30 seconds.
+    pub fn with_body_idle_timeout(
+        mut self,
+        body_idle: Duration,
+    ) -> Result<Self, ProviderHttpProfileError> {
+        self.body_idle =
+            BoundedDuration::new(body_idle, ProviderHttpProfileErrorCode::InvalidTimeout)?;
+        Ok(self)
+    }
+
+    /// Returns the maximum idle wait between response body frames.
+    #[must_use]
+    pub const fn body_idle(self) -> Duration {
+        self.body_idle.get()
+    }
+}
+
+fn checked_tls_timeouts(
+    value: Duration,
+) -> Result<
+    (
+        BoundedDuration<MAX_TLS_MILLIS>,
+        BoundedDuration<MAX_PROXY_CONNECT_MILLIS>,
+        BoundedDuration<MAX_HTTP1_HANDSHAKE_MILLIS>,
+    ),
+    ProviderHttpProfileError,
+> {
+    let tls = BoundedDuration::new(value, ProviderHttpProfileErrorCode::InvalidTimeout)?;
+    let proxy = BoundedDuration::new(value, ProviderHttpProfileErrorCode::InvalidTimeout)?;
+    let http1 = BoundedDuration::new(value, ProviderHttpProfileErrorCode::InvalidTimeout)?;
+    Ok((tls, proxy, http1))
+}
+
+fn checked_response_timeouts(
+    value: Duration,
+) -> Result<
+    (
+        BoundedDuration<MAX_RESPONSE_HEADERS_MILLIS>,
+        BoundedDuration<MAX_BODY_IDLE_MILLIS>,
+    ),
+    ProviderHttpProfileError,
+> {
+    let response_headers =
+        BoundedDuration::new(value, ProviderHttpProfileErrorCode::InvalidTimeout)?;
+    let body_idle = BoundedDuration::new(value, ProviderHttpProfileErrorCode::InvalidTimeout)?;
+    Ok((response_headers, body_idle))
 }
 
 impl Default for ProviderHttpTimeouts {
@@ -468,6 +517,7 @@ impl Default for ProviderHttpTimeouts {
             tls_handshake: BoundedDuration(Duration::from_secs(10)),
             http1_handshake: BoundedDuration(Duration::from_secs(10)),
             response_headers: BoundedDuration(Duration::from_secs(30)),
+            body_idle: BoundedDuration(Duration::from_secs(30)),
         }
     }
 }
@@ -918,9 +968,10 @@ fn validate_component_length(value: &str, maximum: usize) -> Result<(), Provider
 }
 
 fn is_reserved_header(name: &str) -> bool {
-    const RESERVED: [&str; 8] = [
+    const RESERVED: [&str; 9] = [
         "host",
         "content-length",
+        "accept-encoding",
         "transfer-encoding",
         "connection",
         "keep-alive",

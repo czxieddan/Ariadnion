@@ -38,7 +38,10 @@ mod dns;
 mod egress;
 mod endpoint;
 mod error;
+mod exchange;
 mod proxy;
+mod request;
+mod response;
 mod timeout;
 mod tls;
 
@@ -64,5 +67,8 @@ pub use error::{
     ProviderHttpError, ProviderHttpErrorCode, ProviderHttpPhase, ProviderHttpProfileError,
     ProviderHttpProfileErrorCode,
 };
+pub use exchange::ProviderHttpExchange;
+pub use request::ProviderHttpRequest;
+pub use response::{ProviderHttpResponse, ProviderHttpReusableConnection};
 pub use timeout::bounded_timeout;
 pub use tls::ProviderTlsVersion;

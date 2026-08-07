@@ -31,7 +31,9 @@
 
 use std::fmt::{self, Debug, Display, Formatter};
 
-const HTTP_ERROR_CODES: [&str; 18] = [
+use ariadnion_provider_sdk::{ProviderFailure, ProviderFailureClass};
+
+const HTTP_ERROR_CODES: [&str; 24] = [
     "provider_http_invalid_origin",
     "provider_http_invalid_path_and_query",
     "provider_http_invalid_header",
@@ -50,6 +52,12 @@ const HTTP_ERROR_CODES: [&str; 18] = [
     "provider_http_deadline_exceeded",
     "provider_http_runtime_unavailable",
     "provider_http_proxy_connect_failed",
+    "provider_http_request_failed",
+    "provider_http_redirect_rejected",
+    "provider_http_protocol_violation",
+    "provider_http_response_limit",
+    "provider_http_response_body_failed",
+    "provider_http_attempt_timeout",
 ];
 
 /// Stable classifications for provider HTTP failures.
@@ -93,6 +101,18 @@ pub enum ProviderHttpErrorCode {
     RuntimeUnavailable = 16,
     /// HTTP CONNECT tunnel establishment or validation failed.
     ProxyConnectFailed = 17,
+    /// Request readiness, serialization, or dispatch failed.
+    RequestFailed = 18,
+    /// A redirect response was rejected without being followed.
+    RedirectRejected = 19,
+    /// The upstream response violated the bounded HTTP contract.
+    ProtocolViolation = 20,
+    /// The upstream response exceeded a configured hard limit.
+    ResponseLimit = 21,
+    /// Pulling the upstream response body failed.
+    ResponseBodyFailed = 22,
+    /// A per-attempt phase budget elapsed before the request deadline.
+    AttemptTimeout = 23,
 }
 
 impl ProviderHttpErrorCode {
@@ -136,21 +156,41 @@ pub enum ProviderHttpPhase {
     RequestHeaders,
     /// Response-header receipt and validation.
     ResponseHeaders,
+    /// Pull-driven response-body receipt and validation.
+    ResponseBody,
 }
 
 impl ProviderHttpPhase {
     /// Returns the stable phase name.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Resolution => "resolution",
-            Self::Connect => "connect",
-            Self::ProxyConnect => "proxy_connect",
-            Self::TlsHandshake => "tls_handshake",
-            Self::Http1Handshake => "http1_handshake",
-            Self::RequestHeaders => "request_headers",
-            Self::ResponseHeaders => "response_headers",
-        }
+        connection_phase_name(self)
+    }
+}
+
+const fn connection_phase_name(phase: ProviderHttpPhase) -> &'static str {
+    match phase {
+        ProviderHttpPhase::Resolution => "resolution",
+        ProviderHttpPhase::Connect => "connect",
+        ProviderHttpPhase::ProxyConnect => "proxy_connect",
+        ProviderHttpPhase::TlsHandshake => "tls_handshake",
+        ProviderHttpPhase::Http1Handshake
+        | ProviderHttpPhase::RequestHeaders
+        | ProviderHttpPhase::ResponseHeaders
+        | ProviderHttpPhase::ResponseBody => exchange_phase_name(phase),
+    }
+}
+
+const fn exchange_phase_name(phase: ProviderHttpPhase) -> &'static str {
+    match phase {
+        ProviderHttpPhase::Http1Handshake => "http1_handshake",
+        ProviderHttpPhase::RequestHeaders => "request_headers",
+        ProviderHttpPhase::ResponseHeaders => "response_headers",
+        ProviderHttpPhase::ResponseBody => "response_body",
+        ProviderHttpPhase::Resolution
+        | ProviderHttpPhase::Connect
+        | ProviderHttpPhase::ProxyConnect
+        | ProviderHttpPhase::TlsHandshake => connection_phase_name(phase),
     }
 }
 
@@ -197,6 +237,78 @@ impl ProviderHttpError {
     #[must_use]
     pub const fn phase(self) -> Option<ProviderHttpPhase> {
         self.phase
+    }
+
+    /// Projects this transport error to an unbound provider failure.
+    ///
+    /// The provider SDK remains the only layer allowed to bind authoritative
+    /// attempt progress to the returned classification.
+    #[must_use]
+    pub const fn provider_failure(self) -> ProviderFailure {
+        ProviderFailure::new(provider_failure_class(self.code))
+    }
+}
+
+const fn provider_failure_class(code: ProviderHttpErrorCode) -> ProviderFailureClass {
+    primary_failure_class(code)
+}
+
+const fn primary_failure_class(code: ProviderHttpErrorCode) -> ProviderFailureClass {
+    match code {
+        ProviderHttpErrorCode::Cancelled => ProviderFailureClass::Cancelled,
+        ProviderHttpErrorCode::DeadlineExceeded => ProviderFailureClass::DeadlineExceeded,
+        ProviderHttpErrorCode::AttemptTimeout => ProviderFailureClass::AttemptTimeout,
+        ProviderHttpErrorCode::InvalidPathAndQuery
+        | ProviderHttpErrorCode::InvalidHeader
+        | ProviderHttpErrorCode::SensitiveHeader
+        | ProviderHttpErrorCode::LimitExceeded => ProviderFailureClass::InvalidRequest,
+        ProviderHttpErrorCode::RedirectRejected | ProviderHttpErrorCode::ProtocolViolation => {
+            ProviderFailureClass::ProtocolViolation
+        }
+        ProviderHttpErrorCode::ResponseLimit
+        | ProviderHttpErrorCode::ResolutionFailed
+        | ProviderHttpErrorCode::OutboundDenied
+        | ProviderHttpErrorCode::ConnectFailed
+        | ProviderHttpErrorCode::TlsHandshakeFailed
+        | ProviderHttpErrorCode::Http1HandshakeFailed
+        | ProviderHttpErrorCode::ProxyConnectFailed
+        | ProviderHttpErrorCode::RequestFailed
+        | ProviderHttpErrorCode::ResponseBodyFailed
+        | ProviderHttpErrorCode::InvalidOrigin
+        | ProviderHttpErrorCode::InvalidTimeout
+        | ProviderHttpErrorCode::InvalidPool
+        | ProviderHttpErrorCode::InvalidProxy
+        | ProviderHttpErrorCode::InvalidTrust
+        | ProviderHttpErrorCode::RuntimeUnavailable => secondary_failure_class(code),
+    }
+}
+
+const fn secondary_failure_class(code: ProviderHttpErrorCode) -> ProviderFailureClass {
+    match code {
+        ProviderHttpErrorCode::ResponseLimit => ProviderFailureClass::ResponseLimit,
+        ProviderHttpErrorCode::ResolutionFailed
+        | ProviderHttpErrorCode::OutboundDenied
+        | ProviderHttpErrorCode::ConnectFailed
+        | ProviderHttpErrorCode::TlsHandshakeFailed
+        | ProviderHttpErrorCode::Http1HandshakeFailed
+        | ProviderHttpErrorCode::ProxyConnectFailed
+        | ProviderHttpErrorCode::RequestFailed
+        | ProviderHttpErrorCode::ResponseBodyFailed => ProviderFailureClass::UpstreamUnavailable,
+        ProviderHttpErrorCode::InvalidOrigin
+        | ProviderHttpErrorCode::InvalidTimeout
+        | ProviderHttpErrorCode::InvalidPool
+        | ProviderHttpErrorCode::InvalidProxy
+        | ProviderHttpErrorCode::InvalidTrust
+        | ProviderHttpErrorCode::RuntimeUnavailable => ProviderFailureClass::Internal,
+        ProviderHttpErrorCode::Cancelled
+        | ProviderHttpErrorCode::DeadlineExceeded
+        | ProviderHttpErrorCode::AttemptTimeout
+        | ProviderHttpErrorCode::InvalidPathAndQuery
+        | ProviderHttpErrorCode::InvalidHeader
+        | ProviderHttpErrorCode::SensitiveHeader
+        | ProviderHttpErrorCode::LimitExceeded
+        | ProviderHttpErrorCode::RedirectRejected
+        | ProviderHttpErrorCode::ProtocolViolation => primary_failure_class(code),
     }
 }
 
