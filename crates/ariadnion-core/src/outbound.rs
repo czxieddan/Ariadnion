@@ -242,15 +242,34 @@ pub trait OutboundPolicyPort: Send + Sync {
 }
 
 fn validate_host(value: &str) -> Result<(), CoreError> {
+    validate_host_encoding(value)?;
+    validate_host_length(value)?;
+    validate_host_name(value)?;
+    validate_host_labels(value)
+}
+
+fn validate_host_encoding(value: &str) -> Result<(), CoreError> {
     if value.is_empty() || !value.is_ascii() {
         return Err(invalid_argument("outbound host is not canonical ASCII"));
     }
+    Ok(())
+}
+
+fn validate_host_length(value: &str) -> Result<(), CoreError> {
     if value.len() > MAX_OUTBOUND_HOST_BYTES {
         return Err(resource_exhausted("outbound host exceeds its byte limit"));
     }
+    Ok(())
+}
+
+fn validate_host_name(value: &str) -> Result<(), CoreError> {
     if value.parse::<IpAddr>().is_ok() {
         return Err(invalid_argument("outbound host is an IP literal"));
     }
+    Ok(())
+}
+
+fn validate_host_labels(value: &str) -> Result<(), CoreError> {
     for label in value.split('.') {
         validate_label(label)?;
     }
@@ -258,16 +277,30 @@ fn validate_host(value: &str) -> Result<(), CoreError> {
 }
 
 fn validate_label(label: &str) -> Result<(), CoreError> {
+    validate_label_size(label)?;
+    validate_label_edges(label)?;
+    validate_label_bytes(label)
+}
+
+fn validate_label_size(label: &str) -> Result<(), CoreError> {
     if label.is_empty() || label.len() > 63 {
         return Err(invalid_argument(
             "outbound host contains an invalid label size",
         ));
     }
+    Ok(())
+}
+
+fn validate_label_edges(label: &str) -> Result<(), CoreError> {
     let first = label.as_bytes().first().copied();
     let last = label.as_bytes().last().copied();
     if !first.is_some_and(is_label_edge) || !last.is_some_and(is_label_edge) {
         return Err(invalid_argument("outbound host label edge is invalid"));
     }
+    Ok(())
+}
+
+fn validate_label_bytes(label: &str) -> Result<(), CoreError> {
     if label.bytes().any(is_invalid_label_byte) {
         return Err(invalid_argument("outbound host label byte is invalid"));
     }
