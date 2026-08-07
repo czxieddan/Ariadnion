@@ -61,6 +61,7 @@ const MAX_RESOLUTION_MILLIS: u64 = 60_000;
 const MAX_CANCELLATION_POLL_MILLIS: u64 = 25;
 const MAX_CONNECT_MILLIS: u64 = 5_000;
 const MAX_TLS_MILLIS: u64 = 10_000;
+const MAX_PROXY_CONNECT_MILLIS: u64 = MAX_TLS_MILLIS;
 const MAX_HTTP1_HANDSHAKE_MILLIS: u64 = 10_000;
 const MAX_RESPONSE_HEADERS_MILLIS: u64 = 30_000;
 /// Maximum number of explicit DER trust anchors retained by one profile.
@@ -304,6 +305,7 @@ pub struct ProviderHttpTimeouts {
     resolution: BoundedDuration<MAX_RESOLUTION_MILLIS>,
     cancellation_poll: BoundedDuration<MAX_CANCELLATION_POLL_MILLIS>,
     connect: BoundedDuration<MAX_CONNECT_MILLIS>,
+    proxy_connect: BoundedDuration<MAX_PROXY_CONNECT_MILLIS>,
     tls_handshake: BoundedDuration<MAX_TLS_MILLIS>,
     http1_handshake: BoundedDuration<MAX_HTTP1_HANDSHAKE_MILLIS>,
     response_headers: BoundedDuration<MAX_RESPONSE_HEADERS_MILLIS>,
@@ -339,6 +341,10 @@ impl ProviderHttpTimeouts {
                 ProviderHttpProfileErrorCode::InvalidTimeout,
             )?,
             connect: BoundedDuration::new(connect, ProviderHttpProfileErrorCode::InvalidTimeout)?,
+            proxy_connect: BoundedDuration::new(
+                tls_handshake.get(),
+                ProviderHttpProfileErrorCode::InvalidTimeout,
+            )?,
             tls_handshake,
             http1_handshake: BoundedDuration::new(
                 tls_handshake.get(),
@@ -390,6 +396,24 @@ impl ProviderHttpTimeouts {
         Ok(self)
     }
 
+    /// Replaces the HTTP CONNECT tunnel setup budget.
+    ///
+    /// The five-argument constructor initializes this budget from the checked
+    /// TLS-handshake value, so proxy setup remains bounded without changing
+    /// existing callers.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable error when the duration is zero or exceeds 10 seconds.
+    pub fn with_proxy_connect_timeout(
+        mut self,
+        proxy_connect: Duration,
+    ) -> Result<Self, ProviderHttpProfileError> {
+        self.proxy_connect =
+            BoundedDuration::new(proxy_connect, ProviderHttpProfileErrorCode::InvalidTimeout)?;
+        Ok(self)
+    }
+
     /// Returns the DNS lookup phase budget.
     #[must_use]
     pub const fn resolution(self) -> Duration {
@@ -406,6 +430,12 @@ impl ProviderHttpTimeouts {
     #[must_use]
     pub const fn connect(self) -> Duration {
         self.connect.get()
+    }
+
+    /// Returns the HTTP CONNECT tunnel setup phase budget.
+    #[must_use]
+    pub const fn proxy_connect(self) -> Duration {
+        self.proxy_connect.get()
     }
 
     /// Returns the TLS handshake phase budget.
@@ -434,6 +464,7 @@ impl Default for ProviderHttpTimeouts {
             resolution: BoundedDuration(Duration::from_secs(5)),
             cancellation_poll: BoundedDuration(Duration::from_millis(25)),
             connect: BoundedDuration(Duration::from_secs(5)),
+            proxy_connect: BoundedDuration(Duration::from_secs(10)),
             tls_handshake: BoundedDuration(Duration::from_secs(10)),
             http1_handshake: BoundedDuration(Duration::from_secs(10)),
             response_headers: BoundedDuration(Duration::from_secs(30)),

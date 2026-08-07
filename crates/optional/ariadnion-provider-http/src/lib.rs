@@ -38,6 +38,7 @@ mod dns;
 mod egress;
 mod endpoint;
 mod error;
+mod proxy;
 mod timeout;
 mod tls;
 

@@ -31,7 +31,7 @@
 
 use std::fmt::{self, Debug, Display, Formatter};
 
-const HTTP_ERROR_CODES: [&str; 17] = [
+const HTTP_ERROR_CODES: [&str; 18] = [
     "provider_http_invalid_origin",
     "provider_http_invalid_path_and_query",
     "provider_http_invalid_header",
@@ -49,6 +49,7 @@ const HTTP_ERROR_CODES: [&str; 17] = [
     "provider_http_cancelled",
     "provider_http_deadline_exceeded",
     "provider_http_runtime_unavailable",
+    "provider_http_proxy_connect_failed",
 ];
 
 /// Stable classifications for provider HTTP failures.
@@ -90,6 +91,8 @@ pub enum ProviderHttpErrorCode {
     DeadlineExceeded = 15,
     /// The required Tokio runtime capability was unavailable.
     RuntimeUnavailable = 16,
+    /// HTTP CONNECT tunnel establishment or validation failed.
+    ProxyConnectFailed = 17,
 }
 
 impl ProviderHttpErrorCode {

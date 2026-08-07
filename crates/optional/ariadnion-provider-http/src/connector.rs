@@ -56,6 +56,7 @@ use crate::config::ProviderHttpProfile;
 use crate::dns::{BoundedResolver, ResolutionRecord};
 use crate::egress::EgressError;
 use crate::error::{ProviderHttpError, ProviderHttpErrorCode, ProviderHttpPhase};
+use crate::proxy;
 use crate::timeout::run_with_timeout;
 use crate::tls::{self, ProviderTlsVersion};
 
@@ -183,7 +184,7 @@ impl ProviderHttpDirectConnector {
     /// # Errors
     ///
     /// Returns a stable redacted phase failure for cancellation, timeout, DNS,
-    /// policy, TCP, TLS, or HTTP/1 setup failure.
+    /// policy, TCP, proxy CONNECT, TLS, or HTTP/1 setup failure.
     pub async fn connect(
         &self,
         profile: &ProviderHttpProfile,
@@ -204,14 +205,14 @@ impl ProviderHttpDirectConnector {
     /// # Errors
     ///
     /// Returns a stable redacted phase failure for cancellation, timeout, DNS,
-    /// policy, TCP, or TLS setup failure.
+    /// policy, TCP, proxy CONNECT, or TLS setup failure.
     pub async fn prepare_tls(
         &self,
         profile: &ProviderHttpProfile,
         context: &RequestContext,
     ) -> Result<ProviderHttpPreparedConnection, ProviderHttpError> {
-        let approved = self.resolve_authorized(profile, context).await?;
-        let socket = self.dial(profile, context, approved).await?;
+        let origin = self.resolve_origin(profile, context).await?;
+        let (socket, approved_peer) = self.connect_transport(profile, context, origin).await?;
         let timeouts = profile.timeouts();
         let (tls_stream, tls_version) = run_provider_phase(
             context,
@@ -224,18 +225,17 @@ impl ProviderHttpDirectConnector {
         .await?;
         Ok(ProviderHttpPreparedConnection {
             tls_stream,
-            approved_peer: approved,
+            approved_peer,
             tls_version,
             timeouts,
         })
     }
 
-    async fn resolve_authorized(
+    async fn resolve_origin(
         &self,
         profile: &ProviderHttpProfile,
         context: &RequestContext,
     ) -> Result<SocketAddr, ProviderHttpError> {
-        check_phase_context(context, ProviderHttpPhase::Resolution)?;
         let endpoint = profile.endpoint();
         let target =
             OutboundTarget::new(endpoint.host().clone(), endpoint.port()).map_err(|_| {
@@ -244,13 +244,23 @@ impl ProviderHttpDirectConnector {
                     ProviderHttpPhase::Resolution,
                 )
             })?;
+        self.resolve_target(&target, profile, context).await
+    }
+
+    async fn resolve_target(
+        &self,
+        target: &OutboundTarget,
+        profile: &ProviderHttpProfile,
+        context: &RequestContext,
+    ) -> Result<SocketAddr, ProviderHttpError> {
+        check_phase_context(context, ProviderHttpPhase::Resolution)?;
         let revision = self.policy.revision();
         let answers = self
             .resolver
-            .resolve_checked(endpoint.host(), context, profile.timeouts())
+            .resolve_checked(target.host(), context, profile.timeouts())
             .await
             .map_err(|error| map_egress_error(error, ProviderHttpPhase::Resolution))?;
-        let record = ResolutionRecord::from_resolution(target, answers, revision)
+        let record = ResolutionRecord::from_resolution(target.clone(), answers, revision)
             .map_err(|error| map_egress_error(error, ProviderHttpPhase::Resolution))?;
         let address = record
             .authorize(
@@ -260,7 +270,32 @@ impl ProviderHttpDirectConnector {
                 self.policy.as_ref(),
             )
             .map_err(|error| map_egress_error(error, ProviderHttpPhase::Resolution))?;
-        Ok(SocketAddr::new(address, endpoint.port()))
+        Ok(SocketAddr::new(address, target.port()))
+    }
+
+    async fn connect_transport(
+        &self,
+        profile: &ProviderHttpProfile,
+        context: &RequestContext,
+        origin: SocketAddr,
+    ) -> Result<(TcpStream, SocketAddr), ProviderHttpError> {
+        let Some(proxy_target) = profile.proxy().target() else {
+            let socket = self.dial(profile, context, origin).await?;
+            return Ok((socket, origin));
+        };
+        let proxy = self.resolve_target(proxy_target, profile, context).await?;
+        let socket = self.dial(profile, context, proxy).await?;
+        let timeouts = profile.timeouts();
+        let socket = run_provider_phase(
+            context,
+            timeouts.proxy_connect(),
+            timeouts.cancellation_poll(),
+            ProviderHttpPhase::ProxyConnect,
+            ProviderHttpErrorCode::ProxyConnectFailed,
+            proxy::establish_tunnel(socket, origin),
+        )
+        .await?;
+        Ok((socket, proxy))
     }
 
     async fn dial(
