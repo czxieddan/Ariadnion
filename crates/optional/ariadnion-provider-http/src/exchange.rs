@@ -39,8 +39,8 @@ use crate::request::{ProviderHttpRequest, build_request};
 use crate::response::ProviderHttpResponse;
 use crate::timeout::run_exchange_phase;
 
-/// A one-shot exchange bound to one verified physical HTTP/1 connection.
-pub struct ProviderHttpExchange {
+/// A crate-owned exchange bound to one verified physical HTTP/1 connection.
+pub(crate) struct ProviderHttpExchange {
     connection: Option<ProviderHttpDirectConnection>,
     profile: ProviderHttpProfile,
 }
@@ -57,7 +57,7 @@ impl ProviderHttpExchange {
     /// Returns a redacted invalid-origin failure when the connection was
     /// established for a different canonical host, port, trust profile, or
     /// proxy boundary.
-    pub fn from_connection(
+    pub(crate) fn from_connection(
         connection: ProviderHttpDirectConnection,
         profile: ProviderHttpProfile,
     ) -> Result<Self, ProviderHttpError> {
@@ -84,7 +84,7 @@ impl ProviderHttpExchange {
     ///
     /// Returns a stable redacted failure for inactive context, request framing,
     /// sender readiness, transport, or response-head conversion failures.
-    pub async fn execute(
+    pub(crate) async fn execute(
         &mut self,
         context: &RequestContext,
         request: ProviderHttpRequest,

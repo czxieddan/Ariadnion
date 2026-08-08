@@ -27,17 +27,23 @@
 //
 // SPDX-License-Identifier: LicenseRef-AHCL-1.0
 
-use std::fmt::{Display, Formatter};
+use std::collections::BTreeSet;
+use std::fmt::{self, Debug, Display, Formatter};
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
 
 use ariadnion_core::{
-    OutboundAuthorizationRequest, OutboundPolicyDecision, OutboundPolicyPort, RequestContext,
+    MAX_OUTBOUND_RESOLVED_ADDRESSES, OutboundAuthorizationRequest, OutboundDenyReason,
+    OutboundPolicyDecision, OutboundPolicyPort, OutboundPolicyRevision, OutboundTarget,
+    RequestContext,
 };
 
 use crate::config::ProviderHttpTimeouts;
 use crate::dns::{BoundedResolver, ResolutionRecord, classify_address};
 use crate::timeout::{check_context, ensure_time_runtime};
+
+/// Maximum exact target rules in one immutable static outbound snapshot.
+pub const MAX_STATIC_OUTBOUND_POLICY_RULES: usize = 64;
 
 /// Stable fail-closed egress errors.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -71,9 +77,13 @@ pub enum EgressError {
     DeadlineExceeded,
     /// The operation requires a Tokio runtime that is not active.
     RuntimeUnavailable,
+    /// A static policy snapshot has no rules or repeats an exact target.
+    InvalidPolicyRules,
+    /// A static policy snapshot exceeds its exact rule bound.
+    TooManyPolicyRules,
 }
 
-const EGRESS_ERROR_CODES: [&str; 14] = [
+const EGRESS_ERROR_CODES: [&str; 16] = [
     "resolution_empty",
     "resolution_failed",
     "resolution_target_mismatch",
@@ -88,6 +98,8 @@ const EGRESS_ERROR_CODES: [&str; 14] = [
     "cancelled",
     "deadline_exceeded",
     "runtime_unavailable",
+    "invalid_policy_rules",
+    "too_many_policy_rules",
 ];
 
 impl EgressError {
@@ -105,6 +117,176 @@ impl Display for EgressError {
 }
 
 impl std::error::Error for EgressError {}
+
+/// One exact static outbound target and its approved numeric addresses.
+///
+/// Rules contain no wildcard, suffix, prefix, or CIDR matching. Construction
+/// rejects empty, duplicate, forbidden, and oversized address collections.
+#[derive(Clone, Eq, PartialEq)]
+pub struct StaticOutboundRule {
+    target: OutboundTarget,
+    addresses: Box<[IpAddr]>,
+}
+
+impl StaticOutboundRule {
+    /// Creates one immutable exact allow rule.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable [`EgressError`] when the address collection is empty,
+    /// duplicated, forbidden, or exceeds the core authorization boundary.
+    pub fn new<I>(target: OutboundTarget, addresses: I) -> Result<Self, EgressError>
+    where
+        I: IntoIterator<Item = IpAddr>,
+    {
+        Ok(Self {
+            target,
+            addresses: collect_static_addresses(addresses)?.into_boxed_slice(),
+        })
+    }
+
+    fn allows(&self, request: &OutboundAuthorizationRequest<'_>) -> bool {
+        self.target == *request.target()
+            && request.addresses().iter().all(|address| {
+                !classify_address(*address).is_forbidden()
+                    && self.addresses.binary_search(address).is_ok()
+            })
+    }
+}
+
+impl Debug for StaticOutboundRule {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter.write_str("StaticOutboundRule { redacted }")
+    }
+}
+
+/// Immutable bounded exact-match implementation of [`OutboundPolicyPort`].
+///
+/// The snapshot denies by default. It allows a request only when its revision,
+/// canonical target, port, and every member of the complete address set match
+/// one configured rule. It performs no network or persistent-storage I/O.
+#[derive(Clone, Eq, PartialEq)]
+pub struct StaticOutboundPolicy {
+    revision: OutboundPolicyRevision,
+    rules: Box<[StaticOutboundRule]>,
+}
+
+impl StaticOutboundPolicy {
+    /// Creates one immutable bounded policy snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EgressError::InvalidPolicyRules`] for an empty collection or
+    /// duplicate exact target and [`EgressError::TooManyPolicyRules`] above
+    /// [`MAX_STATIC_OUTBOUND_POLICY_RULES`].
+    pub fn new<I>(revision: OutboundPolicyRevision, rules: I) -> Result<Self, EgressError>
+    where
+        I: IntoIterator<Item = StaticOutboundRule>,
+    {
+        let rules = collect_static_rules(rules)?;
+        Ok(Self {
+            revision,
+            rules: rules.into_boxed_slice(),
+        })
+    }
+
+    /// Returns the number of exact allow rules in this snapshot.
+    #[must_use]
+    pub fn rule_count(&self) -> usize {
+        self.rules.len()
+    }
+}
+
+impl OutboundPolicyPort for StaticOutboundPolicy {
+    fn revision(&self) -> OutboundPolicyRevision {
+        self.revision
+    }
+
+    fn authorize(&self, request: &OutboundAuthorizationRequest<'_>) -> OutboundPolicyDecision {
+        if request.revision() != self.revision {
+            return OutboundPolicyDecision::Deny(OutboundDenyReason::PolicyChanged);
+        }
+        match self
+            .rules
+            .binary_search_by(|rule| rule.target.cmp(request.target()))
+        {
+            Ok(index) if self.rules[index].allows(request) => OutboundPolicyDecision::Allow,
+            Ok(_) => OutboundPolicyDecision::Deny(OutboundDenyReason::AddressDenied),
+            Err(_) => OutboundPolicyDecision::Deny(OutboundDenyReason::TargetDenied),
+        }
+    }
+}
+
+impl Debug for StaticOutboundPolicy {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter.write_str("StaticOutboundPolicy { redacted }")
+    }
+}
+
+fn collect_static_addresses<I>(addresses: I) -> Result<Vec<IpAddr>, EgressError>
+where
+    I: IntoIterator<Item = IpAddr>,
+{
+    let mut output = Vec::new();
+    let mut seen = BTreeSet::new();
+    for address in addresses {
+        validate_static_address(address, output.len(), &mut seen)?;
+        output.push(address);
+    }
+    if output.is_empty() {
+        return Err(EgressError::ResolutionEmpty);
+    }
+    output.sort_unstable();
+    Ok(output)
+}
+
+fn validate_static_address(
+    address: IpAddr,
+    count: usize,
+    seen: &mut BTreeSet<IpAddr>,
+) -> Result<(), EgressError> {
+    if count == MAX_OUTBOUND_RESOLVED_ADDRESSES {
+        return Err(EgressError::TooManyAddresses);
+    }
+    if classify_address(address).is_forbidden() {
+        return Err(EgressError::ForbiddenAddress);
+    }
+    if !seen.insert(address) {
+        return Err(EgressError::DuplicateAddress);
+    }
+    Ok(())
+}
+
+fn collect_static_rules<I>(rules: I) -> Result<Vec<StaticOutboundRule>, EgressError>
+where
+    I: IntoIterator<Item = StaticOutboundRule>,
+{
+    let mut output = Vec::new();
+    let mut targets = BTreeSet::new();
+    for rule in rules {
+        validate_static_rule(&rule, output.len(), &mut targets)?;
+        output.push(rule);
+    }
+    if output.is_empty() {
+        return Err(EgressError::InvalidPolicyRules);
+    }
+    output.sort_by(|left, right| left.target.cmp(&right.target));
+    Ok(output)
+}
+
+fn validate_static_rule(
+    rule: &StaticOutboundRule,
+    count: usize,
+    targets: &mut BTreeSet<OutboundTarget>,
+) -> Result<(), EgressError> {
+    if count == MAX_STATIC_OUTBOUND_POLICY_RULES {
+        return Err(EgressError::TooManyPolicyRules);
+    }
+    if !targets.insert(rule.target.clone()) {
+        return Err(EgressError::InvalidPolicyRules);
+    }
+    Ok(())
+}
 
 fn select_numeric_address(addresses: &[IpAddr]) -> Option<IpAddr> {
     addresses

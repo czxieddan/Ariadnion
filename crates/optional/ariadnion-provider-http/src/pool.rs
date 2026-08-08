@@ -35,13 +35,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use ariadnion_core::{CancellationToken, ErrorCode, RequestContext};
+use ariadnion_core::{CancellationToken, ErrorCode, OutboundPolicyPort, RequestContext};
 use ariadnion_provider_sdk::{ProviderAttemptEvidence, ProviderTransmission};
 use tokio::sync::Notify;
 use tokio::task::JoinHandle;
 
 use crate::config::ProviderHttpProfile;
-use crate::connector::{ProviderHttpDirectConnection, ProviderHttpDirectConnector};
+use crate::connector::{
+    ProviderHttpDirectConnection, ProviderHttpDirectConnector, ProviderHttpNumericDialer,
+};
+use crate::dns::BoundedResolver;
 use crate::error::{ProviderHttpError, ProviderHttpErrorCode, ProviderHttpPhase};
 use crate::exchange::ProviderHttpExchange;
 use crate::request::ProviderHttpRequest;
@@ -122,8 +125,10 @@ pub struct ProviderHttpConnectionPool {
 impl ProviderHttpConnectionPool {
     /// Creates an empty profile-isolated connection pool.
     ///
-    /// Construction has no network side effects. The connector, profile, and
-    /// partition remain immutable for the lifetime of the pool.
+    /// Construction has no network side effects. The profile, outbound-policy
+    /// snapshot, network adapters, and partition remain immutable for the
+    /// lifetime of the pool. Raw connections are retained behind this pooled
+    /// dispatch boundary.
     ///
     /// # Errors
     ///
@@ -131,13 +136,16 @@ impl ProviderHttpConnectionPool {
     /// bounds. Checked profiles normally make this branch unreachable.
     pub fn new(
         profile: ProviderHttpProfile,
-        connector: Arc<ProviderHttpDirectConnector>,
+        resolver: Arc<dyn BoundedResolver>,
+        policy: Arc<dyn OutboundPolicyPort>,
+        dialer: Arc<dyn ProviderHttpNumericDialer>,
         partition: ProviderHttpPartition,
     ) -> Result<Self, ProviderHttpError> {
         let limits = profile.pool();
         if limits.max_idle() > limits.max_connections() {
             return Err(ProviderHttpError::new(ProviderHttpErrorCode::InvalidPool));
         }
+        let connector = Arc::new(ProviderHttpDirectConnector::new(resolver, policy, dialer));
         Ok(Self {
             inner: Arc::new(PoolInner::new(profile, connector, partition)),
         })
@@ -147,7 +155,7 @@ impl ProviderHttpConnectionPool {
     ///
     /// A clean response EOF returns the physical connection to this exact pool.
     /// Every other exit discards it. Capacity waiting is bounded by the profile
-    /// waiter count, connect budget, request cancellation, and request deadline.
+    /// waiter count, pool-checkout budget, request cancellation, and request deadline.
     ///
     /// `evidence` must be pristine and exclusive to this attempt.
     ///
@@ -454,7 +462,7 @@ impl PoolInner {
         context: &RequestContext,
         evidence: &ProviderAttemptEvidence,
     ) -> Result<CheckedOutConnection, ProviderHttpError> {
-        let wait_deadline = Instant::now() + self.profile.timeouts().connect();
+        let wait_deadline = Instant::now() + self.profile.timeouts().pool_checkout();
         let mut waiter = WaiterGuard::new(self.clone());
         loop {
             check_wait_context(context)?;
@@ -616,6 +624,7 @@ impl PoolInner {
     ) -> Result<ProviderHttpPooledResponse, ProviderHttpError> {
         let id = lease.id;
         let mut lease_guard = LeaseGuard::new(self.clone(), id);
+        self.validate_dispatch_connection(&lease.connection)?;
         let mut exchange =
             ProviderHttpExchange::from_connection(lease.connection, self.profile.clone())?;
         match exchange.execute(context, request).await {
@@ -630,6 +639,23 @@ impl PoolInner {
                 Ok(pooled)
             }
             Err(error) => Err(error),
+        }
+    }
+
+    fn validate_dispatch_connection(
+        &self,
+        connection: &ProviderHttpDirectConnection,
+    ) -> Result<(), ProviderHttpError> {
+        if self
+            .connector
+            .connection_is_current(connection, &self.profile)
+        {
+            Ok(())
+        } else {
+            Err(ProviderHttpError::with_phase(
+                ProviderHttpErrorCode::OutboundDenied,
+                ProviderHttpPhase::Resolution,
+            ))
         }
     }
 

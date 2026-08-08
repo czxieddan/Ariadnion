@@ -64,7 +64,7 @@ use crate::egress::EgressError;
 use crate::error::{ProviderHttpError, ProviderHttpErrorCode, ProviderHttpPhase};
 use crate::proxy;
 use crate::timeout::run_with_timeout;
-use crate::tls::{self, ProviderTlsVersion};
+use crate::tls;
 
 pub(crate) type RequestBody = Full<Bytes>;
 
@@ -163,7 +163,7 @@ impl ProviderHttpNumericDialer for TokioNumericDialer {
 }
 
 /// Direct connector with explicit resolver, policy, and numeric dial ownership.
-pub struct ProviderHttpDirectConnector {
+pub(crate) struct ProviderHttpDirectConnector {
     resolver: Arc<dyn BoundedResolver>,
     policy: Arc<dyn OutboundPolicyPort>,
     dialer: Arc<dyn ProviderHttpNumericDialer>,
@@ -172,7 +172,7 @@ pub struct ProviderHttpDirectConnector {
 impl ProviderHttpDirectConnector {
     /// Creates one direct connector from trusted bounded adapters.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         resolver: Arc<dyn BoundedResolver>,
         policy: Arc<dyn OutboundPolicyPort>,
         dialer: Arc<dyn ProviderHttpNumericDialer>,
@@ -198,7 +198,7 @@ impl ProviderHttpDirectConnector {
     ///
     /// Returns a stable redacted phase failure for cancellation, timeout, DNS,
     /// policy, TCP, proxy CONNECT, TLS, or HTTP/1 setup failure.
-    pub async fn connect(
+    pub(crate) async fn connect(
         &self,
         profile: &ProviderHttpProfile,
         context: &RequestContext,
@@ -233,16 +233,15 @@ impl ProviderHttpDirectConnector {
     ///
     /// Returns a stable redacted phase failure for cancellation, timeout, DNS,
     /// policy, TCP, proxy CONNECT, or TLS setup failure.
-    pub async fn prepare_tls(
+    pub(crate) async fn prepare_tls(
         &self,
         profile: &ProviderHttpProfile,
         context: &RequestContext,
     ) -> Result<ProviderHttpPreparedConnection, ProviderHttpError> {
         let origin = self.resolve_origin(profile, context).await?;
-        let (socket, approved_peer, authorization) =
-            self.connect_transport(profile, context, origin).await?;
+        let (socket, authorization) = self.connect_transport(profile, context, origin).await?;
         let timeouts = profile.timeouts();
-        let (tls_stream, tls_version) = run_provider_phase(
+        let (tls_stream, _tls_version) = run_provider_phase(
             context,
             timeouts.tls_handshake(),
             timeouts.cancellation_poll(),
@@ -253,8 +252,6 @@ impl ProviderHttpDirectConnector {
         .await?;
         Ok(ProviderHttpPreparedConnection {
             tls_stream,
-            approved_peer,
-            tls_version,
             timeouts,
             origin_host: profile.endpoint().host().clone(),
             origin_port: profile.endpoint().port(),
@@ -290,7 +287,12 @@ impl ProviderHttpDirectConnector {
         let revision = self.policy.revision();
         let answers = self
             .resolver
-            .resolve_checked(target.host(), context, profile.timeouts())
+            .resolve_checked_with_limit(
+                target.host(),
+                context,
+                profile.timeouts(),
+                profile.limits().max_dns_answers(),
+            )
             .await
             .map_err(|error| map_egress_error(error, ProviderHttpPhase::Resolution))?;
         let record = ResolutionRecord::from_resolution(target.clone(), answers, revision)
@@ -314,13 +316,11 @@ impl ProviderHttpDirectConnector {
         profile: &ProviderHttpProfile,
         context: &RequestContext,
         origin: ProviderHttpAuthorizedTarget,
-    ) -> Result<(TcpStream, SocketAddr, ProviderHttpConnectionAuthorization), ProviderHttpError>
-    {
+    ) -> Result<(TcpStream, ProviderHttpConnectionAuthorization), ProviderHttpError> {
         let Some(proxy_target) = profile.proxy().target() else {
             let socket = self.dial(profile, context, origin.address).await?;
             return Ok((
                 socket,
-                origin.address,
                 ProviderHttpConnectionAuthorization::direct(origin.authorization),
             ));
         };
@@ -338,7 +338,6 @@ impl ProviderHttpDirectConnector {
         .await?;
         Ok((
             socket,
-            proxy.address,
             ProviderHttpConnectionAuthorization::proxied(origin.authorization, proxy.authorization),
         ))
     }
@@ -373,10 +372,8 @@ impl ProviderHttpDirectConnector {
 /// This value retains the policy-approved peer, negotiated TLS version, and
 /// checked timeouts from TLS preparation. It cannot transmit HTTP request bytes
 /// until [`Self::establish_http1`] has completed and armed its evidence marker.
-pub struct ProviderHttpPreparedConnection {
+pub(crate) struct ProviderHttpPreparedConnection {
     tls_stream: TlsStream<TcpStream>,
-    approved_peer: SocketAddr,
-    tls_version: ProviderTlsVersion,
     timeouts: crate::config::ProviderHttpTimeouts,
     origin_host: OutboundHost,
     origin_port: u16,
@@ -398,7 +395,7 @@ impl ProviderHttpPreparedConnection {
     ///
     /// Returns a stable redacted error for cancellation, deadline expiry,
     /// runtime unavailability, or HTTP/1 handshake failure.
-    pub async fn establish_http1(
+    pub(crate) async fn establish_http1(
         self,
         context: &RequestContext,
         evidence: &ProviderAttemptEvidence,
@@ -439,8 +436,6 @@ impl ProviderHttpPreparedConnection {
             driver_abort,
             driver_finished,
             marker,
-            approved_peer: self.approved_peer,
-            tls_version: self.tls_version,
             origin_host: self.origin_host,
             origin_port: self.origin_port,
             response_limit,
@@ -460,14 +455,12 @@ impl Debug for ProviderHttpPreparedConnection {
 }
 
 /// One verified direct HTTP/1 connection with retained driver ownership.
-pub struct ProviderHttpDirectConnection {
+pub(crate) struct ProviderHttpDirectConnection {
     sender: SendRequest<RequestBody>,
     driver: Option<JoinHandle<()>>,
     driver_abort: AbortHandle,
     driver_finished: Arc<AtomicBool>,
     marker: ProviderTransmissionMarker,
-    approved_peer: SocketAddr,
-    tls_version: ProviderTlsVersion,
     origin_host: OutboundHost,
     origin_port: u16,
     response_limit: Arc<AtomicBool>,
@@ -537,30 +530,6 @@ impl ProviderHttpDirectConnection {
         self.response_limit.store(false, Ordering::Release);
         self.response_protocol.store(false, Ordering::Release);
         reset_response_head_guard(&self.response_head_guard, limits);
-    }
-
-    /// Returns the policy-approved numeric peer selected for the physical connection.
-    #[must_use]
-    pub const fn approved_peer(&self) -> SocketAddr {
-        self.approved_peer
-    }
-
-    /// Returns the verified TLS protocol negotiated with the provider.
-    #[must_use]
-    pub const fn negotiated_tls_version(&self) -> ProviderTlsVersion {
-        self.tls_version
-    }
-
-    /// Confirms that this value retains the low-level HTTP/1 connection driver.
-    #[must_use]
-    pub fn owns_http1_driver(&self) -> bool {
-        self.driver.is_some() && !self.driver_is_finished()
-    }
-
-    /// Returns the attempt evidence snapshot owned by this connection marker.
-    #[must_use]
-    pub fn attempt_progress(&self) -> ProviderAttemptProgress {
-        self.marker.evidence().progress()
     }
 }
 

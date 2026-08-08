@@ -57,29 +57,28 @@ pub use config::{
 };
 pub use connector::{
     ProviderHttpConnectedSocket, ProviderHttpDialError, ProviderHttpDialFuture,
-    ProviderHttpDirectConnection, ProviderHttpDirectConnector, ProviderHttpNumericDialer,
-    ProviderHttpPreparedConnection, TokioNumericDialer,
+    ProviderHttpNumericDialer, TokioNumericDialer,
 };
 pub use dns::{
     AddressClass, BoundedResolver, ResolutionEpoch, ResolutionRecord, ResolvedAddresses,
     TokioSystemResolver, classify_address, resolve_bounded,
 };
-pub use egress::{EgressError, wait_for};
+pub use egress::{
+    EgressError, MAX_STATIC_OUTBOUND_POLICY_RULES, StaticOutboundPolicy, StaticOutboundRule,
+    wait_for,
+};
 pub use endpoint::ProviderHttpEndpoint;
 pub use error::{
     ProviderHttpError, ProviderHttpErrorCode, ProviderHttpPhase, ProviderHttpProfileError,
     ProviderHttpProfileErrorCode,
 };
-pub use exchange::ProviderHttpExchange;
 pub use pool::{
     ProviderHttpConnectionPool, ProviderHttpPartition, ProviderHttpPoolMetrics,
     ProviderHttpPooledResponse,
 };
 pub use request::ProviderHttpRequest;
-pub use response::{ProviderHttpResponse, ProviderHttpReusableConnection};
 pub use shutdown::ProviderHttpShutdownReport;
 pub use timeout::bounded_timeout;
-pub use tls::ProviderTlsVersion;
 
 /// Stable package version compiled into provider HTTP transport compositions.
 pub const PROVIDER_HTTP_TRANSPORT_VERSION: &str = env!("CARGO_PKG_VERSION");

@@ -146,18 +146,6 @@ impl ProviderHttpResponse {
             .map(|header| header.value.as_ref())
     }
 
-    /// Consumes a completed response and returns its reusable connection.
-    ///
-    /// The connection is available only after [`Self::next_chunk`] returned
-    /// `None` for a response whose declared and received lengths matched.
-    /// Calling this method earlier returns `None`; consuming the incomplete
-    /// response then cancels its child context and discards the connection.
-    /// Clean extraction does not cancel the child request context.
-    #[must_use]
-    pub fn into_reusable_connection(mut self) -> Option<ProviderHttpReusableConnection> {
-        self.take_reusable_connection()
-    }
-
     pub(crate) fn take_reusable_connection(&mut self) -> Option<ProviderHttpReusableConnection> {
         if !self.reusable {
             return None;

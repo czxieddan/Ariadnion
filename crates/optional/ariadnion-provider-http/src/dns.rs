@@ -164,12 +164,39 @@ pub trait BoundedResolver: Send + Sync {
         context: &'a RequestContext,
         timeouts: ProviderHttpTimeouts,
     ) -> Pin<Box<dyn Future<Output = Result<ResolvedAddresses, EgressError>> + Send + 'a>> {
+        self.resolve_checked_with_limit(host, context, timeouts, MAX_OUTBOUND_RESOLVED_ADDRESSES)
+    }
+
+    /// Resolves one host within an explicit checked profile answer limit.
+    ///
+    /// `max_answers` must be nonzero and cannot exceed the core outbound
+    /// authorization boundary. Duplicate answers do not consume this limit.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EgressError::TooManyAddresses`] when the supplied limit is
+    /// invalid or the resolver yields too many unique answers. Other failures
+    /// are identical to [`Self::resolve_checked`].
+    fn resolve_checked_with_limit<'a>(
+        &'a self,
+        host: &'a OutboundHost,
+        context: &'a RequestContext,
+        timeouts: ProviderHttpTimeouts,
+        max_answers: usize,
+    ) -> Pin<Box<dyn Future<Output = Result<ResolvedAddresses, EgressError>> + Send + 'a>> {
         Box::pin(async move {
-            let mut addresses = Vec::with_capacity(MAX_OUTBOUND_RESOLVED_ADDRESSES);
+            validate_resolution_limit(max_answers)?;
+            let mut addresses = Vec::with_capacity(max_answers);
             let mut seen = BTreeSet::new();
             let mut iterations = 0_usize;
             let mut visitor = |address| {
-                retain_resolved_address(address, &mut iterations, &mut seen, &mut addresses)
+                retain_resolved_address(
+                    address,
+                    &mut iterations,
+                    &mut seen,
+                    &mut addresses,
+                    max_answers,
+                )
             };
             let resolution = self.resolve(host, context, timeouts, &mut visitor);
             let epoch = run_with_timeout(
@@ -252,6 +279,7 @@ fn retain_resolved_address(
     iterations: &mut usize,
     seen: &mut BTreeSet<IpAddr>,
     addresses: &mut Vec<IpAddr>,
+    limit: usize,
 ) -> Result<(), EgressError> {
     validate_resolution_iterations(*iterations)?;
     *iterations += 1;
@@ -261,7 +289,7 @@ fn retain_resolved_address(
     if !seen.insert(address) {
         return Ok(());
     }
-    if addresses.len() == MAX_OUTBOUND_RESOLVED_ADDRESSES {
+    if addresses.len() == limit {
         return Err(EgressError::TooManyAddresses);
     }
     addresses.push(address);
@@ -283,7 +311,7 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
 {
-    validate_host_limit(limit)?;
+    validate_resolution_limit(limit)?;
     let mut seen = BTreeSet::new();
     let mut output = Vec::new();
     for (iterations, item) in hosts.into_iter().enumerate() {
@@ -296,7 +324,7 @@ where
     Ok(output)
 }
 
-fn validate_host_limit(limit: usize) -> Result<(), EgressError> {
+fn validate_resolution_limit(limit: usize) -> Result<(), EgressError> {
     if limit == 0 || limit > MAX_OUTBOUND_RESOLVED_ADDRESSES {
         return Err(EgressError::TooManyAddresses);
     }

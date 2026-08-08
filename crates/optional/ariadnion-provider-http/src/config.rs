@@ -59,6 +59,7 @@ const MAX_WAITERS: usize = 128;
 const MAX_RESOLUTION_AGE_MILLIS: u64 = 60_000;
 const MAX_RESOLUTION_MILLIS: u64 = 60_000;
 const MAX_CANCELLATION_POLL_MILLIS: u64 = 25;
+const MAX_POOL_CHECKOUT_MILLIS: u64 = 30_000;
 const MAX_CONNECT_MILLIS: u64 = 5_000;
 const MAX_TLS_MILLIS: u64 = 10_000;
 const MAX_PROXY_CONNECT_MILLIS: u64 = MAX_TLS_MILLIS;
@@ -315,6 +316,7 @@ pub struct ProviderHttpTimeouts {
     max_resolution_age: BoundedDuration<MAX_RESOLUTION_AGE_MILLIS>,
     resolution: BoundedDuration<MAX_RESOLUTION_MILLIS>,
     cancellation_poll: BoundedDuration<MAX_CANCELLATION_POLL_MILLIS>,
+    pool_checkout: BoundedDuration<MAX_POOL_CHECKOUT_MILLIS>,
     connect: BoundedDuration<MAX_CONNECT_MILLIS>,
     proxy_connect: BoundedDuration<MAX_PROXY_CONNECT_MILLIS>,
     tls_handshake: BoundedDuration<MAX_TLS_MILLIS>,
@@ -350,6 +352,10 @@ impl ProviderHttpTimeouts {
             resolution: BoundedDuration(Duration::from_secs(5)),
             cancellation_poll: BoundedDuration::new(
                 cancellation_poll,
+                ProviderHttpProfileErrorCode::InvalidTimeout,
+            )?,
+            pool_checkout: BoundedDuration::new(
+                connect,
                 ProviderHttpProfileErrorCode::InvalidTimeout,
             )?,
             connect: BoundedDuration::new(connect, ProviderHttpProfileErrorCode::InvalidTimeout)?,
@@ -428,6 +434,29 @@ impl ProviderHttpTimeouts {
     #[must_use]
     pub const fn cancellation_poll(self) -> Duration {
         self.cancellation_poll.get()
+    }
+
+    /// Replaces the connection-pool checkout budget.
+    ///
+    /// This budget limits only admission waiting. TCP connection setup retains
+    /// its independent [`Self::connect`] budget.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable error when the duration is zero or exceeds 30 seconds.
+    pub fn with_pool_checkout_timeout(
+        mut self,
+        pool_checkout: Duration,
+    ) -> Result<Self, ProviderHttpProfileError> {
+        self.pool_checkout =
+            BoundedDuration::new(pool_checkout, ProviderHttpProfileErrorCode::InvalidTimeout)?;
+        Ok(self)
+    }
+
+    /// Returns the connection-pool checkout budget.
+    #[must_use]
+    pub const fn pool_checkout(self) -> Duration {
+        self.pool_checkout.get()
     }
 
     /// Returns the TCP connection phase budget.
@@ -522,6 +551,7 @@ impl Default for ProviderHttpTimeouts {
             max_resolution_age: BoundedDuration(Duration::from_secs(60)),
             resolution: BoundedDuration(Duration::from_secs(5)),
             cancellation_poll: BoundedDuration(Duration::from_millis(25)),
+            pool_checkout: BoundedDuration(Duration::from_secs(5)),
             connect: BoundedDuration(Duration::from_secs(5)),
             proxy_connect: BoundedDuration(Duration::from_secs(10)),
             tls_handshake: BoundedDuration(Duration::from_secs(10)),
