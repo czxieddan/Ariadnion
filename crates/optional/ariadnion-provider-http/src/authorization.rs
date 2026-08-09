@@ -29,14 +29,20 @@
 
 //! Fail-closed DNS and policy provenance retained by reusable connections.
 
+use std::io;
 use std::net::SocketAddr;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
 use ariadnion_core::{OutboundPolicyPort, OutboundPolicyRevision};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use crate::config::ProviderHttpProfile;
 use crate::dns::{BoundedResolver, ResolutionEpoch, ResolutionRecord};
 use crate::error::{ProviderHttpError, ProviderHttpErrorCode, ProviderHttpPhase};
+use crate::transmission::ProviderTransmissionMarker;
 
 #[derive(Clone, Copy)]
 pub(crate) struct ProviderHttpAuthorizedTarget {
@@ -156,4 +162,250 @@ impl<'a> ProviderHttpAuthorizationBoundary<'a> {
             ))
         }
     }
+}
+
+#[derive(Clone)]
+pub(crate) struct ProviderHttpWriteDenial {
+    error: Arc<Mutex<Option<ProviderHttpError>>>,
+}
+
+impl ProviderHttpWriteDenial {
+    fn new() -> Self {
+        Self {
+            error: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    fn record(&self, error: ProviderHttpError) {
+        let mut slot = lock_write_denial(&self.error);
+        if slot.is_none() {
+            *slot = Some(error);
+        }
+    }
+
+    pub(crate) fn error(&self) -> Option<ProviderHttpError> {
+        *lock_write_denial(&self.error)
+    }
+
+    pub(crate) fn project(&self, fallback: ProviderHttpError) -> ProviderHttpError {
+        self.error().unwrap_or(fallback)
+    }
+
+    pub(crate) fn clear(&self) {
+        *lock_write_denial(&self.error) = None;
+    }
+}
+
+pub(crate) struct ProviderHttpWriteAuthorization {
+    authorization: ProviderHttpConnectionAuthorization,
+    resolver: Arc<dyn BoundedResolver>,
+    policy: Arc<dyn OutboundPolicyPort>,
+    max_age: Duration,
+    phase: ProviderHttpPhase,
+    denial: ProviderHttpWriteDenial,
+    marker: Option<ProviderTransmissionMarker>,
+}
+
+impl ProviderHttpWriteAuthorization {
+    pub(crate) fn new(
+        authorization: ProviderHttpConnectionAuthorization,
+        resolver: Arc<dyn BoundedResolver>,
+        policy: Arc<dyn OutboundPolicyPort>,
+        max_age: Duration,
+        phase: ProviderHttpPhase,
+    ) -> Self {
+        Self {
+            authorization,
+            resolver,
+            policy,
+            max_age,
+            phase,
+            denial: ProviderHttpWriteDenial::new(),
+            marker: None,
+        }
+    }
+
+    pub(crate) fn set_phase(&mut self, phase: ProviderHttpPhase) {
+        self.phase = phase;
+    }
+
+    pub(crate) fn bind_transmission(&mut self, marker: ProviderTransmissionMarker) {
+        self.marker = Some(marker);
+    }
+
+    pub(crate) fn denial(&self) -> ProviderHttpWriteDenial {
+        self.denial.clone()
+    }
+
+    fn ensure_current(&self) -> io::Result<()> {
+        if self.authorization.is_current(
+            Instant::now(),
+            self.max_age,
+            self.resolver.as_ref(),
+            self.policy.as_ref(),
+        ) {
+            return Ok(());
+        }
+        let error =
+            ProviderHttpError::with_phase(ProviderHttpErrorCode::OutboundDenied, self.phase);
+        self.denial.record(error);
+        if let Some(marker) = self.marker() {
+            marker.close();
+        }
+        Err(write_denied_error())
+    }
+
+    fn marker(&self) -> Option<ProviderTransmissionMarker> {
+        self.marker.clone()
+    }
+}
+
+pub(crate) struct ProviderHttpAuthorizedIo<T> {
+    stream: T,
+    authorization: ProviderHttpWriteAuthorization,
+}
+
+impl<T> ProviderHttpAuthorizedIo<T> {
+    pub(crate) const fn new(stream: T, authorization: ProviderHttpWriteAuthorization) -> Self {
+        Self {
+            stream,
+            authorization,
+        }
+    }
+
+    pub(crate) fn authorization_mut(&mut self) -> &mut ProviderHttpWriteAuthorization {
+        &mut self.authorization
+    }
+
+    pub(crate) fn denial(&self) -> ProviderHttpWriteDenial {
+        self.authorization.denial()
+    }
+}
+
+impl<T> AsyncRead for ProviderHttpAuthorizedIo<T>
+where
+    T: AsyncRead + Unpin,
+{
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        context: &mut Context<'_>,
+        buffer: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.stream).poll_read(context, buffer)
+    }
+}
+
+impl<T> AsyncWrite for ProviderHttpAuthorizedIo<T>
+where
+    T: AsyncWrite + Unpin,
+{
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        context: &mut Context<'_>,
+        buffer: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        if let Err(error) = self.authorization.ensure_current() {
+            return Poll::Ready(Err(error));
+        }
+        let marker = self.authorization.marker();
+        let result = poll_scalar_write(&mut self.stream, context, buffer, marker.as_ref());
+        finish_marked_write(marker.as_ref(), &result);
+        result
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<io::Result<()>> {
+        if let Err(error) = self.authorization.ensure_current() {
+            return Poll::Ready(Err(error));
+        }
+        Pin::new(&mut self.stream).poll_flush(context)
+    }
+
+    fn poll_shutdown(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.stream).poll_shutdown(context)
+    }
+
+    fn is_write_vectored(&self) -> bool {
+        self.stream.is_write_vectored()
+    }
+
+    fn poll_write_vectored(
+        mut self: Pin<&mut Self>,
+        context: &mut Context<'_>,
+        buffers: &[io::IoSlice<'_>],
+    ) -> Poll<io::Result<usize>> {
+        if let Err(error) = self.authorization.ensure_current() {
+            return Poll::Ready(Err(error));
+        }
+        let marker = self.authorization.marker();
+        let result = poll_vectored_write(&mut self.stream, context, buffers, marker.as_ref());
+        finish_marked_write(marker.as_ref(), &result);
+        result
+    }
+}
+
+fn poll_scalar_write<T>(
+    stream: &mut T,
+    context: &mut Context<'_>,
+    buffer: &[u8],
+    marker: Option<&ProviderTransmissionMarker>,
+) -> Poll<io::Result<usize>>
+where
+    T: AsyncWrite + Unpin,
+{
+    match marker {
+        Some(marker) => {
+            let _guard = match marker.write_guard() {
+                Ok(guard) => guard,
+                Err(error) => return Poll::Ready(Err(error)),
+            };
+            Pin::new(stream).poll_write(context, buffer)
+        }
+        None => Pin::new(stream).poll_write(context, buffer),
+    }
+}
+
+fn poll_vectored_write<T>(
+    stream: &mut T,
+    context: &mut Context<'_>,
+    buffers: &[io::IoSlice<'_>],
+    marker: Option<&ProviderTransmissionMarker>,
+) -> Poll<io::Result<usize>>
+where
+    T: AsyncWrite + Unpin,
+{
+    match marker {
+        Some(marker) => {
+            let _guard = match marker.write_guard() {
+                Ok(guard) => guard,
+                Err(error) => return Poll::Ready(Err(error)),
+            };
+            Pin::new(stream).poll_write_vectored(context, buffers)
+        }
+        None => Pin::new(stream).poll_write_vectored(context, buffers),
+    }
+}
+
+fn finish_marked_write(
+    marker: Option<&ProviderTransmissionMarker>,
+    result: &Poll<io::Result<usize>>,
+) {
+    if let Some(marker) = marker {
+        marker.finish_write(result);
+    }
+}
+
+fn lock_write_denial(
+    denial: &Mutex<Option<ProviderHttpError>>,
+) -> MutexGuard<'_, Option<ProviderHttpError>> {
+    match denial.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
+fn write_denied_error() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::PermissionDenied,
+        "provider outbound authorization rejected",
+    )
 }

@@ -34,7 +34,6 @@ use std::io;
 use std::net::SocketAddr;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
 
 const MAX_CONNECT_REQUEST_BYTES: usize = 256;
 const MAX_CONNECT_RESPONSE_HEAD_BYTES: usize = 8 * 1024;
@@ -46,10 +45,10 @@ const MAX_CONNECT_RESPONSE_HEADERS: usize = 64;
 /// This function transmits the approved numeric origin as both CONNECT
 /// authority and Host, reads exactly one HTTP response head, and leaves later
 /// tunnel bytes unread for the TLS boundary.
-pub(crate) async fn establish_tunnel(
-    mut stream: TcpStream,
-    origin: SocketAddr,
-) -> io::Result<TcpStream> {
+pub(crate) async fn establish_tunnel<S>(mut stream: S, origin: SocketAddr) -> io::Result<S>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
     let request = connect_request(origin)?;
     stream.write_all(request.as_bytes()).await?;
     let status = read_response_status(&mut stream).await?;
@@ -73,7 +72,10 @@ fn connect_request(origin: SocketAddr) -> io::Result<String> {
     Ok(request)
 }
 
-async fn read_response_status(stream: &mut TcpStream) -> io::Result<u16> {
+async fn read_response_status<S>(stream: &mut S) -> io::Result<u16>
+where
+    S: tokio::io::AsyncRead + Unpin,
+{
     let mut response = Vec::with_capacity(MAX_CONNECT_RESPONSE_HEAD_BYTES);
     let mut state = ResponseHeadState::Open;
     while !state.is_complete() {
@@ -87,7 +89,10 @@ async fn read_response_status(stream: &mut TcpStream) -> io::Result<u16> {
     parse_response_head(&response)
 }
 
-async fn read_response_byte(stream: &mut TcpStream) -> io::Result<u8> {
+async fn read_response_byte<S>(stream: &mut S) -> io::Result<u8>
+where
+    S: tokio::io::AsyncRead + Unpin,
+{
     let mut byte = [0_u8; 1];
     stream.read_exact(&mut byte).await?;
     Ok(byte[0])

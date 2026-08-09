@@ -144,6 +144,8 @@ pub trait BoundedResolver: Send + Sync {
     ///
     /// Lookup activity must not change this value. A different value indicates
     /// that records produced under the prior resolver configuration are stale.
+    /// This method is called from synchronous physical-write polls. It must be
+    /// nonblocking and must not perform network, storage, or other external I/O.
     ///
     /// # Errors
     ///

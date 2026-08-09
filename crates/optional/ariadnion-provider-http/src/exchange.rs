@@ -254,6 +254,9 @@ fn project_dispatch_error(
     error: &hyper::Error,
     fallback_phase: ProviderHttpPhase,
 ) -> ProviderHttpError {
+    if let Some(error) = connection.authorization_error() {
+        return error;
+    }
     if connection.response_limit_observed() {
         return ProviderHttpError::with_phase(
             ProviderHttpErrorCode::ResponseLimit,

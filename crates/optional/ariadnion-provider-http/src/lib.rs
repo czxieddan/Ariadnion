@@ -47,6 +47,7 @@ mod response;
 mod shutdown;
 mod timeout;
 mod tls;
+mod transmission;
 
 pub use config::{
     MAX_PROVIDER_HTTP_EXPLICIT_ROOTS, MAX_PROVIDER_HTTP_HEADER_NAME_BYTES,

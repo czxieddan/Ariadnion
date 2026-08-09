@@ -34,7 +34,7 @@ use std::sync::Arc;
 use ariadnion_core::OutboundHost;
 use rustls::pki_types::{CertificateDer, ServerName};
 use rustls::{ClientConfig, NoKeyLog, ProtocolVersion, RootCertStore};
-use tokio::net::TcpStream;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_rustls::TlsConnector;
 use tokio_rustls::client::TlsStream;
 
@@ -51,11 +51,14 @@ pub enum ProviderTlsVersion {
     Tls12,
 }
 
-pub(crate) async fn connect(
-    stream: TcpStream,
+pub(crate) async fn connect<S>(
+    stream: S,
     host: &OutboundHost,
     trust: ProviderHttpTrust,
-) -> Result<(TlsStream<TcpStream>, ProviderTlsVersion), ProviderHttpError> {
+) -> Result<(TlsStream<S>, ProviderTlsVersion), ProviderHttpError>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
     let server_name = ServerName::try_from(host.as_str().to_owned()).map_err(tls_failure)?;
     let connector = TlsConnector::from(build_client_config(trust)?);
     let stream = connector
@@ -97,9 +100,7 @@ fn root_store(trust: &ProviderHttpTrust) -> Result<RootCertStore, ProviderHttpEr
     Ok(store)
 }
 
-fn negotiated_version(
-    stream: &TlsStream<TcpStream>,
-) -> Result<ProviderTlsVersion, ProviderHttpError> {
+fn negotiated_version<S>(stream: &TlsStream<S>) -> Result<ProviderTlsVersion, ProviderHttpError> {
     match stream.get_ref().1.protocol_version() {
         Some(ProtocolVersion::TLSv1_3) => Ok(ProviderTlsVersion::Tls13),
         Some(ProtocolVersion::TLSv1_2) => Ok(ProviderTlsVersion::Tls12),
