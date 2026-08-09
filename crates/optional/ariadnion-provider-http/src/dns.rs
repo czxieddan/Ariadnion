@@ -28,7 +28,7 @@
 
 use std::collections::BTreeSet;
 use std::future::Future;
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::pin::Pin;
 use std::time::Instant;
 
@@ -123,6 +123,10 @@ pub trait BoundedResolver: Send + Sync {
     /// Implementations must stop returning answers after cancellation, a request
     /// deadline, or the configured resolution phase budget. Each answer is passed
     /// directly to `visitor`; implementations must not retain an unbounded copy.
+    /// Because the visitor receives only [`IpAddr`], implementations that start
+    /// from socket addresses must reject every IPv6 answer with a nonzero scope
+    /// identifier before discarding that metadata. [`normalize_socket_answer`]
+    /// provides the production checked conversion.
     ///
     /// # Errors
     ///
@@ -257,7 +261,7 @@ impl BoundedResolver for TokioSystemResolver {
                 .await
                 .map_err(|_| EgressError::ResolutionFailed)?;
             for entry in entries {
-                visitor(entry.ip())?;
+                visitor(normalize_socket_answer(entry)?)?;
             }
             Ok(self.epoch)
         };
@@ -370,6 +374,24 @@ impl AddressClass {
     #[must_use]
     pub const fn is_forbidden(self) -> bool {
         matches!(self, Self::Forbidden)
+    }
+}
+
+/// Converts one resolver socket answer without discarding IPv6 scope metadata.
+///
+/// IPv4 and unscoped IPv6 answers retain only their numeric address because the
+/// transport dials a separately validated port. Scoped IPv6 answers fail closed
+/// before conversion so no zone identifier can be silently lost.
+///
+/// # Errors
+///
+/// Returns [`EgressError::ForbiddenAddress`] for an IPv6 answer with a nonzero
+/// scope identifier.
+pub fn normalize_socket_answer(address: SocketAddr) -> Result<IpAddr, EgressError> {
+    match address {
+        SocketAddr::V4(value) => Ok(IpAddr::V4(*value.ip())),
+        SocketAddr::V6(value) if value.scope_id() == 0 => Ok(IpAddr::V6(*value.ip())),
+        SocketAddr::V6(_) => Err(EgressError::ForbiddenAddress),
     }
 }
 

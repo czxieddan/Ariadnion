@@ -53,8 +53,8 @@ use tokio::task::{AbortHandle, JoinHandle};
 use tokio_rustls::client::TlsStream;
 
 use crate::authorization::{
-    ProviderHttpAuthorizationStamp, ProviderHttpAuthorizedTarget,
-    ProviderHttpConnectionAuthorization,
+    ProviderHttpAuthorizationBoundary, ProviderHttpAuthorizationStamp,
+    ProviderHttpAuthorizedTarget, ProviderHttpConnectionAuthorization,
 };
 use crate::config::{
     ProviderHttpLimits, ProviderHttpProfile, ProviderHttpProxy, ProviderHttpTrust,
@@ -214,12 +214,13 @@ impl ProviderHttpDirectConnector {
         profile: &ProviderHttpProfile,
     ) -> bool {
         connection.matches_origin(profile)
-            && connection.authorization.is_current(
-                Instant::now(),
-                profile.timeouts().max_resolution_age(),
-                self.resolver.as_ref(),
-                self.policy.as_ref(),
-            )
+            && self
+                .authorization_guard()
+                .is_current(connection.authorization, profile)
+    }
+
+    fn authorization_guard(&self) -> ProviderHttpAuthorizationBoundary<'_> {
+        ProviderHttpAuthorizationBoundary::new(self.resolver.as_ref(), self.policy.as_ref())
     }
 
     /// Resolves, authorizes, dials, and verifies TLS without writing HTTP bytes.
@@ -240,6 +241,8 @@ impl ProviderHttpDirectConnector {
     ) -> Result<ProviderHttpPreparedConnection, ProviderHttpError> {
         let origin = self.resolve_origin(profile, context).await?;
         let (socket, authorization) = self.connect_transport(profile, context, origin).await?;
+        let authorization_guard = self.authorization_guard();
+        authorization_guard.ensure_current(authorization, profile)?;
         let timeouts = profile.timeouts();
         let (tls_stream, _tls_version) = run_provider_phase(
             context,
@@ -250,6 +253,7 @@ impl ProviderHttpDirectConnector {
             tls::connect(socket, profile.endpoint().host(), profile.trust()),
         )
         .await?;
+        authorization_guard.ensure_current(authorization, profile)?;
         Ok(ProviderHttpPreparedConnection {
             tls_stream,
             timeouts,
@@ -317,15 +321,46 @@ impl ProviderHttpDirectConnector {
         context: &RequestContext,
         origin: ProviderHttpAuthorizedTarget,
     ) -> Result<(TcpStream, ProviderHttpConnectionAuthorization), ProviderHttpError> {
-        let Some(proxy_target) = profile.proxy().target() else {
-            let socket = self.dial(profile, context, origin.address).await?;
-            return Ok((
-                socket,
-                ProviderHttpConnectionAuthorization::direct(origin.authorization),
-            ));
-        };
+        match profile.proxy().target() {
+            Some(proxy_target) => {
+                self.connect_proxy_transport(profile, context, origin, proxy_target)
+                    .await
+            }
+            None => {
+                self.connect_direct_transport(profile, context, origin)
+                    .await
+            }
+        }
+    }
+
+    async fn connect_direct_transport(
+        &self,
+        profile: &ProviderHttpProfile,
+        context: &RequestContext,
+        origin: ProviderHttpAuthorizedTarget,
+    ) -> Result<(TcpStream, ProviderHttpConnectionAuthorization), ProviderHttpError> {
+        let authorization = ProviderHttpConnectionAuthorization::direct(origin.authorization);
+        let authorization_guard = self.authorization_guard();
+        authorization_guard.ensure_current(authorization, profile)?;
+        let socket = self.dial(profile, context, origin.address).await?;
+        authorization_guard.ensure_current(authorization, profile)?;
+        Ok((socket, authorization))
+    }
+
+    async fn connect_proxy_transport(
+        &self,
+        profile: &ProviderHttpProfile,
+        context: &RequestContext,
+        origin: ProviderHttpAuthorizedTarget,
+        proxy_target: &OutboundTarget,
+    ) -> Result<(TcpStream, ProviderHttpConnectionAuthorization), ProviderHttpError> {
         let proxy = self.resolve_target(proxy_target, profile, context).await?;
+        let authorization =
+            ProviderHttpConnectionAuthorization::proxied(origin.authorization, proxy.authorization);
+        let authorization_guard = self.authorization_guard();
+        authorization_guard.ensure_current(authorization, profile)?;
         let socket = self.dial(profile, context, proxy.address).await?;
+        authorization_guard.ensure_current(authorization, profile)?;
         let timeouts = profile.timeouts();
         let socket = run_provider_phase(
             context,
@@ -336,10 +371,8 @@ impl ProviderHttpDirectConnector {
             proxy::establish_tunnel(socket, origin.address),
         )
         .await?;
-        Ok((
-            socket,
-            ProviderHttpConnectionAuthorization::proxied(origin.authorization, proxy.authorization),
-        ))
+        authorization_guard.ensure_current(authorization, profile)?;
+        Ok((socket, authorization))
     }
 
     async fn dial(

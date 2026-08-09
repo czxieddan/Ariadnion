@@ -34,7 +34,9 @@ use std::time::{Duration, Instant};
 
 use ariadnion_core::{OutboundPolicyPort, OutboundPolicyRevision};
 
+use crate::config::ProviderHttpProfile;
 use crate::dns::{BoundedResolver, ResolutionEpoch, ResolutionRecord};
+use crate::error::{ProviderHttpError, ProviderHttpErrorCode, ProviderHttpPhase};
 
 #[derive(Clone, Copy)]
 pub(crate) struct ProviderHttpAuthorizedTarget {
@@ -111,5 +113,47 @@ impl ProviderHttpConnectionAuthorization {
             && self
                 .proxy
                 .is_none_or(|stamp| stamp.is_current(now, max_age, epoch, revision))
+    }
+}
+
+pub(crate) struct ProviderHttpAuthorizationBoundary<'a> {
+    resolver: &'a dyn BoundedResolver,
+    policy: &'a dyn OutboundPolicyPort,
+}
+
+impl<'a> ProviderHttpAuthorizationBoundary<'a> {
+    pub(crate) const fn new(
+        resolver: &'a dyn BoundedResolver,
+        policy: &'a dyn OutboundPolicyPort,
+    ) -> Self {
+        Self { resolver, policy }
+    }
+
+    pub(crate) fn is_current(
+        &self,
+        authorization: ProviderHttpConnectionAuthorization,
+        profile: &ProviderHttpProfile,
+    ) -> bool {
+        authorization.is_current(
+            Instant::now(),
+            profile.timeouts().max_resolution_age(),
+            self.resolver,
+            self.policy,
+        )
+    }
+
+    pub(crate) fn ensure_current(
+        &self,
+        authorization: ProviderHttpConnectionAuthorization,
+        profile: &ProviderHttpProfile,
+    ) -> Result<(), ProviderHttpError> {
+        if self.is_current(authorization, profile) {
+            Ok(())
+        } else {
+            Err(ProviderHttpError::with_phase(
+                ProviderHttpErrorCode::OutboundDenied,
+                ProviderHttpPhase::Resolution,
+            ))
+        }
     }
 }

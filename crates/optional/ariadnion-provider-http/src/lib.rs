@@ -61,7 +61,7 @@ pub use connector::{
 };
 pub use dns::{
     AddressClass, BoundedResolver, ResolutionEpoch, ResolutionRecord, ResolvedAddresses,
-    TokioSystemResolver, classify_address, resolve_bounded,
+    TokioSystemResolver, classify_address, normalize_socket_answer, resolve_bounded,
 };
 pub use egress::{
     EgressError, MAX_STATIC_OUTBOUND_POLICY_RULES, StaticOutboundPolicy, StaticOutboundRule,
