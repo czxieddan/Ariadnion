@@ -1,4 +1,4 @@
-// crates/optional/ariadnion-api-http/src/lib.rs - Rust source for Ariadnion.
+// crates/optional/ariadnion-api-http/src/public/authentication.rs - Fail-closed public authentication adapter for Ariadnion.
 //
 // Copyright (C) 2026 czxieddan
 //
@@ -27,34 +27,41 @@
 //
 // SPDX-License-Identifier: LicenseRef-AHCL-1.0
 //
-//! Bounded administration and public HTTP adapters.
-//!
-//! Native and externally mounted protocol routes share request identity,
-//! bounded headers and bodies, Bearer authentication, absolute deadlines,
-//! cancellation, admission, and redacted failure projection. Authentication
-//! and dispatch ports receive the same request context and must observe its
-//! cancellation and deadline before every externally visible side effect.
+//! Static fail-closed authentication when no authoritative service is composed.
 
-#![forbid(unsafe_code)]
-#![deny(missing_docs)]
+use ariadnion_core::{ErrorCode, RequestContext};
+use ariadnion_principal_binding::AuthenticatedPrincipalEvidence;
 
-mod admin;
-mod public;
+use super::{
+    ApiHttpError, ApiHttpErrorCode, BoxHttpFuture, PresentedBearer, ServiceAuthenticationPort,
+};
 
-pub use admin::{
-    HttpAdminAdapter, HttpAdminResponse, HttpAuthenticationPort, HttpAuthorization,
-    HttpRequestMetadata, HttpSuspendUserBody, HttpSuspendUserRequest, MAX_AUTHORIZATION_BYTES,
-    MAX_ENCODED_BODY_BYTES, MAX_ENCODED_HEADER_BYTES,
-};
-pub use ariadnion_api_dispatch::{
-    BoxServiceDispatchFuture, ServiceDispatchOutcome, ServiceDispatchPort,
-};
-pub use public::{
-    ApiHttpError, ApiHttpErrorCode, BoxHttpBodyStream, BoxHttpFuture, HttpApiState,
-    HttpProtocolAdapter, HttpProtocolProjection, HttpRequestIdentity, MAX_PRESENTED_BEARER_BYTES,
-    MAX_PUBLIC_BODY_BYTES, MAX_PUBLIC_HEADER_BYTES, MAX_PUBLIC_HEADERS,
-    MAX_PUBLIC_IN_FLIGHT_REQUESTS, PresentedBearer, ProtocolBufferedResponse,
-    ProtocolExecutionState, ProtocolFailure, ProtocolRequest, ProtocolRequestBody,
-    ProtocolStreamResponse, RequestIdentityPort, ServiceAuthenticationPort,
-    ServiceStreamBridgePort, UnavailableServiceAuthentication, protocol_post_route, public_router,
-};
+/// Rejects every active request because no authentication service is available.
+///
+/// This zero-state adapter never observes or retains presented Bearer bytes.
+/// Cancellation and deadline failures retain precedence over the stable
+/// unavailable result so the shared HTTP lifecycle projects request boundaries.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct UnavailableServiceAuthentication;
+
+impl ServiceAuthenticationPort for UnavailableServiceAuthentication {
+    fn authenticate<'a>(
+        &'a self,
+        _authorization: &'a PresentedBearer,
+        context: &'a RequestContext,
+    ) -> BoxHttpFuture<'a, Result<AuthenticatedPrincipalEvidence, ApiHttpError>> {
+        let code = context
+            .check_active()
+            .err()
+            .map_or(ApiHttpErrorCode::Unavailable, project_context_error);
+        Box::pin(async move { Err(ApiHttpError::new(code)) })
+    }
+}
+
+fn project_context_error(code: ariadnion_core::CoreError) -> ApiHttpErrorCode {
+    match code.code() {
+        ErrorCode::Cancelled => ApiHttpErrorCode::Cancelled,
+        ErrorCode::DeadlineExceeded => ApiHttpErrorCode::DeadlineExceeded,
+        _ => ApiHttpErrorCode::Unavailable,
+    }
+}

@@ -29,6 +29,7 @@
 //
 //! Axum ingress and native text projection over shared protocol execution.
 
+mod authentication;
 mod error;
 mod execution;
 mod protocol;
@@ -55,6 +56,7 @@ use futures_core::Stream;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
 
+pub use authentication::UnavailableServiceAuthentication;
 pub use error::{ApiHttpError, ApiHttpErrorCode};
 use error::{
     AuthenticationFailure as NativeAuthenticationFailure, BodyFailure as NativeBodyFailure,
