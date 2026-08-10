@@ -38,6 +38,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use ariadnion_api_dispatch::{ServiceDispatchOutcome, ServiceDispatchPort};
 use ariadnion_api_domain::{
     ApiDomainError, ApiDomainErrorCode, FinishReason, IdempotencyKey, ModelSelector,
     OutputTokenLimit, ResponseMode, ServiceContractVersion, ServiceRequest, ServiceResponse,
@@ -194,34 +195,6 @@ pub trait ServiceAuthenticationPort: Send + Sync {
         authorization: &'a PresentedBearer,
         context: &'a RequestContext,
     ) -> BoxHttpFuture<'a, Result<AuthenticatedPrincipalEvidence, ApiHttpError>>;
-}
-
-/// A transport-neutral service dispatch result.
-///
-/// The variant must match the request's declared response mode. A mismatch is
-/// projected as a stable redacted internal HTTP error. Future compatible
-/// variants may be added, so external consumers must retain a fallback arm.
-#[non_exhaustive]
-pub enum ServiceDispatchOutcome {
-    /// A complete response ready for the existing JSON projection.
-    Complete(ServiceResponse),
-    /// A bounded event subscriber requiring an installed stream bridge.
-    Stream(EventSubscriber<ServiceStreamEvent>),
-}
-
-/// Dispatches a validated public-service request.
-pub trait ServiceDispatchPort: Send + Sync {
-    /// Executes one request with independent authentication evidence and context.
-    ///
-    /// The implementation owns idempotent replay, canonical request digests,
-    /// and durable outcome semantics. It must observe context cancellation and
-    /// the UTC deadline before every externally visible side effect.
-    fn dispatch<'a>(
-        &'a self,
-        request: ServiceRequest,
-        evidence: &'a AuthenticatedPrincipalEvidence,
-        context: &'a RequestContext,
-    ) -> BoxHttpFuture<'a, Result<ServiceDispatchOutcome, ApiDomainError>>;
 }
 
 /// Converts a service event subscriber into a non-buffering HTTP body stream.

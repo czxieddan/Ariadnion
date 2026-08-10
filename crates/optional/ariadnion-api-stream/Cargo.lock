@@ -16,6 +16,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ariadnion-api-dispatch"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-api-domain",
+ "ariadnion-core",
+ "ariadnion-principal-binding",
+]
+
+[[package]]
 name = "ariadnion-api-domain"
 version = "0.1.0"
 dependencies = [
@@ -27,6 +36,7 @@ name = "ariadnion-api-http"
 version = "0.1.0"
 dependencies = [
  "ariadnion-api-admin",
+ "ariadnion-api-dispatch",
  "ariadnion-api-domain",
  "ariadnion-core",
  "ariadnion-principal-binding",

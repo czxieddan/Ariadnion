@@ -40,10 +40,12 @@ pub use admin::{
     HttpRequestMetadata, HttpSuspendUserBody, HttpSuspendUserRequest, MAX_AUTHORIZATION_BYTES,
     MAX_ENCODED_BODY_BYTES, MAX_ENCODED_HEADER_BYTES,
 };
+pub use ariadnion_api_dispatch::{
+    BoxServiceDispatchFuture, ServiceDispatchOutcome, ServiceDispatchPort,
+};
 pub use public::{
     ApiHttpError, ApiHttpErrorCode, BoxHttpBodyStream, BoxHttpFuture, HttpApiState,
     HttpRequestIdentity, MAX_PRESENTED_BEARER_BYTES, MAX_PUBLIC_BODY_BYTES,
     MAX_PUBLIC_HEADER_BYTES, MAX_PUBLIC_HEADERS, MAX_PUBLIC_IN_FLIGHT_REQUESTS, PresentedBearer,
-    RequestIdentityPort, ServiceAuthenticationPort, ServiceDispatchOutcome, ServiceDispatchPort,
-    ServiceStreamBridgePort, public_router,
+    RequestIdentityPort, ServiceAuthenticationPort, ServiceStreamBridgePort, public_router,
 };
