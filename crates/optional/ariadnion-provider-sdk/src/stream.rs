@@ -33,7 +33,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
-use ariadnion_api_domain::{FinishReason, ServiceContractVersion, TextDelta};
+use ariadnion_api_domain::{FinishReason, ServiceContractVersion, TextDelta, TokenUsage};
 use ariadnion_core::{
     CancellationToken, EventEnvelope, EventPublisher, EventSubscriber, PublishError,
     ReceiveOutcome, bounded_event_channel,
@@ -48,17 +48,31 @@ use crate::{
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum ProviderStreamEvent {
-    /// Announces the service contract used by subsequent events.
+    /// Announces a text stream and the service contract used by later events.
     Started {
+        /// Service contract version used by this stream.
+        version: ServiceContractVersion,
+    },
+    /// Announces a chat stream and the service contract used by later events.
+    ChatStarted {
         /// Service contract version used by this stream.
         version: ServiceContractVersion,
     },
     /// Carries one bounded text increment without accumulated output.
     TextDelta(TextDelta),
-    /// Reports normal terminal completion.
+    /// Carries one bounded assistant chat increment without accumulated output.
+    ChatDelta(TextDelta),
+    /// Reports normal terminal completion for a text stream.
     Completed {
         /// Reason generation ended.
         finish_reason: FinishReason,
+    },
+    /// Reports normal terminal completion and usage for a chat stream.
+    ChatCompleted {
+        /// Reason generation ended.
+        finish_reason: FinishReason,
+        /// Checked token usage for the completed chat result.
+        usage: TokenUsage,
     },
     /// Reports one classified terminal provider failure.
     ///
@@ -173,7 +187,8 @@ impl std::error::Error for ProviderStreamPublishError {}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum StreamPhase {
     AwaitingStart,
-    Active,
+    TextActive,
+    ChatActive,
     Terminal,
 }
 
@@ -325,11 +340,16 @@ const fn valid_transition(phase: StreamPhase, event: &ProviderStreamEvent) -> bo
         (phase, event),
         (
             StreamPhase::AwaitingStart,
-            ProviderStreamEvent::Started { .. }
+            ProviderStreamEvent::Started { .. } | ProviderStreamEvent::ChatStarted { .. }
         ) | (
-            StreamPhase::Active,
+            StreamPhase::TextActive,
             ProviderStreamEvent::TextDelta(_)
                 | ProviderStreamEvent::Completed { .. }
+                | ProviderStreamEvent::Failed(_),
+        ) | (
+            StreamPhase::ChatActive,
+            ProviderStreamEvent::ChatDelta(_)
+                | ProviderStreamEvent::ChatCompleted { .. }
                 | ProviderStreamEvent::Failed(_),
         )
     )
@@ -338,11 +358,14 @@ const fn valid_transition(phase: StreamPhase, event: &ProviderStreamEvent) -> bo
 const fn next_phase(event: &ProviderStreamEvent) -> StreamPhase {
     match event {
         ProviderStreamEvent::Started { .. } | ProviderStreamEvent::TextDelta(_) => {
-            StreamPhase::Active
+            StreamPhase::TextActive
         }
-        ProviderStreamEvent::Completed { .. } | ProviderStreamEvent::Failed(_) => {
-            StreamPhase::Terminal
+        ProviderStreamEvent::ChatStarted { .. } | ProviderStreamEvent::ChatDelta(_) => {
+            StreamPhase::ChatActive
         }
+        ProviderStreamEvent::Completed { .. }
+        | ProviderStreamEvent::ChatCompleted { .. }
+        | ProviderStreamEvent::Failed(_) => StreamPhase::Terminal,
     }
 }
 
@@ -370,7 +393,9 @@ fn checked_stream_bytes(
 
 fn event_bytes(event: &ProviderStreamEvent) -> usize {
     match event {
-        ProviderStreamEvent::TextDelta(delta) => delta.as_str().len(),
+        ProviderStreamEvent::TextDelta(delta) | ProviderStreamEvent::ChatDelta(delta) => {
+            delta.as_str().len()
+        }
         _ => 0,
     }
 }

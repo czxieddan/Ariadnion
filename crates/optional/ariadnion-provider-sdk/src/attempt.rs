@@ -284,6 +284,7 @@ impl ProviderAttempt {
     pub fn response_mode(&self) -> Option<ResponseMode> {
         match &self.request {
             ServiceRequest::Text(request) => Some(request.response_mode()),
+            ServiceRequest::Chat(request) => Some(request.response_mode()),
             _ => None,
         }
     }
