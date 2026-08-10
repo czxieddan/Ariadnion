@@ -28,6 +28,12 @@
 // SPDX-License-Identifier: LicenseRef-AHCL-1.0
 //
 //! Bounded administration and public HTTP adapters.
+//!
+//! Native and externally mounted protocol routes share request identity,
+//! bounded headers and bodies, Bearer authentication, absolute deadlines,
+//! cancellation, admission, and redacted failure projection. Authentication
+//! and dispatch ports receive the same request context and must observe its
+//! cancellation and deadline before every externally visible side effect.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -45,7 +51,10 @@ pub use ariadnion_api_dispatch::{
 };
 pub use public::{
     ApiHttpError, ApiHttpErrorCode, BoxHttpBodyStream, BoxHttpFuture, HttpApiState,
-    HttpRequestIdentity, MAX_PRESENTED_BEARER_BYTES, MAX_PUBLIC_BODY_BYTES,
-    MAX_PUBLIC_HEADER_BYTES, MAX_PUBLIC_HEADERS, MAX_PUBLIC_IN_FLIGHT_REQUESTS, PresentedBearer,
-    RequestIdentityPort, ServiceAuthenticationPort, ServiceStreamBridgePort, public_router,
+    HttpProtocolAdapter, HttpProtocolProjection, HttpRequestIdentity, MAX_PRESENTED_BEARER_BYTES,
+    MAX_PUBLIC_BODY_BYTES, MAX_PUBLIC_HEADER_BYTES, MAX_PUBLIC_HEADERS,
+    MAX_PUBLIC_IN_FLIGHT_REQUESTS, PresentedBearer, ProtocolBufferedResponse,
+    ProtocolExecutionState, ProtocolFailure, ProtocolRequest, ProtocolRequestBody,
+    ProtocolStreamResponse, RequestIdentityPort, ServiceAuthenticationPort,
+    ServiceStreamBridgePort, protocol_post_route, public_router,
 };
