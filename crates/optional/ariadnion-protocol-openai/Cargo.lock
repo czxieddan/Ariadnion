@@ -107,6 +107,7 @@ dependencies = [
  "ariadnion-principal-binding",
  "ariadnion-user-domain",
  "axum",
+ "futures-core",
  "serde",
  "serde_json",
  "tokio",
