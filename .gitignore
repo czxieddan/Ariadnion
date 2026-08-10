@@ -31,6 +31,7 @@
 **/target/
 /AGENTS.md
 /plans/
+/.codex/
 
 # Test code is injected from a separate test workspace and is not tracked.
 crates/**/tests/
