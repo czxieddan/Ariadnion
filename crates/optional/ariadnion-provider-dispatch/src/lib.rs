@@ -34,6 +34,8 @@
 
 mod dispatch;
 mod error;
+mod resolver;
 mod stream;
 
 pub use dispatch::{AttemptIdIssuerPort, ProviderDispatcher, ProviderModelResolverPort};
+pub use resolver::StaticProviderModelResolver;
