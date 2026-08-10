@@ -34,6 +34,7 @@ use std::fmt::{self, Debug, Formatter};
 use crate::error::{ApiDomainError, invalid_argument, limit_exceeded};
 use crate::request::ServiceContractVersion;
 use crate::response::FinishReason;
+use crate::usage::TokenUsage;
 
 /// Maximum encoded size of one text delta in UTF-8 bytes.
 pub const MAX_TEXT_DELTA_BYTES: usize = 65_536;
@@ -97,12 +98,39 @@ pub enum TextStreamEvent {
     Failed(ApiDomainError),
 }
 
+/// A payload event produced by a role-preserving chat service stream.
+///
+/// The owning stream port enforces ordering, terminal state, cancellation, and
+/// backpressure. Usage is authoritative only on normal completion.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum ChatStreamEvent {
+    /// Announces the service contract used by subsequent payload events.
+    Started {
+        /// Service contract version used by this stream.
+        version: ServiceContractVersion,
+    },
+    /// Carries one bounded increment of assistant text.
+    Delta(TextDelta),
+    /// Reports normal stream completion and checked usage.
+    Completed {
+        /// Reason generation ended.
+        finish_reason: FinishReason,
+        /// Checked token usage for the completed result.
+        usage: TokenUsage,
+    },
+    /// Reports a terminal redacted service failure.
+    Failed(ApiDomainError),
+}
+
 /// A transport-neutral service stream payload event.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum ServiceStreamEvent {
     /// An event from a text service stream.
     Text(TextStreamEvent),
+    /// An event from a role-preserving chat service stream.
+    Chat(ChatStreamEvent),
 }
 
 fn validate_text_delta(value: &str) -> Result<(), ApiDomainError> {

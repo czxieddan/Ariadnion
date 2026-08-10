@@ -1,4 +1,4 @@
-// crates/optional/ariadnion-api-domain/src/lib.rs - Rust source for Ariadnion.
+// crates/optional/ariadnion-api-domain/src/usage.rs - Token usage contracts for Ariadnion.
 //
 // Copyright (C) 2026 czxieddan
 //
@@ -27,33 +27,51 @@
 //
 // SPDX-License-Identifier: LicenseRef-AHCL-1.0
 //
-//! Transport-neutral public service contracts.
+//! Checked provider-neutral token usage values.
 
-#![forbid(unsafe_code)]
-#![deny(missing_docs)]
+use crate::error::{ApiDomainError, limit_exceeded};
 
-mod chat;
-mod error;
-mod request;
-mod response;
-mod stream;
-mod usage;
+/// Checked input, output, and total token counts for one service result.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct TokenUsage {
+    input_tokens: u64,
+    output_tokens: u64,
+    total_tokens: u64,
+}
 
-pub use chat::{
-    ChatMessage, ChatMessageContent, ChatMessages, ChatRole, MAX_CHAT_MESSAGE_CONTENT_BYTES,
-    MAX_CHAT_MESSAGES, MAX_CHAT_MESSAGES_BYTES,
-};
-pub use error::{ApiDomainError, ApiDomainErrorCode};
-pub use request::{
-    ChatServiceRequest, IdempotencyKey, MAX_IDEMPOTENCY_KEY_BYTES, MAX_MODEL_SELECTOR_BYTES,
-    MAX_OUTPUT_TOKENS, MAX_TEXT_INPUT_BYTES, ModelSelector, OutputTokenLimit, ResponseMode,
-    ServiceContractVersion, ServiceRequest, ServiceRequestVersion, TextInput, TextServiceRequest,
-};
-pub use response::{
-    ChatServiceResponse, FinishReason, MAX_TEXT_OUTPUT_BYTES, ServiceResponse, TextOutput,
-    TextServiceResponse,
-};
-pub use stream::{
-    ChatStreamEvent, MAX_TEXT_DELTA_BYTES, ServiceStreamEvent, TextDelta, TextStreamEvent,
-};
-pub use usage::TokenUsage;
+impl TokenUsage {
+    /// Builds usage from input and output counts with a checked total.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ApiDomainErrorCode::LimitExceeded`] when the sum cannot
+    /// be represented as `u64`.
+    pub fn new(input_tokens: u64, output_tokens: u64) -> Result<Self, ApiDomainError> {
+        let total_tokens = input_tokens
+            .checked_add(output_tokens)
+            .ok_or_else(limit_exceeded)?;
+        Ok(Self {
+            input_tokens,
+            output_tokens,
+            total_tokens,
+        })
+    }
+
+    /// Returns tokens consumed from service input.
+    #[must_use]
+    pub const fn input_tokens(self) -> u64 {
+        self.input_tokens
+    }
+
+    /// Returns tokens generated in service output.
+    #[must_use]
+    pub const fn output_tokens(self) -> u64 {
+        self.output_tokens
+    }
+
+    /// Returns the checked sum of input and output tokens.
+    #[must_use]
+    pub const fn total_tokens(self) -> u64 {
+        self.total_tokens
+    }
+}

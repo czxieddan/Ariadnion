@@ -33,6 +33,7 @@ use std::fmt::{self, Debug, Formatter};
 
 use crate::error::{ApiDomainError, invalid_argument, limit_exceeded};
 use crate::request::ServiceContractVersion;
+use crate::usage::TokenUsage;
 
 /// Maximum encoded size of a complete text output in UTF-8 bytes.
 pub const MAX_TEXT_OUTPUT_BYTES: usize = 16_777_216;
@@ -80,6 +81,8 @@ pub enum FinishReason {
     Completed,
     /// Generation reached its configured output limit.
     OutputLimitReached,
+    /// A safety policy stopped generation before ordinary completion.
+    ContentFiltered,
 }
 
 /// A complete response from a text service.
@@ -124,12 +127,65 @@ impl TextServiceResponse {
     }
 }
 
+/// A complete response from a role-preserving chat service.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ChatServiceResponse {
+    version: ServiceContractVersion,
+    output: TextOutput,
+    finish_reason: FinishReason,
+    usage: TokenUsage,
+}
+
+impl ChatServiceResponse {
+    /// Creates a complete chat response from validated domain values.
+    #[must_use]
+    pub const fn new(
+        version: ServiceContractVersion,
+        output: TextOutput,
+        finish_reason: FinishReason,
+        usage: TokenUsage,
+    ) -> Self {
+        Self {
+            version,
+            output,
+            finish_reason,
+            usage,
+        }
+    }
+
+    /// Returns the service contract version.
+    #[must_use]
+    pub const fn version(&self) -> ServiceContractVersion {
+        self.version
+    }
+
+    /// Returns the validated assistant output.
+    #[must_use]
+    pub const fn output(&self) -> &TextOutput {
+        &self.output
+    }
+
+    /// Returns why generation ended.
+    #[must_use]
+    pub const fn finish_reason(&self) -> FinishReason {
+        self.finish_reason
+    }
+
+    /// Returns checked token usage for the completed result.
+    #[must_use]
+    pub const fn usage(&self) -> TokenUsage {
+        self.usage
+    }
+}
+
 /// A complete transport-neutral service response.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum ServiceResponse {
     /// A complete bounded text response.
     Text(TextServiceResponse),
+    /// A complete bounded chat response.
+    Chat(ChatServiceResponse),
 }
 
 fn validate_text_output(value: &str) -> Result<(), ApiDomainError> {

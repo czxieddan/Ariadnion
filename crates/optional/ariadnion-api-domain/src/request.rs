@@ -31,6 +31,7 @@
 
 use std::fmt::{self, Debug, Formatter};
 
+use crate::chat::ChatMessages;
 use crate::error::{ApiDomainError, ApiDomainErrorCode, invalid_argument, limit_exceeded};
 
 /// Maximum encoded size of a model selector in UTF-8 bytes.
@@ -292,12 +293,100 @@ impl Debug for TextServiceRequest {
     }
 }
 
+/// A fully validated request for a role-preserving chat service.
+#[derive(Clone, Eq, PartialEq)]
+pub struct ChatServiceRequest {
+    version: ServiceContractVersion,
+    model: ModelSelector,
+    messages: ChatMessages,
+    output_token_limit: OutputTokenLimit,
+    response_mode: ResponseMode,
+    idempotency_key: Option<IdempotencyKey>,
+}
+
+impl ChatServiceRequest {
+    /// Creates a chat request from validated, transport-neutral domain values.
+    ///
+    /// Protocol stream options, request identifiers, principals, deadlines,
+    /// cancellation handles, and trace state remain outside this value.
+    #[must_use]
+    pub const fn new(
+        version: ServiceContractVersion,
+        model: ModelSelector,
+        messages: ChatMessages,
+        output_token_limit: OutputTokenLimit,
+        response_mode: ResponseMode,
+        idempotency_key: Option<IdempotencyKey>,
+    ) -> Self {
+        Self {
+            version,
+            model,
+            messages,
+            output_token_limit,
+            response_mode,
+            idempotency_key,
+        }
+    }
+
+    /// Returns the request contract version.
+    #[must_use]
+    pub const fn version(&self) -> ServiceContractVersion {
+        self.version
+    }
+
+    /// Returns the provider-independent model selector.
+    #[must_use]
+    pub const fn model(&self) -> &ModelSelector {
+        &self.model
+    }
+
+    /// Returns the ordered chat history.
+    #[must_use]
+    pub const fn messages(&self) -> &ChatMessages {
+        &self.messages
+    }
+
+    /// Returns the requested maximum output token count.
+    #[must_use]
+    pub const fn output_token_limit(&self) -> OutputTokenLimit {
+        self.output_token_limit
+    }
+
+    /// Returns the requested response delivery mode.
+    #[must_use]
+    pub const fn response_mode(&self) -> ResponseMode {
+        self.response_mode
+    }
+
+    /// Returns the optional idempotency key.
+    #[must_use]
+    pub const fn idempotency_key(&self) -> Option<&IdempotencyKey> {
+        self.idempotency_key.as_ref()
+    }
+}
+
+impl Debug for ChatServiceRequest {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ChatServiceRequest")
+            .field("version", &self.version)
+            .field("model", &self.model)
+            .field("messages", &self.messages)
+            .field("output_token_limit", &self.output_token_limit)
+            .field("response_mode", &self.response_mode)
+            .field("idempotency_key", &self.idempotency_key)
+            .finish()
+    }
+}
+
 /// A transport-neutral service request accepted by the public service layer.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum ServiceRequest {
     /// A bounded text generation request.
     Text(TextServiceRequest),
+    /// A bounded role-preserving chat request.
+    Chat(ChatServiceRequest),
 }
 
 fn validate_model_selector(value: &str) -> Result<(), ApiDomainError> {
