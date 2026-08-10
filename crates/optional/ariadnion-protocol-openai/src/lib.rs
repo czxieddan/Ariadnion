@@ -34,6 +34,7 @@
 
 mod request;
 mod response;
+mod stream;
 
 use std::fmt::{self, Debug, Formatter};
 use std::sync::Arc;
@@ -94,8 +95,8 @@ impl HttpProtocolAdapter for OpenAiProtocol {
 ///
 /// The returned router owns only `/v1/chat/completions`; it does not install a
 /// protocol registry or modify Ariadnion-native routes. Complete requests use
-/// [`ariadnion_api_domain::ResponseMode::Complete`]. Streaming requests are
-/// decoded for compatibility but fail closed until the streaming projector is installed.
+/// [`ariadnion_api_domain::ResponseMode::Complete`]. Streaming requests use a
+/// protocol-owned bounded SSE projection over the same authenticated lifecycle.
 pub fn openai_chat_completions_router(http: HttpApiState) -> Router {
     let protocol: Arc<dyn HttpProtocolAdapter> = Arc::new(OpenAiProtocol::new());
     let state = ProtocolExecutionState::new(http, protocol);

@@ -71,7 +71,7 @@ impl Debug for OpenAiProjection {
 
 impl HttpProtocolProjection for OpenAiProjection {
     fn supports_streaming(&self) -> bool {
-        false
+        true
     }
 
     fn project_complete(
@@ -88,12 +88,17 @@ impl HttpProtocolProjection for OpenAiProjection {
 
     fn project_stream(
         &self,
-        _identity: &HttpRequestIdentity,
+        identity: &HttpRequestIdentity,
         subscriber: EventSubscriber<ServiceStreamEvent>,
-        _context: &RequestContext,
+        context: &RequestContext,
     ) -> Result<ProtocolStreamResponse, ProtocolFailure> {
-        subscriber.cancellation().cancel();
-        Err(ApiHttpError::new(ApiHttpErrorCode::StreamUnavailable).into())
+        crate::stream::project_stream(
+            identity,
+            &self.model,
+            self.include_usage,
+            subscriber,
+            context,
+        )
     }
 }
 
