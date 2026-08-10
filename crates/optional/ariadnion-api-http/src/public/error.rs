@@ -36,8 +36,10 @@ use ariadnion_core::RequestId;
 use axum::Json;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
+use bytes::Bytes;
 use serde::Serialize;
 
+use super::protocol::{ProtocolBufferedResponse, ProtocolFailure};
 use super::{HttpRequestIdentity, REQUEST_ID_HEADER};
 
 /// Stable transport failures produced before or around service dispatch.
@@ -182,6 +184,30 @@ pub(super) struct ResponseFailure {
 impl ResponseFailure {
     pub(super) fn into_response(self) -> Response {
         projected_response(&self.identity, self.projection)
+    }
+
+    pub(super) fn into_protocol_response(
+        self,
+    ) -> Result<ProtocolBufferedResponse, ProtocolFailure> {
+        let Self {
+            identity,
+            projection,
+        } = self;
+        let body = serde_json::to_vec(&ErrorBody {
+            code: projection.code,
+            message: projection.message,
+            request_id: identity.request_id().as_str().to_owned(),
+            details: EmptyDetails {},
+            retryable: projection.retryable,
+            retry_after_ms: None,
+        })
+        .map_err(|_| ApiHttpError::new(ApiHttpErrorCode::Internal))?;
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
+        );
+        ProtocolBufferedResponse::new(projection.status, headers, Bytes::from(body))
     }
 }
 
