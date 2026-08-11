@@ -32,23 +32,15 @@
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use ariadnion_api_domain::ModelSelector;
-use ariadnion_api_http::{
-    HttpApiState, MonotonicRequestIdentityIssuer, UnavailableServiceAuthentication,
-};
+use ariadnion_api_http::UnavailableServiceAuthentication;
+use ariadnion_bundle_complete::assemble_openai_mock_loop;
 use ariadnion_compose::CompositionBuilder;
 use ariadnion_core::{
     CancellationToken, CoreError, ErrorCode, ModuleConfigurationSnapshot, ModuleFactory, ModuleId,
     PortHandle, PortSlot,
 };
 use ariadnion_diagnostics::{DEFAULT_CONFIGURATION_DIGEST, DiagnosticsModule, DiagnosticsReadPort};
-use ariadnion_protocol_openai::openai_chat_completions_router;
-use ariadnion_provider_dispatch::{
-    MonotonicAttemptIdIssuer, ProviderDispatcher, StaticProviderModelResolver,
-};
 use ariadnion_provider_http::PROVIDER_HTTP_TRANSPORT_VERSION;
-use ariadnion_provider_mock::{DeterministicMockProvider, MOCK_PROVIDER_MODEL_ID};
-use ariadnion_provider_sdk::ProviderModelId;
 use ariadnion_storage_rnmdb::{REVIEWED_RNMDB_COMMIT, StorageRnmdbModule};
 
 fn main() -> ExitCode {
@@ -68,7 +60,7 @@ fn run() -> Result<String, CoreError> {
     let mut composition = CompositionBuilder::new("complete")?;
     let reader = register_diagnostics(&mut composition)?;
     let storage_id = register_storage(&mut composition)?;
-    let _openai_router = register_openai_loop()?;
+    let _openai_router = assemble_openai_mock_loop(Arc::new(UnavailableServiceAuthentication))?;
     let report = composition.run_once()?;
     let snapshot = reader.service()?.read();
     let (storage_state, storage_error) = module_status(&report, &storage_id)?;
@@ -83,38 +75,6 @@ fn run() -> Result<String, CoreError> {
         REVIEWED_RNMDB_COMMIT,
         PROVIDER_HTTP_TRANSPORT_VERSION
     ))
-}
-
-fn register_openai_loop() -> Result<impl Sized, CoreError> {
-    let selector = ModelSelector::new("mock-chat")
-        .map_err(|_| assembly_error("complete OpenAI selector is invalid"))?;
-    let model = ProviderModelId::new(MOCK_PROVIDER_MODEL_ID)
-        .map_err(|_| assembly_error("complete mock provider model is invalid"))?;
-    let resolver = StaticProviderModelResolver::new([(selector, model)])
-        .map_err(|_| assembly_error("complete model mapping is invalid"))?;
-    let provider = DeterministicMockProvider::new()
-        .map_err(|_| assembly_error("complete mock provider is unavailable"))?;
-    let dispatcher = Arc::new(ProviderDispatcher::new(
-        Arc::new(resolver),
-        Arc::new(MonotonicAttemptIdIssuer::new()),
-        Arc::new(provider),
-    ));
-    let identity = Arc::new(
-        MonotonicRequestIdentityIssuer::new()
-            .map_err(|_| assembly_error("complete request identity is unavailable"))?,
-    );
-    let authentication = Arc::new(UnavailableServiceAuthentication);
-    let state = HttpApiState::new(
-        identity,
-        authentication,
-        dispatcher,
-        CancellationToken::new(),
-    );
-    Ok(openai_chat_completions_router(state))
-}
-
-fn assembly_error(context: &'static str) -> CoreError {
-    CoreError::from_code(ErrorCode::Internal).with_internal_context(context)
 }
 
 fn register_diagnostics(
