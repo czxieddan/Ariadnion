@@ -268,7 +268,6 @@ fn checked_chat_request(attempt: &ProviderAttempt) -> Result<&ChatServiceRequest
     let ServiceRequest::Chat(request) = attempt.request() else {
         return Err(failure(ProviderFailureClass::InvalidRequest));
     };
-    check_model(request.model().as_str())?;
     Ok(request)
 }
 
