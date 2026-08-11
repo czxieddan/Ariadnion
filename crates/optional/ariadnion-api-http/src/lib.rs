@@ -55,6 +55,7 @@ pub use public::{
     MAX_PUBLIC_BODY_BYTES, MAX_PUBLIC_HEADER_BYTES, MAX_PUBLIC_HEADERS,
     MAX_PUBLIC_IN_FLIGHT_REQUESTS, MonotonicRequestIdentityIssuer, PresentedBearer,
     ProtocolBufferedResponse, ProtocolExecutionState, ProtocolFailure, ProtocolRequest,
-    ProtocolRequestBody, ProtocolStreamResponse, RequestIdentityPort, ServiceAuthenticationPort,
-    ServiceStreamBridgePort, UnavailableServiceAuthentication, protocol_post_route, public_router,
+    ProtocolRequestBody, ProtocolStreamResponse, PublicApiRouter, RequestIdentityPort,
+    ServiceAuthenticationPort, ServiceStreamBridgePort, UnavailableServiceAuthentication,
+    protocol_post_route, public_router,
 };

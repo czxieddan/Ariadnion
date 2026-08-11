@@ -238,6 +238,12 @@ impl HttpApiState {
     }
 }
 
+/// The concrete HTTP router returned by the Ariadnion-native public API.
+///
+/// Composition crates use this alias to expose their assembled router without
+/// acquiring a separate direct dependency on Axum.
+pub type PublicApiRouter = Router;
+
 /// Builds the bounded version-one Ariadnion-native public HTTP router.
 ///
 /// POST /v1/text accepts strict JSON with application/json media type and one
@@ -250,7 +256,7 @@ impl HttpApiState {
 /// Handler drop and timeout cancel the request child token. Authentication and
 /// dispatch ports receive the same deadline and cancellation context and must
 /// observe it before every externally visible side effect.
-pub fn public_router(state: HttpApiState) -> Router {
+pub fn public_router(state: HttpApiState) -> PublicApiRouter {
     Router::new()
         .route("/v1/text", post(handle_text))
         .fallback(not_found)
