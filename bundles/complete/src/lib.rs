@@ -42,7 +42,7 @@ use ariadnion_provider_dispatch::{
     MonotonicAttemptIdIssuer, ProviderDispatcher, StaticProviderModelResolver,
 };
 use ariadnion_provider_mock::{DeterministicMockProvider, MOCK_PROVIDER_MODEL_ID};
-use ariadnion_provider_sdk::ProviderModelId;
+use ariadnion_provider_sdk::{ProviderModelId, ProviderPort};
 
 /// Assembles the complete bundle's bounded OpenAI-compatible mock loop.
 ///
@@ -58,18 +58,35 @@ use ariadnion_provider_sdk::ProviderModelId;
 pub fn assemble_openai_mock_loop(
     authentication: Arc<dyn ServiceAuthenticationPort>,
 ) -> Result<OpenAiChatCompletionsRouter, CoreError> {
+    let provider = DeterministicMockProvider::new()
+        .map_err(|_| assembly_error("complete mock provider is unavailable"))?;
+    assemble_openai_mock_loop_with_provider(authentication, Arc::new(provider))
+}
+
+/// Assembles the complete bundle's bounded OpenAI-compatible loop with one provider.
+///
+/// The bundle retains ownership of model resolution, attempt and request identity,
+/// cancellation, authentication, dispatch, and OpenAI response projection. Assembly
+/// performs no provider call and grants the supplied provider no additional capability.
+///
+/// # Errors
+///
+/// Returns a redacted internal error if the fixed selector, provider model, resolver,
+/// or request identity issuer cannot be constructed.
+pub fn assemble_openai_mock_loop_with_provider(
+    authentication: Arc<dyn ServiceAuthenticationPort>,
+    provider: Arc<dyn ProviderPort>,
+) -> Result<OpenAiChatCompletionsRouter, CoreError> {
     let selector = ModelSelector::new("mock-chat")
         .map_err(|_| assembly_error("complete OpenAI selector is invalid"))?;
     let model = ProviderModelId::new(MOCK_PROVIDER_MODEL_ID)
         .map_err(|_| assembly_error("complete mock provider model is invalid"))?;
     let resolver = StaticProviderModelResolver::new([(selector, model)])
         .map_err(|_| assembly_error("complete model mapping is invalid"))?;
-    let provider = DeterministicMockProvider::new()
-        .map_err(|_| assembly_error("complete mock provider is unavailable"))?;
     let dispatcher = Arc::new(ProviderDispatcher::new(
         Arc::new(resolver),
         Arc::new(MonotonicAttemptIdIssuer::new()),
-        Arc::new(provider),
+        provider,
     ));
     let identity = Arc::new(
         MonotonicRequestIdentityIssuer::new()
