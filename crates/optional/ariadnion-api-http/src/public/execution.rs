@@ -120,32 +120,31 @@ pub(super) async fn handle_request(
     protocol: &dyn HttpProtocolAdapter,
     request: Request<Body>,
 ) -> Response {
-    let generated = match state.identity.issue() {
-        Ok(identity) => identity,
-        Err(error) => {
-            let identity = state.identity.fallback_identity();
-            return project_failure(protocol, ExecutionFailure::http(identity, error));
-        }
-    };
-    let permit = match state.admission.clone().try_acquire_owned() {
-        Ok(permit) => permit,
-        Err(_) => return project_capacity_failure(protocol, generated),
-    };
-    match execute_request(state, protocol, generated, request, permit).await {
+    match try_handle_request(state, protocol, request).await {
         Ok(response) => response,
         Err(failure) => project_failure(protocol, failure),
     }
 }
 
-fn project_capacity_failure(
+async fn try_handle_request(
+    state: &HttpApiState,
     protocol: &dyn HttpProtocolAdapter,
-    identity: HttpRequestIdentity,
-) -> Response {
-    let failure = ExecutionFailure::http(
-        identity,
-        ApiHttpError::new(ApiHttpErrorCode::ResourceExhausted),
-    );
-    project_failure(protocol, failure)
+    request: Request<Body>,
+) -> Result<Response, ExecutionFailure> {
+    let generated = state
+        .identity
+        .issue()
+        .map_err(|error| ExecutionFailure::http(state.identity.fallback_identity(), error))?;
+    let permit = match state.admission.clone().try_acquire_owned() {
+        Ok(permit) => permit,
+        Err(_) => {
+            return Err(ExecutionFailure::http(
+                generated,
+                ApiHttpError::new(ApiHttpErrorCode::ResourceExhausted),
+            ));
+        }
+    };
+    execute_request(state, protocol, generated, request, permit).await
 }
 
 async fn execute_request(
