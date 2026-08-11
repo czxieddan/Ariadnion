@@ -27,7 +27,6 @@
 //
 // SPDX-License-Identifier: LicenseRef-AHCL-1.0
 
-use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -48,6 +47,8 @@ use tokio::task::JoinHandle;
 
 use crate::encode;
 use crate::error::{ApiStreamError, ApiStreamErrorCode};
+
+mod receive;
 
 /// Default maximum number of concurrently active SSE bridges.
 pub const DEFAULT_MAX_ACTIVE_STREAMS: usize = 64;
@@ -223,27 +224,6 @@ impl SseByteStream {
                 self.permit = permit;
                 Err(internal_failure())
             }
-        }
-    }
-
-    fn poll_receive(
-        &mut self,
-        context: &mut Context<'_>,
-    ) -> Poll<Option<Result<Bytes, ApiHttpError>>> {
-        let Some(mut receive) = self.receive.take() else {
-            return self.internal_terminal(None);
-        };
-        match Pin::new(&mut receive).poll(context) {
-            Poll::Pending => {
-                self.receive = Some(receive);
-                Poll::Pending
-            }
-            Poll::Ready(Ok((subscriber, outcome, permit))) => {
-                self.subscriber = Some(subscriber);
-                self.permit = Some(permit);
-                self.handle_outcome(outcome)
-            }
-            Poll::Ready(Err(_)) => self.internal_terminal(None),
         }
     }
 
