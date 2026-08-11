@@ -52,6 +52,12 @@ use response::OpenAiProjection;
 /// The OpenAI-compatible chat completions route owned by this protocol crate.
 pub const OPENAI_CHAT_COMPLETIONS_PATH: &str = "/v1/chat/completions";
 
+/// The concrete HTTP router returned by the OpenAI chat completions adapter.
+///
+/// Composition crates use this alias to expose their assembled router without
+/// acquiring a separate direct dependency on the underlying HTTP framework.
+pub type OpenAiChatCompletionsRouter = Router;
+
 /// Strict decoder and projector for the supported OpenAI chat request subset.
 #[derive(Clone, Copy, Default)]
 pub struct OpenAiProtocol;
@@ -97,7 +103,7 @@ impl HttpProtocolAdapter for OpenAiProtocol {
 /// protocol registry or modify Ariadnion-native routes. Complete requests use
 /// [`ariadnion_api_domain::ResponseMode::Complete`]. Streaming requests use a
 /// protocol-owned bounded SSE projection over the same authenticated lifecycle.
-pub fn openai_chat_completions_router(http: HttpApiState) -> Router {
+pub fn openai_chat_completions_router(http: HttpApiState) -> OpenAiChatCompletionsRouter {
     let protocol: Arc<dyn HttpProtocolAdapter> = Arc::new(OpenAiProtocol::new());
     let state = ProtocolExecutionState::new(http, protocol);
     Router::new()
