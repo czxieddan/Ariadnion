@@ -29,7 +29,7 @@
 //
 //! Bounded, transport-neutral service request values.
 
-use std::fmt::{self, Debug, Formatter};
+mod debug;
 
 use crate::chat::ChatMessages;
 use crate::error::{ApiDomainError, ApiDomainErrorCode, invalid_argument, limit_exceeded};
@@ -122,15 +122,6 @@ impl IdempotencyKey {
     }
 }
 
-impl Debug for IdempotencyKey {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("IdempotencyKey")
-            .field("bytes", &self.0.len())
-            .finish_non_exhaustive()
-    }
-}
-
 /// Bounded service input whose diagnostics never expose input text.
 #[derive(Clone, Eq, PartialEq)]
 pub struct TextInput(Box<str>);
@@ -156,15 +147,6 @@ impl TextInput {
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
-    }
-}
-
-impl Debug for TextInput {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("TextInput")
-            .field("bytes", &self.0.len())
-            .finish_non_exhaustive()
     }
 }
 
@@ -279,20 +261,6 @@ impl TextServiceRequest {
     }
 }
 
-impl Debug for TextServiceRequest {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("TextServiceRequest")
-            .field("version", &self.version)
-            .field("model", &self.model)
-            .field("input", &self.input)
-            .field("output_token_limit", &self.output_token_limit)
-            .field("response_mode", &self.response_mode)
-            .field("idempotency_key", &self.idempotency_key)
-            .finish()
-    }
-}
-
 /// A fully validated request for a role-preserving chat service.
 #[derive(Clone, Eq, PartialEq)]
 pub struct ChatServiceRequest {
@@ -362,20 +330,6 @@ impl ChatServiceRequest {
     #[must_use]
     pub const fn idempotency_key(&self) -> Option<&IdempotencyKey> {
         self.idempotency_key.as_ref()
-    }
-}
-
-impl Debug for ChatServiceRequest {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("ChatServiceRequest")
-            .field("version", &self.version)
-            .field("model", &self.model)
-            .field("messages", &self.messages)
-            .field("output_token_limit", &self.output_token_limit)
-            .field("response_mode", &self.response_mode)
-            .field("idempotency_key", &self.idempotency_key)
-            .finish()
     }
 }
 
