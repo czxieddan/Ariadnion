@@ -38,6 +38,7 @@ publish = false
 [workspace]
 
 [dependencies]
+ariadnion-api-domain = { path = "../../crates/optional/ariadnion-api-domain" }
 ariadnion-api-http = { path = "../../crates/optional/ariadnion-api-http" }
 ariadnion-api-stream = { path = "../../crates/optional/ariadnion-api-stream" }
 ariadnion-cli-user = { path = "../../crates/optional/ariadnion-cli-user" }
@@ -45,7 +46,10 @@ ariadnion-core = { path = "../../crates/ariadnion-core" }
 ariadnion-compose = { path = "../../crates/optional/ariadnion-compose" }
 ariadnion-diagnostics = { path = "../../crates/optional/ariadnion-diagnostics" }
 ariadnion-job-runner = { path = "../../crates/optional/ariadnion-job-runner" }
+ariadnion-protocol-openai = { path = "../../crates/optional/ariadnion-protocol-openai" }
+ariadnion-provider-dispatch = { path = "../../crates/optional/ariadnion-provider-dispatch" }
 ariadnion-provider-http = { path = "../../crates/optional/ariadnion-provider-http" }
+ariadnion-provider-mock = { path = "../../crates/optional/ariadnion-provider-mock" }
 ariadnion-provider-sdk = { path = "../../crates/optional/ariadnion-provider-sdk" }
 ariadnion-storage-asset = { path = "../../crates/optional/ariadnion-storage-asset" }
 ariadnion-storage-backup = { path = "../../crates/optional/ariadnion-storage-backup" }
