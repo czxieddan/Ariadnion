@@ -27,7 +27,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-AHCL-1.0
 //
-//! Fixed bounded chat generation without external side effects.
+//! Fixed bounded text and chat generation without external side effects.
 
 use std::fmt::{self, Debug, Formatter};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
@@ -37,7 +37,8 @@ use std::time::Duration;
 
 use ariadnion_api_domain::{
     ChatServiceRequest, ChatServiceResponse, FinishReason, ResponseMode, ServiceContractVersion,
-    ServiceRequest, ServiceResponse, TextOutput, TokenUsage,
+    ServiceRequest, ServiceResponse, TextOutput, TextServiceRequest, TextServiceResponse,
+    TokenUsage,
 };
 use ariadnion_core::{CancellationToken, ErrorCode, EventEnvelope, ModuleVersion, RequestContext};
 use ariadnion_provider_sdk::{
@@ -48,31 +49,38 @@ use ariadnion_provider_sdk::{
     bounded_provider_stream,
 };
 
-use crate::chunk::for_each_chat_delta;
+use crate::chunk::for_each_delta;
 
 /// Stable provider identifier for the deterministic in-process adapter.
 pub const MOCK_PROVIDER_ID: &str = "mock";
 /// Stable provider model identifier accepted by the deterministic adapter.
 pub const MOCK_PROVIDER_MODEL_ID: &str = "mock-chat-v1";
+/// Stable text provider model identifier accepted by the deterministic adapter.
+pub const MOCK_PROVIDER_TEXT_MODEL_ID: &str = "mock-text-v1";
 /// Maximum UTF-8 bytes carried by one deterministic mock stream delta.
 pub const MAX_MOCK_STREAM_DELTA_BYTES: usize = 1_024;
 
+const MOCK_PREFIX: &str = "mock: ";
 const MAX_MOCK_REQUEST_BYTES: usize = 1_048_576;
-const MAX_MOCK_STREAM_BYTES: usize = 1_048_576;
-const MAX_MOCK_STREAM_EVENTS: usize = 1_024;
+const MAX_MOCK_STREAM_BYTES: usize = MAX_MOCK_REQUEST_BYTES + MOCK_PREFIX.len();
+const MAX_UTF8_SCALAR_BYTES: usize = 4;
+// A non-final chunk can be short by at most three bytes when the next scalar is four bytes.
+const MIN_FULL_MOCK_STREAM_DELTA_BYTES: usize =
+    MAX_MOCK_STREAM_DELTA_BYTES - (MAX_UTF8_SCALAR_BYTES - 1);
+const MAX_MOCK_STREAM_EVENTS: usize =
+    MAX_MOCK_STREAM_BYTES.div_ceil(MIN_FULL_MOCK_STREAM_DELTA_BYTES) + 2;
 const MOCK_STREAM_CHANNEL_CAPACITY: usize = 8;
 const MOCK_STREAM_WORKERS: usize = 2;
 const MOCK_STREAM_QUEUE_CAPACITY: usize = 16;
 const BACKPRESSURE_RETRY_DELAY: Duration = Duration::from_millis(1);
-const MOCK_PREFIX: &str = "mock: ";
 const STREAM_EVENT_VERSION: ModuleVersion = ModuleVersion::new(1, 0, 0);
 
 /// A deterministic in-process provider used for compatibility and deployment checks.
 ///
-/// The adapter accepts one fixed chat model. It performs no provider network,
-/// filesystem, database, random, or credential access. Core-owned deadline and
-/// event-envelope primitives remain authoritative, and diagnostics retain neither
-/// message content nor model selectors.
+/// The adapter accepts one fixed model for each supported request kind. It
+/// performs no provider network, filesystem, database, random, or credential
+/// access. Core-owned deadline and event-envelope primitives remain authoritative,
+/// and diagnostics retain neither input content nor model selectors.
 pub struct DeterministicMockProvider {
     descriptor: ProviderDescriptor,
     stream_executor: StreamExecutor,
@@ -160,7 +168,7 @@ struct StreamJob {
     publisher: ProviderStreamPublisher,
     context: StreamExecutionContext,
     sequence: u64,
-    plan: ChatPlan,
+    plan: GenerationPlan,
 }
 
 impl StreamJob {
@@ -242,11 +250,68 @@ impl Drop for StreamExecutor {
 struct StreamExecutorStartError;
 
 struct ChatPlan {
+    output: OutputPlan,
+    usage: TokenUsage,
+}
+
+struct TextPlan {
+    output: OutputPlan,
+}
+
+enum GenerationPlan {
+    Chat(ChatPlan),
+    Text(TextPlan),
+}
+
+enum ProviderModelKind {
+    Chat,
+    Text,
+}
+
+impl GenerationPlan {
+    const fn output(&self) -> &OutputPlan {
+        match self {
+            Self::Chat(plan) => &plan.output,
+            Self::Text(plan) => &plan.output,
+        }
+    }
+
+    const fn started_event(&self) -> ProviderStreamEvent {
+        match self {
+            Self::Chat(plan) => ProviderStreamEvent::ChatStarted {
+                version: plan.output.version,
+            },
+            Self::Text(plan) => ProviderStreamEvent::Started {
+                version: plan.output.version,
+            },
+        }
+    }
+
+    const fn delta_event(&self, delta: ariadnion_api_domain::TextDelta) -> ProviderStreamEvent {
+        match self {
+            Self::Chat(_) => ProviderStreamEvent::ChatDelta(delta),
+            Self::Text(_) => ProviderStreamEvent::TextDelta(delta),
+        }
+    }
+
+    const fn completed_event(&self) -> ProviderStreamEvent {
+        match self {
+            Self::Chat(plan) => ProviderStreamEvent::ChatCompleted {
+                finish_reason: plan.output.finish_reason,
+                usage: plan.usage,
+            },
+            Self::Text(plan) => ProviderStreamEvent::Completed {
+                finish_reason: plan.output.finish_reason,
+            },
+        }
+    }
+}
+
+struct OutputPlan {
     version: ServiceContractVersion,
     content: Box<str>,
     generated_scalars: usize,
     finish_reason: FinishReason,
-    usage: TokenUsage,
 }
 
 fn execute(
@@ -255,27 +320,34 @@ fn execute(
     stream_executor: &StreamExecutor,
 ) -> Result<ProviderRawOutcome, ProviderFailure> {
     check_active(&attempt)?;
-    let (mode, plan) = {
-        let request = checked_chat_request(&attempt)?;
-        (request.response_mode(), plan_chat(request)?)
-    };
+    let (mode, plan) = plan_attempt(&attempt)?;
     check_active(&attempt)?;
     outcome_for_mode(attempt, limits, stream_executor, mode, plan)
 }
 
-fn checked_chat_request(attempt: &ProviderAttempt) -> Result<&ChatServiceRequest, ProviderFailure> {
-    check_model(attempt.model().as_str())?;
-    let ServiceRequest::Chat(request) = attempt.request() else {
-        return Err(failure(ProviderFailureClass::InvalidRequest));
-    };
-    Ok(request)
+fn plan_attempt(
+    attempt: &ProviderAttempt,
+) -> Result<(ResponseMode, GenerationPlan), ProviderFailure> {
+    let model = provider_model_kind(attempt.model().as_str())?;
+    match (model, attempt.request()) {
+        (ProviderModelKind::Chat, ServiceRequest::Chat(request)) => Ok((
+            request.response_mode(),
+            GenerationPlan::Chat(plan_chat(request)?),
+        )),
+        (ProviderModelKind::Text, ServiceRequest::Text(request)) => Ok((
+            request.response_mode(),
+            GenerationPlan::Text(plan_text(request)?),
+        )),
+        _ => Err(failure(ProviderFailureClass::InvalidRequest)),
+    }
 }
 
-fn check_model(model: &str) -> Result<(), ProviderFailure> {
-    if model != MOCK_PROVIDER_MODEL_ID {
-        return Err(failure(ProviderFailureClass::NotFound));
+fn provider_model_kind(model: &str) -> Result<ProviderModelKind, ProviderFailure> {
+    match model {
+        MOCK_PROVIDER_MODEL_ID => Ok(ProviderModelKind::Chat),
+        MOCK_PROVIDER_TEXT_MODEL_ID => Ok(ProviderModelKind::Text),
+        _ => Err(failure(ProviderFailureClass::NotFound)),
     }
-    Ok(())
 }
 
 fn outcome_for_mode(
@@ -283,11 +355,11 @@ fn outcome_for_mode(
     limits: ProviderLimits,
     stream_executor: &StreamExecutor,
     mode: ResponseMode,
-    plan: ChatPlan,
+    plan: GenerationPlan,
 ) -> Result<ProviderRawOutcome, ProviderFailure> {
-    match mode {
-        ResponseMode::Complete => complete_outcome(attempt.evidence(), plan),
-        ResponseMode::Stream => stream_outcome(attempt, limits, stream_executor, plan),
+    match (mode, plan) {
+        (ResponseMode::Complete, plan) => complete_outcome(attempt.evidence(), plan),
+        (ResponseMode::Stream, plan) => stream_outcome(attempt, limits, stream_executor, plan),
         _ => Err(failure(ProviderFailureClass::InvalidRequest)),
     }
 }
@@ -298,18 +370,37 @@ fn plan_chat(request: &ChatServiceRequest) -> Result<ChatPlan, ProviderFailure> 
         .as_slice()
         .last()
         .ok_or_else(|| failure(ProviderFailureClass::InvalidRequest))?;
-    let limit = request.output_token_limit().get() as usize;
-    let source_scalars = source_scalar_count(last.content().as_str())?;
-    let generated_scalars = source_scalars.min(limit);
-    let output_tokens = u64::try_from(generated_scalars).map_err(|_| response_limit())?;
+    let output = plan_output(
+        request.version(),
+        last.content().as_str(),
+        request.output_token_limit().get() as usize,
+    )?;
+    let output_tokens = u64::try_from(output.generated_scalars).map_err(|_| response_limit())?;
     let input_tokens = input_usage(request)?;
     let usage = TokenUsage::new(input_tokens, output_tokens).map_err(|_| response_limit())?;
-    Ok(ChatPlan {
-        version: request.version(),
-        content: last.content().as_str().into(),
-        generated_scalars,
+    Ok(ChatPlan { output, usage })
+}
+
+fn plan_text(request: &TextServiceRequest) -> Result<TextPlan, ProviderFailure> {
+    let output = plan_output(
+        request.version(),
+        request.input().as_str(),
+        request.output_token_limit().get() as usize,
+    )?;
+    Ok(TextPlan { output })
+}
+
+fn plan_output(
+    version: ServiceContractVersion,
+    content: &str,
+    limit: usize,
+) -> Result<OutputPlan, ProviderFailure> {
+    let source_scalars = source_scalar_count(content)?;
+    Ok(OutputPlan {
+        version,
+        content: content.into(),
+        generated_scalars: source_scalars.min(limit),
         finish_reason: finish_reason(source_scalars, limit),
-        usage,
     })
 }
 
@@ -346,26 +437,40 @@ fn scalar_count(value: &str) -> Result<u64, ProviderFailure> {
 
 fn complete_outcome(
     evidence: ProviderAttemptEvidence,
-    plan: ChatPlan,
+    plan: GenerationPlan,
 ) -> Result<ProviderRawOutcome, ProviderFailure> {
     mark_response_started(&evidence)?;
+    let output = complete_output(plan.output())?;
+    let response = match plan {
+        GenerationPlan::Chat(plan) => ServiceResponse::Chat(ChatServiceResponse::new(
+            plan.output.version,
+            output,
+            plan.output.finish_reason,
+            plan.usage,
+        )),
+        GenerationPlan::Text(plan) => ServiceResponse::Text(TextServiceResponse::new(
+            plan.output.version,
+            output,
+            plan.output.finish_reason,
+        )),
+    };
+    Ok(ProviderRawOutcome::Complete(response))
+}
+
+fn complete_output(plan: &OutputPlan) -> Result<TextOutput, ProviderFailure> {
     let output: String = MOCK_PREFIX
         .chars()
         .chain(plan.content.chars())
         .take(plan.generated_scalars)
         .collect();
-    let output = TextOutput::new(&output).map_err(|_| response_limit())?;
-    let response = ChatServiceResponse::new(plan.version, output, plan.finish_reason, plan.usage);
-    Ok(ProviderRawOutcome::Complete(ServiceResponse::Chat(
-        response,
-    )))
+    TextOutput::new(&output).map_err(|_| response_limit())
 }
 
 fn stream_outcome(
     attempt: ProviderAttempt,
     limits: ProviderLimits,
     stream_executor: &StreamExecutor,
-    plan: ChatPlan,
+    plan: GenerationPlan,
 ) -> Result<ProviderRawOutcome, ProviderFailure> {
     let config = ProviderStreamConfig::new(MOCK_STREAM_CHANNEL_CAPACITY, limits)
         .map_err(|_| response_limit())?;
@@ -375,14 +480,7 @@ fn stream_outcome(
         bounded_provider_stream(config, attempt.evidence(), context.cancellation())
             .map_err(|_| failure(ProviderFailureClass::Internal))?;
     let mut sequence = 1_u64;
-    publish_next(
-        &publisher,
-        &context,
-        &mut sequence,
-        ProviderStreamEvent::ChatStarted {
-            version: plan.version,
-        },
-    )?;
+    publish_next(&publisher, &context, &mut sequence, plan.started_event())?;
     stream_executor.submit(StreamJob {
         publisher,
         context,
@@ -396,43 +494,28 @@ fn run_stream(
     publisher: ProviderStreamPublisher,
     context: StreamExecutionContext,
     mut sequence: u64,
-    plan: ChatPlan,
+    plan: GenerationPlan,
 ) {
-    if let Err(error) = publish_chat_stream(&publisher, &context, &mut sequence, &plan)
+    if let Err(error) = publish_generation_stream(&publisher, &context, &mut sequence, &plan)
         && publish_terminal_failure(&publisher, &context, sequence, error).is_err()
     {
         context.cancel();
     }
 }
 
-fn publish_chat_stream(
+fn publish_generation_stream(
     publisher: &ProviderStreamPublisher,
     context: &StreamExecutionContext,
     sequence: &mut u64,
-    plan: &ChatPlan,
+    plan: &GenerationPlan,
 ) -> Result<(), ProviderFailure> {
-    for_each_chat_delta(
+    for_each_delta(
         MOCK_PREFIX,
-        &plan.content,
-        plan.generated_scalars,
-        |delta| {
-            publish_next(
-                publisher,
-                context,
-                sequence,
-                ProviderStreamEvent::ChatDelta(delta),
-            )
-        },
+        &plan.output().content,
+        plan.output().generated_scalars,
+        |delta| publish_next(publisher, context, sequence, plan.delta_event(delta)),
     )?;
-    publish_next(
-        publisher,
-        context,
-        sequence,
-        ProviderStreamEvent::ChatCompleted {
-            finish_reason: plan.finish_reason,
-            usage: plan.usage,
-        },
-    )
+    publish_next(publisher, context, sequence, plan.completed_event())
 }
 
 fn publish_next(

@@ -37,5 +37,5 @@ mod provider;
 
 pub use provider::{
     DeterministicMockProvider, MAX_MOCK_STREAM_DELTA_BYTES, MOCK_PROVIDER_ID,
-    MOCK_PROVIDER_MODEL_ID,
+    MOCK_PROVIDER_MODEL_ID, MOCK_PROVIDER_TEXT_MODEL_ID,
 };

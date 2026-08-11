@@ -27,14 +27,14 @@
 //
 // SPDX-License-Identifier: LicenseRef-AHCL-1.0
 //
-//! UTF-8-safe deterministic chunking for mock chat output.
+//! UTF-8-safe deterministic chunking for mock text and chat output.
 
 use ariadnion_api_domain::TextDelta;
 use ariadnion_provider_sdk::{ProviderFailure, ProviderFailureClass};
 
 use crate::MAX_MOCK_STREAM_DELTA_BYTES;
 
-pub(crate) fn for_each_chat_delta(
+pub(crate) fn for_each_delta(
     prefix: &str,
     content: &str,
     scalar_limit: usize,
