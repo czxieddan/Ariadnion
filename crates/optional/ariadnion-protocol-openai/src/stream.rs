@@ -373,17 +373,24 @@ fn receive_until_ready(
             return (subscriber, StreamReceiveOutcome::RequestInactive);
         }
         let outcome = subscriber.receive_timeout(EVENT_RECEIVE_POLL);
-        if context.is_inactive() {
-            return (subscriber, StreamReceiveOutcome::RequestInactive);
+        if let Some(outcome) = classify_receive_outcome(context, outcome) {
+            return (subscriber, outcome);
         }
-        match outcome {
-            ReceiveOutcome::Event(event) => {
-                return (subscriber, StreamReceiveOutcome::Event(event));
-            }
-            ReceiveOutcome::TimedOut => {}
-            ReceiveOutcome::Closed => return (subscriber, StreamReceiveOutcome::Closed),
-            ReceiveOutcome::Cancelled => return (subscriber, StreamReceiveOutcome::Cancelled),
-        }
+    }
+}
+
+fn classify_receive_outcome(
+    context: &RequestContext,
+    outcome: ReceiveOutcome<ServiceStreamEvent>,
+) -> Option<StreamReceiveOutcome> {
+    if context.is_inactive() {
+        return Some(StreamReceiveOutcome::RequestInactive);
+    }
+    match outcome {
+        ReceiveOutcome::Event(event) => Some(StreamReceiveOutcome::Event(event)),
+        ReceiveOutcome::TimedOut => None,
+        ReceiveOutcome::Closed => Some(StreamReceiveOutcome::Closed),
+        ReceiveOutcome::Cancelled => Some(StreamReceiveOutcome::Cancelled),
     }
 }
 
