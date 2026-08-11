@@ -120,7 +120,13 @@ pub(super) async fn handle_request(
     protocol: &dyn HttpProtocolAdapter,
     request: Request<Body>,
 ) -> Response {
-    let generated = state.identity.issue();
+    let generated = match state.identity.issue() {
+        Ok(identity) => identity,
+        Err(error) => {
+            let identity = state.identity.fallback_identity();
+            return project_failure(protocol, ExecutionFailure::http(identity, error));
+        }
+    };
     let permit = match state.admission.clone().try_acquire_owned() {
         Ok(permit) => permit,
         Err(_) => return project_capacity_failure(protocol, generated),
