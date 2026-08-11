@@ -1,0 +1,89 @@
+// bundles/standard/src/lib.rs - Rust source for Ariadnion.
+//
+// Copyright (C) 2026 czxieddan
+//
+// This file is part of Ariadnion and is provided under version 1.0 of the
+// Aperip Heimdall Commons License (AHCL). The applicable version is also subject
+// to the AHCL provisions concerning Continuous AHCL Licensing Segments and
+// migration to later official versions.
+//
+// After having a reasonable opportunity to read AHCL, all applicable Additional
+// Restrictions, and all version notices, a person accepts the corresponding terms,
+// to the extent permitted by applicable law, by using, copying, modifying, building,
+// using this file as a dependency, deploying, distributing, or operating this file
+// over a network.
+//
+// Official AHCL English text and public notices: https://ahcl.aperip.com
+// Repository verbatim AHCL copy:                 AHCL/AHCL-1.0.md
+// Project canonical repository:                  https://github.com/czxieddan/Ariadnion
+// AHCL origin and project notice:                AHCL/AHCL-PROJECT-NOTICE.md
+// AHCL Version Adoption records:                 AHCL/AHCL-VERSION-ADOPTION.md
+// Complete Corresponding Source and history:     AHCL/AHCL-SOURCE.md
+// Dependencies, Referenced Materials, and licenses:
+//                                                   AHCL/AHCL-DEPENDENCIES.md
+// Additional Restrictions:                       Effective; both records apply:
+//                                                   AHCL/AHCL-RESTRICTIONS/ARIADNION-AR-2026-001.md (ARIADNION-AR-2026-001)
+//                                                   AHCL/AHCL-RESTRICTIONS/ARIADNION-AR-2026-002.md (ARIADNION-AR-2026-002)
+//
+// SPDX-License-Identifier: LicenseRef-AHCL-1.0
+//
+//! Reusable standard-bundle assembly boundaries.
+
+#![forbid(unsafe_code)]
+#![deny(missing_docs)]
+
+use std::sync::Arc;
+
+use ariadnion_api_domain::ModelSelector;
+use ariadnion_api_http::{HttpApiState, MonotonicRequestIdentityIssuer, ServiceAuthenticationPort};
+use ariadnion_core::{CancellationToken, CoreError, ErrorCode};
+use ariadnion_protocol_openai::{OpenAiChatCompletionsRouter, openai_chat_completions_router};
+use ariadnion_provider_dispatch::{
+    MonotonicAttemptIdIssuer, ProviderDispatcher, StaticProviderModelResolver,
+};
+use ariadnion_provider_mock::{DeterministicMockProvider, MOCK_PROVIDER_MODEL_ID};
+use ariadnion_provider_sdk::ProviderModelId;
+
+/// Assembles the standard bundle's bounded OpenAI-compatible mock loop.
+///
+/// The caller supplies the authentication port so the same static closure can be
+/// exercised by external contracts. The production entry injects the fail-closed
+/// unavailable authentication service until a durable authentication adapter is
+/// composed. Assembly creates no network, clock, randomness, or credential access.
+///
+/// # Errors
+///
+/// Returns a redacted internal error if a fixed selector, provider model, resolver,
+/// deterministic provider, or request identity issuer cannot be constructed.
+pub fn assemble_openai_mock_loop(
+    authentication: Arc<dyn ServiceAuthenticationPort>,
+) -> Result<OpenAiChatCompletionsRouter, CoreError> {
+    let selector = ModelSelector::new("mock-chat")
+        .map_err(|_| assembly_error("standard OpenAI selector is invalid"))?;
+    let model = ProviderModelId::new(MOCK_PROVIDER_MODEL_ID)
+        .map_err(|_| assembly_error("standard mock provider model is invalid"))?;
+    let resolver = StaticProviderModelResolver::new([(selector, model)])
+        .map_err(|_| assembly_error("standard model mapping is invalid"))?;
+    let provider = DeterministicMockProvider::new()
+        .map_err(|_| assembly_error("standard mock provider is unavailable"))?;
+    let dispatcher = Arc::new(ProviderDispatcher::new(
+        Arc::new(resolver),
+        Arc::new(MonotonicAttemptIdIssuer::new()),
+        Arc::new(provider),
+    ));
+    let identity = Arc::new(
+        MonotonicRequestIdentityIssuer::new()
+            .map_err(|_| assembly_error("standard request identity is unavailable"))?,
+    );
+    let state = HttpApiState::new(
+        identity,
+        authentication,
+        dispatcher,
+        CancellationToken::new(),
+    );
+    Ok(openai_chat_completions_router(state))
+}
+
+fn assembly_error(context: &'static str) -> CoreError {
+    CoreError::from_code(ErrorCode::Internal).with_internal_context(context)
+}
