@@ -32,6 +32,7 @@
 mod authentication;
 mod error;
 mod execution;
+mod identity;
 mod protocol;
 
 use std::future::Future;
@@ -63,6 +64,7 @@ use error::{
     ResponseFailure, domain_failure, failure as http_failure,
 };
 pub use execution::PresentedBearer;
+pub use identity::MonotonicRequestIdentityIssuer;
 pub use protocol::{
     HttpProtocolAdapter, HttpProtocolProjection, ProtocolBufferedResponse, ProtocolExecutionState,
     ProtocolFailure, ProtocolRequest, ProtocolRequestBody, ProtocolStreamResponse,
@@ -133,7 +135,19 @@ impl HttpRequestIdentity {
 /// Issues server-controlled request and trace identifiers without blocking.
 pub trait RequestIdentityPort: Send + Sync {
     /// Issues a fresh validated identity pair.
-    fn issue(&self) -> HttpRequestIdentity;
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable resource error when the bounded issuer is exhausted or
+    /// cannot construct a validated pair. The HTTP adapter does not admit,
+    /// parse, authenticate, or dispatch a request after this failure.
+    fn issue(&self) -> Result<HttpRequestIdentity, ApiHttpError>;
+
+    /// Returns a stable non-secret identity used only to project an issuance
+    /// failure. Implementations must keep this value independent of request
+    /// headers and credentials.
+    #[must_use]
+    fn fallback_identity(&self) -> HttpRequestIdentity;
 }
 
 /// Authenticates one public request against bounded Bearer material.
@@ -485,7 +499,12 @@ fn static_route_error(
     headers: &HeaderMap,
     code: ApiHttpErrorCode,
 ) -> Response {
-    let generated = state.identity.issue();
+    let generated = match state.identity.issue() {
+        Ok(identity) => identity,
+        Err(error) => {
+            return http_failure(state.identity.fallback_identity(), error).into_response();
+        }
+    };
     let identity = match execution::resolve_identity(generated.clone(), headers) {
         Ok(identity) => identity,
         Err(_) => generated,
