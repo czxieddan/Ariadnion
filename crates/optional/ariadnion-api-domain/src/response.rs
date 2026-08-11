@@ -29,11 +29,11 @@
 //
 //! Bounded values for complete service responses.
 
-use std::fmt::{self, Debug, Formatter};
-
 use crate::error::{ApiDomainError, invalid_argument, limit_exceeded};
 use crate::request::ServiceContractVersion;
 use crate::usage::TokenUsage;
+
+mod debug;
 
 /// Maximum encoded size of a complete text output in UTF-8 bytes.
 pub const MAX_TEXT_OUTPUT_BYTES: usize = 16_777_216;
@@ -61,15 +61,6 @@ impl TextOutput {
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
-    }
-}
-
-impl Debug for TextOutput {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("TextOutput")
-            .field("bytes", &self.0.len())
-            .finish_non_exhaustive()
     }
 }
 
