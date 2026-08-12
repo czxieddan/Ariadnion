@@ -64,21 +64,21 @@ ariadnion-storage-upgrade = { path = "../ariadnion-storage-upgrade" }
 ariadnion-user-domain = { path = "../ariadnion-user-domain" }
 ariadnion-user-service = { path = "../ariadnion-user-service" }
 hmac = "0.12.1"
-rnmdb-common = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "013ec2f48a1dab89997430d72c2b176be2c29d47", package = "rnmdb-common" }
-rnmdb-types = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "013ec2f48a1dab89997430d72c2b176be2c29d47", package = "rnmdb-types" }
-rnmdb-sql = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "013ec2f48a1dab89997430d72c2b176be2c29d47", package = "rnmdb-sql" }
-rnmdb-planner = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "013ec2f48a1dab89997430d72c2b176be2c29d47", package = "rnmdb-planner" }
-rnmdb-executor = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "013ec2f48a1dab89997430d72c2b176be2c29d47", package = "rnmdb-executor" }
-rnmdb-txn = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "013ec2f48a1dab89997430d72c2b176be2c29d47", package = "rnmdb-txn" }
-rnmdb-index = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "013ec2f48a1dab89997430d72c2b176be2c29d47", package = "rnmdb-index" }
-rnmdb-fts = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "013ec2f48a1dab89997430d72c2b176be2c29d47", package = "rnmdb-fts" }
-rnmdb-catalog = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "013ec2f48a1dab89997430d72c2b176be2c29d47", package = "rnmdb-catalog" }
-rnmdb-storage = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "013ec2f48a1dab89997430d72c2b176be2c29d47", package = "rnmdb-storage" }
-rnmdb-udf = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "013ec2f48a1dab89997430d72c2b176be2c29d47", package = "rnmdb-udf" }
-rnmdb-security = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "013ec2f48a1dab89997430d72c2b176be2c29d47", package = "rnmdb-security" }
-rnmdb-instance = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "013ec2f48a1dab89997430d72c2b176be2c29d47", package = "rnmdb-instance" }
-rnmdb-server = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "013ec2f48a1dab89997430d72c2b176be2c29d47", package = "rnmdb-server" }
-rnmdb-cli = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "013ec2f48a1dab89997430d72c2b176be2c29d47", package = "rnmdb-cli" }
+rnmdb-common = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "f20040a127a56ec8c37b3398283df36f024a1dd2", package = "rnmdb-common" }
+rnmdb-types = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "f20040a127a56ec8c37b3398283df36f024a1dd2", package = "rnmdb-types" }
+rnmdb-sql = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "f20040a127a56ec8c37b3398283df36f024a1dd2", package = "rnmdb-sql" }
+rnmdb-planner = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "f20040a127a56ec8c37b3398283df36f024a1dd2", package = "rnmdb-planner" }
+rnmdb-executor = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "f20040a127a56ec8c37b3398283df36f024a1dd2", package = "rnmdb-executor" }
+rnmdb-txn = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "f20040a127a56ec8c37b3398283df36f024a1dd2", package = "rnmdb-txn" }
+rnmdb-index = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "f20040a127a56ec8c37b3398283df36f024a1dd2", package = "rnmdb-index" }
+rnmdb-fts = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "f20040a127a56ec8c37b3398283df36f024a1dd2", package = "rnmdb-fts" }
+rnmdb-catalog = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "f20040a127a56ec8c37b3398283df36f024a1dd2", package = "rnmdb-catalog" }
+rnmdb-storage = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "f20040a127a56ec8c37b3398283df36f024a1dd2", package = "rnmdb-storage" }
+rnmdb-udf = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "f20040a127a56ec8c37b3398283df36f024a1dd2", package = "rnmdb-udf" }
+rnmdb-security = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "f20040a127a56ec8c37b3398283df36f024a1dd2", package = "rnmdb-security" }
+rnmdb-instance = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "f20040a127a56ec8c37b3398283df36f024a1dd2", package = "rnmdb-instance" }
+rnmdb-server = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "f20040a127a56ec8c37b3398283df36f024a1dd2", package = "rnmdb-server" }
+rnmdb-cli = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "f20040a127a56ec8c37b3398283df36f024a1dd2", package = "rnmdb-cli" }
 sha2 = "0.10.9"
 zeroize = "1.9.0"
 
