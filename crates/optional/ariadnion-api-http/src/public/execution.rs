@@ -301,7 +301,7 @@ fn complete_dispatch_response(
 ) -> Result<Response, ExecutionFailure> {
     let projected = request
         .projection
-        .project_complete(&request.identity, response)
+        .project_complete_cancellable(&request.identity, response, &request.context)
         .map_err(|failure| ExecutionFailure::new(request.identity.clone(), failure))?;
     let response = project_buffered_response(&request.identity, projected, false)
         .map_err(|failure| ExecutionFailure::new(request.identity.clone(), failure))?;

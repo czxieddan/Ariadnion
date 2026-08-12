@@ -355,6 +355,29 @@ pub trait HttpProtocolProjection: Send + Sync {
         response: ServiceResponse,
     ) -> Result<ProtocolBufferedResponse, ProtocolFailure>;
 
+    /// Projects a matching complete response while observing request lifetime.
+    ///
+    /// The default implementation checks cancellation and deadline immediately
+    /// before and after the existing finite projection. Implementations that do
+    /// substantial CPU work should override this method and check the supplied
+    /// context between bounded work units.
+    ///
+    /// # Errors
+    ///
+    /// Returns the projection failure, cancellation, or deadline expiry without
+    /// committing response bytes.
+    fn project_complete_cancellable(
+        &self,
+        identity: &HttpRequestIdentity,
+        response: ServiceResponse,
+        context: &RequestContext,
+    ) -> Result<ProtocolBufferedResponse, ProtocolFailure> {
+        context.check_active().map_err(ApiDomainError::from)?;
+        let projected = self.project_complete(identity, response)?;
+        context.check_active().map_err(ApiDomainError::from)?;
+        Ok(projected)
+    }
+
     /// Projects a matching service subscriber into an exact streaming response.
     ///
     /// The returned stream must remain non-buffering and observe the authenticated
