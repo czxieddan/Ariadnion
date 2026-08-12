@@ -286,6 +286,7 @@ impl ProviderAttempt {
             ServiceRequest::Text(request) => Some(request.response_mode()),
             ServiceRequest::Chat(request) => Some(request.response_mode()),
             ServiceRequest::Embedding(_) => Some(ResponseMode::Complete),
+            ServiceRequest::Image(_) => Some(ResponseMode::Complete),
             _ => None,
         }
     }
