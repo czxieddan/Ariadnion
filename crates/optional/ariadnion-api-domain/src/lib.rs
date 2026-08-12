@@ -57,10 +57,10 @@ pub use image::{
     MAX_IMAGE_PIXELS, MAX_IMAGE_PROMPT_BYTES,
 };
 pub use request::{
-    ChatServiceRequest, EmbeddingServiceRequest, IdempotencyKey, MAX_IDEMPOTENCY_KEY_BYTES,
-    MAX_MODEL_SELECTOR_BYTES, MAX_OUTPUT_TOKENS, MAX_TEXT_INPUT_BYTES, ModelSelector,
-    OutputTokenLimit, ResponseMode, ServiceContractVersion, ServiceRequest, ServiceRequestVersion,
-    TextInput, TextServiceRequest,
+    ChatServiceRequest, EmbeddingServiceRequest, IdempotencyKey, ImageOutputSpecification,
+    ImageServiceRequest, MAX_IDEMPOTENCY_KEY_BYTES, MAX_MODEL_SELECTOR_BYTES, MAX_OUTPUT_TOKENS,
+    MAX_TEXT_INPUT_BYTES, ModelSelector, OutputTokenLimit, ResponseMode, ServiceContractVersion,
+    ServiceRequest, ServiceRequestVersion, TextInput, TextServiceRequest,
 };
 pub use response::{
     ChatServiceResponse, EmbeddingServiceResponse, FinishReason, MAX_TEXT_OUTPUT_BYTES,

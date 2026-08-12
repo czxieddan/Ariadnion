@@ -34,6 +34,7 @@ mod debug;
 use crate::chat::ChatMessages;
 use crate::embedding::EmbeddingInputs;
 use crate::error::{ApiDomainError, ApiDomainErrorCode, invalid_argument, limit_exceeded};
+use crate::image::{ImageCount, ImageDimensions, ImageMediaType, ImagePrompt};
 
 /// Maximum encoded size of a model selector in UTF-8 bytes.
 pub const MAX_MODEL_SELECTOR_BYTES: usize = 256;
@@ -187,6 +188,48 @@ pub enum ResponseMode {
     Complete,
     /// Deliver response events incrementally through a separate stream port.
     Stream,
+}
+
+/// Complete-only output requirements for one image-generation request.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct ImageOutputSpecification {
+    count: ImageCount,
+    dimensions: ImageDimensions,
+    media_type: ImageMediaType,
+}
+
+impl ImageOutputSpecification {
+    /// Creates output requirements from already validated image values.
+    #[must_use]
+    pub const fn new(
+        count: ImageCount,
+        dimensions: ImageDimensions,
+        media_type: ImageMediaType,
+    ) -> Self {
+        Self {
+            count,
+            dimensions,
+            media_type,
+        }
+    }
+
+    /// Returns the requested number of generated images.
+    #[must_use]
+    pub const fn count(self) -> ImageCount {
+        self.count
+    }
+
+    /// Returns the requested dimensions for each generated image.
+    #[must_use]
+    pub const fn dimensions(self) -> ImageDimensions {
+        self.dimensions
+    }
+
+    /// Returns the requested encoded media type.
+    #[must_use]
+    pub const fn media_type(self) -> ImageMediaType {
+        self.media_type
+    }
 }
 
 /// A fully validated request for a text service.
@@ -389,6 +432,70 @@ impl EmbeddingServiceRequest {
     }
 }
 
+/// A fully validated request for complete-only image generation.
+#[derive(Clone, Eq, PartialEq)]
+pub struct ImageServiceRequest {
+    version: ServiceContractVersion,
+    model: ModelSelector,
+    prompt: ImagePrompt,
+    output_specification: ImageOutputSpecification,
+    idempotency_key: Option<IdempotencyKey>,
+}
+
+impl ImageServiceRequest {
+    /// Creates an image request from validated, transport-neutral values.
+    ///
+    /// Provider quality controls, style controls, seeds, response encodings,
+    /// request identifiers, principals, deadlines, cancellation handles, and
+    /// trace state remain outside this value.
+    #[must_use]
+    pub const fn new(
+        version: ServiceContractVersion,
+        model: ModelSelector,
+        prompt: ImagePrompt,
+        output_specification: ImageOutputSpecification,
+        idempotency_key: Option<IdempotencyKey>,
+    ) -> Self {
+        Self {
+            version,
+            model,
+            prompt,
+            output_specification,
+            idempotency_key,
+        }
+    }
+
+    /// Returns the request contract version.
+    #[must_use]
+    pub const fn version(&self) -> ServiceContractVersion {
+        self.version
+    }
+
+    /// Returns the provider-independent model selector.
+    #[must_use]
+    pub const fn model(&self) -> &ModelSelector {
+        &self.model
+    }
+
+    /// Returns the validated image prompt.
+    #[must_use]
+    pub const fn prompt(&self) -> &ImagePrompt {
+        &self.prompt
+    }
+
+    /// Returns the complete-only output requirements.
+    #[must_use]
+    pub const fn output_specification(&self) -> ImageOutputSpecification {
+        self.output_specification
+    }
+
+    /// Returns the optional idempotency key.
+    #[must_use]
+    pub const fn idempotency_key(&self) -> Option<&IdempotencyKey> {
+        self.idempotency_key.as_ref()
+    }
+}
+
 /// A transport-neutral service request accepted by the public service layer.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -399,6 +506,8 @@ pub enum ServiceRequest {
     Chat(ChatServiceRequest),
     /// An ordered complete-only embedding request.
     Embedding(EmbeddingServiceRequest),
+    /// A bounded complete-only image-generation request.
+    Image(ImageServiceRequest),
 }
 
 fn validate_model_selector(value: &str) -> Result<(), ApiDomainError> {

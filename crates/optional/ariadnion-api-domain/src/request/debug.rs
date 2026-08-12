@@ -32,7 +32,8 @@
 use std::fmt::{self, Debug, Formatter};
 
 use super::{
-    ChatServiceRequest, EmbeddingServiceRequest, IdempotencyKey, TextInput, TextServiceRequest,
+    ChatServiceRequest, EmbeddingServiceRequest, IdempotencyKey, ImageServiceRequest, TextInput,
+    TextServiceRequest,
 };
 
 impl Debug for IdempotencyKey {
@@ -88,6 +89,19 @@ impl Debug for EmbeddingServiceRequest {
             .field("version", &self.version)
             .field("model", &self.model)
             .field("inputs", &self.inputs)
+            .field("idempotency_key", &self.idempotency_key)
+            .finish()
+    }
+}
+
+impl Debug for ImageServiceRequest {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ImageServiceRequest")
+            .field("version", &self.version)
+            .field("model", &self.model)
+            .field("prompt", &self.prompt)
+            .field("output_specification", &self.output_specification)
             .field("idempotency_key", &self.idempotency_key)
             .finish()
     }
