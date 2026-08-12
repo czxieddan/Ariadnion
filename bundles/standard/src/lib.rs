@@ -35,13 +35,19 @@
 use std::sync::Arc;
 
 use ariadnion_api_domain::ModelSelector;
-use ariadnion_api_http::{HttpApiState, MonotonicRequestIdentityIssuer, ServiceAuthenticationPort};
+use ariadnion_api_http::{
+    HttpApiState, MonotonicRequestIdentityIssuer, PublicApiRouter, ServiceAuthenticationPort,
+    public_router,
+};
+use ariadnion_api_stream::SseBridge;
 use ariadnion_core::{CancellationToken, CoreError, ErrorCode};
 use ariadnion_protocol_openai::{OpenAiChatCompletionsRouter, openai_chat_completions_router};
 use ariadnion_provider_dispatch::{
     MonotonicAttemptIdIssuer, ProviderDispatcher, StaticProviderModelResolver,
 };
-use ariadnion_provider_mock::{DeterministicMockProvider, MOCK_PROVIDER_MODEL_ID};
+use ariadnion_provider_mock::{
+    DeterministicMockProvider, MOCK_PROVIDER_MODEL_ID, MOCK_PROVIDER_TEXT_MODEL_ID,
+};
 use ariadnion_provider_sdk::{ProviderModelId, ProviderPort};
 
 /// Assembles the standard bundle's bounded OpenAI-compatible mock loop.
@@ -101,6 +107,49 @@ pub fn assemble_openai_mock_loop_with_provider(
         CancellationToken::new(),
     );
     Ok(openai_chat_completions_router(state))
+}
+
+/// Assembles the standard bundle's Ariadnion-native text mock loop.
+///
+/// The caller supplies the authentication port. The bundle owns the fixed
+/// `mock-text` to `mock-text-v1` mapping, request and attempt identities,
+/// checked provider dispatch, cancellation, and bounded native SSE bridge.
+/// Assembly performs no provider call or external I/O.
+///
+/// # Errors
+///
+/// Returns a redacted internal error if the deterministic provider, fixed model
+/// mapping, or request identity issuer cannot be constructed.
+pub fn assemble_native_text_mock_loop(
+    authentication: Arc<dyn ServiceAuthenticationPort>,
+) -> Result<PublicApiRouter, CoreError> {
+    let provider = Arc::new(
+        DeterministicMockProvider::new()
+            .map_err(|_| assembly_error("standard native mock provider is unavailable"))?,
+    );
+    let selector = ModelSelector::new("mock-text")
+        .map_err(|_| assembly_error("standard native selector is invalid"))?;
+    let model = ProviderModelId::new(MOCK_PROVIDER_TEXT_MODEL_ID)
+        .map_err(|_| assembly_error("standard native provider model is invalid"))?;
+    let resolver = StaticProviderModelResolver::new([(selector, model)])
+        .map_err(|_| assembly_error("standard native model mapping is invalid"))?;
+    let dispatcher = Arc::new(ProviderDispatcher::new(
+        Arc::new(resolver),
+        Arc::new(MonotonicAttemptIdIssuer::new()),
+        provider,
+    ));
+    let identity = Arc::new(
+        MonotonicRequestIdentityIssuer::new()
+            .map_err(|_| assembly_error("standard native request identity is unavailable"))?,
+    );
+    let state = HttpApiState::new(
+        identity,
+        authentication,
+        dispatcher,
+        CancellationToken::new(),
+    )
+    .with_stream_bridge(Arc::new(SseBridge::default()));
+    Ok(public_router(state))
 }
 
 fn assembly_error(context: &'static str) -> CoreError {
