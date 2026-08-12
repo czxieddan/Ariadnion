@@ -51,9 +51,10 @@ pub use embedding::{
 };
 pub use error::{ApiDomainError, ApiDomainErrorCode};
 pub use request::{
-    ChatServiceRequest, IdempotencyKey, MAX_IDEMPOTENCY_KEY_BYTES, MAX_MODEL_SELECTOR_BYTES,
-    MAX_OUTPUT_TOKENS, MAX_TEXT_INPUT_BYTES, ModelSelector, OutputTokenLimit, ResponseMode,
-    ServiceContractVersion, ServiceRequest, ServiceRequestVersion, TextInput, TextServiceRequest,
+    ChatServiceRequest, EmbeddingServiceRequest, IdempotencyKey, MAX_IDEMPOTENCY_KEY_BYTES,
+    MAX_MODEL_SELECTOR_BYTES, MAX_OUTPUT_TOKENS, MAX_TEXT_INPUT_BYTES, ModelSelector,
+    OutputTokenLimit, ResponseMode, ServiceContractVersion, ServiceRequest, ServiceRequestVersion,
+    TextInput, TextServiceRequest,
 };
 pub use response::{
     ChatServiceResponse, FinishReason, MAX_TEXT_OUTPUT_BYTES, ServiceResponse, TextOutput,

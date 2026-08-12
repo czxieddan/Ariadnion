@@ -32,6 +32,7 @@
 mod debug;
 
 use crate::chat::ChatMessages;
+use crate::embedding::EmbeddingInputs;
 use crate::error::{ApiDomainError, ApiDomainErrorCode, invalid_argument, limit_exceeded};
 
 /// Maximum encoded size of a model selector in UTF-8 bytes.
@@ -333,6 +334,61 @@ impl ChatServiceRequest {
     }
 }
 
+/// A fully validated request for non-streaming embedding generation.
+#[derive(Clone, Eq, PartialEq)]
+pub struct EmbeddingServiceRequest {
+    version: ServiceContractVersion,
+    model: ModelSelector,
+    inputs: EmbeddingInputs,
+    idempotency_key: Option<IdempotencyKey>,
+}
+
+impl EmbeddingServiceRequest {
+    /// Creates an embedding request from validated, transport-neutral values.
+    ///
+    /// Embedding responses are complete-only. Request identifiers, principals,
+    /// deadlines, cancellation handles, trace state, provider dimensions, and
+    /// protocol encoding options remain outside this value.
+    #[must_use]
+    pub const fn new(
+        version: ServiceContractVersion,
+        model: ModelSelector,
+        inputs: EmbeddingInputs,
+        idempotency_key: Option<IdempotencyKey>,
+    ) -> Self {
+        Self {
+            version,
+            model,
+            inputs,
+            idempotency_key,
+        }
+    }
+
+    /// Returns the request contract version.
+    #[must_use]
+    pub const fn version(&self) -> ServiceContractVersion {
+        self.version
+    }
+
+    /// Returns the provider-independent model selector.
+    #[must_use]
+    pub const fn model(&self) -> &ModelSelector {
+        &self.model
+    }
+
+    /// Returns the ordered embedding inputs.
+    #[must_use]
+    pub const fn inputs(&self) -> &EmbeddingInputs {
+        &self.inputs
+    }
+
+    /// Returns the optional idempotency key.
+    #[must_use]
+    pub const fn idempotency_key(&self) -> Option<&IdempotencyKey> {
+        self.idempotency_key.as_ref()
+    }
+}
+
 /// A transport-neutral service request accepted by the public service layer.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -341,6 +397,8 @@ pub enum ServiceRequest {
     Text(TextServiceRequest),
     /// A bounded role-preserving chat request.
     Chat(ChatServiceRequest),
+    /// An ordered complete-only embedding request.
+    Embedding(EmbeddingServiceRequest),
 }
 
 fn validate_model_selector(value: &str) -> Result<(), ApiDomainError> {

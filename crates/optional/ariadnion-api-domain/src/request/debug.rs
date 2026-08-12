@@ -31,7 +31,9 @@
 
 use std::fmt::{self, Debug, Formatter};
 
-use super::{ChatServiceRequest, IdempotencyKey, TextInput, TextServiceRequest};
+use super::{
+    ChatServiceRequest, EmbeddingServiceRequest, IdempotencyKey, TextInput, TextServiceRequest,
+};
 
 impl Debug for IdempotencyKey {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
@@ -74,6 +76,18 @@ impl Debug for ChatServiceRequest {
             .field("messages", &self.messages)
             .field("output_token_limit", &self.output_token_limit)
             .field("response_mode", &self.response_mode)
+            .field("idempotency_key", &self.idempotency_key)
+            .finish()
+    }
+}
+
+impl Debug for EmbeddingServiceRequest {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("EmbeddingServiceRequest")
+            .field("version", &self.version)
+            .field("model", &self.model)
+            .field("inputs", &self.inputs)
             .field("idempotency_key", &self.idempotency_key)
             .finish()
     }
