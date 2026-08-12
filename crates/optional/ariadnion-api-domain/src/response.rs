@@ -29,6 +29,7 @@
 //
 //! Bounded values for complete service responses.
 
+use crate::embedding::EmbeddingVectors;
 use crate::error::{ApiDomainError, invalid_argument, limit_exceeded};
 use crate::request::ServiceContractVersion;
 use crate::usage::TokenUsage;
@@ -169,6 +170,56 @@ impl ChatServiceResponse {
     }
 }
 
+/// A complete response from an embedding service.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EmbeddingServiceResponse {
+    version: ServiceContractVersion,
+    vectors: EmbeddingVectors,
+    usage: TokenUsage,
+}
+
+impl EmbeddingServiceResponse {
+    /// Creates a complete embedding response with input-only token usage.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ApiDomainErrorCode::InvalidArgument`] when usage
+    /// reports generated output tokens. Embeddings consume input tokens but do
+    /// not generate text tokens.
+    pub fn new(
+        version: ServiceContractVersion,
+        vectors: EmbeddingVectors,
+        usage: TokenUsage,
+    ) -> Result<Self, ApiDomainError> {
+        if usage.output_tokens() != 0 {
+            return Err(invalid_argument());
+        }
+        Ok(Self {
+            version,
+            vectors,
+            usage,
+        })
+    }
+
+    /// Returns the service contract version.
+    #[must_use]
+    pub const fn version(&self) -> ServiceContractVersion {
+        self.version
+    }
+
+    /// Returns ordered vectors correlated to the request inputs.
+    #[must_use]
+    pub const fn vectors(&self) -> &EmbeddingVectors {
+        &self.vectors
+    }
+
+    /// Returns checked input-only token usage.
+    #[must_use]
+    pub const fn usage(&self) -> TokenUsage {
+        self.usage
+    }
+}
+
 /// A complete transport-neutral service response.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -177,6 +228,8 @@ pub enum ServiceResponse {
     Text(TextServiceResponse),
     /// A complete bounded chat response.
     Chat(ChatServiceResponse),
+    /// A complete ordered embedding response.
+    Embedding(EmbeddingServiceResponse),
 }
 
 fn validate_text_output(value: &str) -> Result<(), ApiDomainError> {

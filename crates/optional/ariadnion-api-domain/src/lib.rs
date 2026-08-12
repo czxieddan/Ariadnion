@@ -57,8 +57,8 @@ pub use request::{
     TextInput, TextServiceRequest,
 };
 pub use response::{
-    ChatServiceResponse, FinishReason, MAX_TEXT_OUTPUT_BYTES, ServiceResponse, TextOutput,
-    TextServiceResponse,
+    ChatServiceResponse, EmbeddingServiceResponse, FinishReason, MAX_TEXT_OUTPUT_BYTES,
+    ServiceResponse, TextOutput, TextServiceResponse,
 };
 pub use stream::{
     ChatStreamEvent, MAX_TEXT_DELTA_BYTES, ServiceStreamEvent, TextDelta, TextStreamEvent,
