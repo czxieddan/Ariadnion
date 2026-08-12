@@ -36,8 +36,8 @@ use ariadnion_api_dispatch::{
     BoxServiceDispatchFuture, ServiceDispatchOutcome, ServiceDispatchPort,
 };
 use ariadnion_api_domain::{
-    ApiDomainError, ChatServiceRequest, ModelSelector, ResponseMode, ServiceRequest,
-    ServiceResponse, TextServiceRequest,
+    ApiDomainError, ChatServiceRequest, EmbeddingServiceRequest, ModelSelector, ResponseMode,
+    ServiceRequest, ServiceResponse, TextServiceRequest,
 };
 use ariadnion_core::{AttemptId, RequestContext};
 use ariadnion_principal_binding::AuthenticatedPrincipalEvidence;
@@ -117,7 +117,7 @@ impl ProviderDispatcher {
         context: &RequestContext,
     ) -> Result<ServiceDispatchOutcome, ApiDomainError> {
         let PreparedAttempt {
-            kind,
+            delivery,
             attempt,
             relay_permit,
         } = self.prepare_attempt(request, evidence, context)?;
@@ -126,7 +126,7 @@ impl ProviderDispatcher {
         let outcome = self.provider.call(attempt).await;
         project_outcome(
             outcome,
-            kind,
+            delivery,
             &attempt_context,
             relay_permit,
             &self.relay_manager,
@@ -140,15 +140,15 @@ impl ProviderDispatcher {
         context: &RequestContext,
     ) -> Result<PreparedAttempt, ApiDomainError> {
         validate_authenticated_context(evidence, context)?;
-        let (kind, mode, model) = self.resolve_admitted_model(&request, context)?;
+        let (delivery, model) = self.resolve_admitted_model(&request, context)?;
         context.check_active().map_err(ApiDomainError::from)?;
-        let relay_permit = self.reserve_relay(mode)?;
+        let relay_permit = self.reserve_relay(delivery)?;
         context.check_active().map_err(ApiDomainError::from)?;
         let attempt_id = self.issue_checked_attempt_id()?;
         context.check_active().map_err(ApiDomainError::from)?;
         let attempt = ProviderAttempt::new(attempt_id, model, request, context);
         Ok(PreparedAttempt {
-            kind,
+            delivery,
             attempt,
             relay_permit,
         })
@@ -163,22 +163,21 @@ impl ProviderDispatcher {
         &self,
         request: &ServiceRequest,
         context: &RequestContext,
-    ) -> Result<(ServiceKind, ResponseMode, ProviderModelId), ApiDomainError> {
-        let (kind, mode, model) = {
+    ) -> Result<(DeliveryKind, ProviderModelId), ApiDomainError> {
+        let (delivery, model) = {
             let admission = RequestAdmission::from_request(request)?;
             let model = self.resolver.resolve_model(admission.selector)?;
             context.check_active().map_err(ApiDomainError::from)?;
             validate_provider(self.provider.descriptor(), admission, &model)?;
-            (admission.kind, admission.mode, model)
+            (admission.delivery, model)
         };
-        Ok((kind, mode, model))
+        Ok((delivery, model))
     }
 
-    fn reserve_relay(&self, mode: ResponseMode) -> Result<Option<RelayPermit>, ApiDomainError> {
-        match mode {
-            ResponseMode::Complete => Ok(None),
-            ResponseMode::Stream => self.relay_manager.try_acquire().map(Some),
-            _ => Err(internal_error()),
+    fn reserve_relay(&self, delivery: DeliveryKind) -> Result<Option<RelayPermit>, ApiDomainError> {
+        match delivery {
+            DeliveryKind::Complete(_) => Ok(None),
+            DeliveryKind::Stream(_) => self.relay_manager.try_acquire().map(Some),
         }
     }
 }
@@ -206,17 +205,30 @@ pub(crate) enum ServiceKind {
     Chat,
 }
 
+#[derive(Clone, Copy)]
+enum CompleteKind {
+    Text,
+    Chat,
+    Embedding { expected_inputs: usize },
+}
+
+#[derive(Clone, Copy)]
+enum DeliveryKind {
+    Complete(CompleteKind),
+    Stream(ServiceKind),
+}
+
 struct PreparedAttempt {
-    kind: ServiceKind,
+    delivery: DeliveryKind,
     attempt: ProviderAttempt,
     relay_permit: Option<RelayPermit>,
 }
 
 #[derive(Clone, Copy)]
 struct RequestAdmission<'a> {
-    kind: ServiceKind,
+    delivery: DeliveryKind,
+    required_capability: ProviderCapability,
     selector: &'a ModelSelector,
-    mode: ResponseMode,
     bounded_bytes: usize,
 }
 
@@ -225,6 +237,7 @@ impl<'a> RequestAdmission<'a> {
         match request {
             ServiceRequest::Text(request) => text_admission(request),
             ServiceRequest::Chat(request) => chat_admission(request),
+            ServiceRequest::Embedding(request) => embedding_admission(request),
             _ => Err(internal_error()),
         }
     }
@@ -251,9 +264,9 @@ fn text_admission(request: &TextServiceRequest) -> Result<RequestAdmission<'_>, 
         idempotency_bytes(request.idempotency_key()),
     ])?;
     Ok(RequestAdmission {
-        kind: ServiceKind::Text,
+        delivery: generation_delivery(ServiceKind::Text, request.response_mode())?,
+        required_capability: ProviderCapability::TextGeneration,
         selector: request.model(),
-        mode: request.response_mode(),
         bounded_bytes,
     })
 }
@@ -266,11 +279,43 @@ fn chat_admission(request: &ChatServiceRequest) -> Result<RequestAdmission<'_>, 
         idempotency_bytes(request.idempotency_key()),
     ])?;
     Ok(RequestAdmission {
-        kind: ServiceKind::Chat,
+        delivery: generation_delivery(ServiceKind::Chat, request.response_mode())?,
+        required_capability: ProviderCapability::TextGeneration,
         selector: request.model(),
-        mode: request.response_mode(),
         bounded_bytes,
     })
+}
+
+fn embedding_admission(
+    request: &EmbeddingServiceRequest,
+) -> Result<RequestAdmission<'_>, ApiDomainError> {
+    let expected_inputs = request.inputs().len();
+    let bounded_bytes = checked_byte_sum(&[
+        request.model().as_str().len(),
+        request.inputs().total_bytes(),
+        expected_inputs,
+        idempotency_bytes(request.idempotency_key()),
+    ])?;
+    Ok(RequestAdmission {
+        delivery: DeliveryKind::Complete(CompleteKind::Embedding { expected_inputs }),
+        required_capability: ProviderCapability::Embeddings,
+        selector: request.model(),
+        bounded_bytes,
+    })
+}
+
+fn generation_delivery(
+    kind: ServiceKind,
+    mode: ResponseMode,
+) -> Result<DeliveryKind, ApiDomainError> {
+    match mode {
+        ResponseMode::Complete => Ok(DeliveryKind::Complete(match kind {
+            ServiceKind::Text => CompleteKind::Text,
+            ServiceKind::Chat => CompleteKind::Chat,
+        })),
+        ResponseMode::Stream => Ok(DeliveryKind::Stream(kind)),
+        _ => Err(internal_error()),
+    }
 }
 
 fn idempotency_bytes(key: Option<&ariadnion_api_domain::IdempotencyKey>) -> usize {
@@ -290,7 +335,11 @@ fn validate_provider(
     admission: RequestAdmission<'_>,
     model: &ProviderModelId,
 ) -> Result<(), ApiDomainError> {
-    validate_capabilities(descriptor, admission.mode)?;
+    validate_capabilities(
+        descriptor,
+        admission.required_capability,
+        admission.delivery,
+    )?;
     let request_bytes = admission
         .bounded_bytes
         .checked_add(model.as_str().len())
@@ -303,13 +352,14 @@ fn validate_provider(
 
 fn validate_capabilities(
     descriptor: &ProviderDescriptor,
-    mode: ResponseMode,
+    required: ProviderCapability,
+    delivery: DeliveryKind,
 ) -> Result<(), ApiDomainError> {
     let capabilities = descriptor.capabilities();
-    if !capabilities.contains(ProviderCapability::TextGeneration) {
+    if !capabilities.contains(required) {
         return Err(unavailable_error());
     }
-    if matches!(mode, ResponseMode::Stream)
+    if matches!(delivery, DeliveryKind::Stream(_))
         && !capabilities.contains(ProviderCapability::TextStreaming)
     {
         return Err(unavailable_error());
@@ -319,16 +369,20 @@ fn validate_capabilities(
 
 fn project_outcome(
     outcome: ProviderAttemptOutcome,
-    kind: ServiceKind,
+    delivery: DeliveryKind,
     attempt_context: &RequestContext,
     relay_permit: Option<RelayPermit>,
     relay_manager: &RelayManager,
 ) -> Result<ServiceDispatchOutcome, ApiDomainError> {
-    match (outcome, relay_permit) {
-        (ProviderAttemptOutcome::Complete { response, .. }, None) => {
+    match (outcome, delivery, relay_permit) {
+        (ProviderAttemptOutcome::Complete { response, .. }, DeliveryKind::Complete(kind), None) => {
             project_complete_response(kind, response, attempt_context)
         }
-        (ProviderAttemptOutcome::Stream { stream, .. }, Some(permit)) => {
+        (
+            ProviderAttemptOutcome::Stream { stream, .. },
+            DeliveryKind::Stream(kind),
+            Some(permit),
+        ) => {
             attempt_context
                 .check_active()
                 .map_err(ApiDomainError::from)?;
@@ -336,7 +390,7 @@ fn project_outcome(
                 .start(stream, kind, attempt_context.clone(), permit)
                 .map(ServiceDispatchOutcome::Stream)
         }
-        (ProviderAttemptOutcome::Failed { failure, .. }, _) => {
+        (ProviderAttemptOutcome::Failed { failure, .. }, _, _) => {
             Err(project_provider_failure(failure))
         }
         _ => Err(internal_error()),
@@ -344,7 +398,7 @@ fn project_outcome(
 }
 
 fn project_complete_response(
-    kind: ServiceKind,
+    kind: CompleteKind,
     response: ServiceResponse,
     attempt_context: &RequestContext,
 ) -> Result<ServiceDispatchOutcome, ApiDomainError> {
@@ -357,10 +411,13 @@ fn project_complete_response(
     Ok(ServiceDispatchOutcome::Complete(response))
 }
 
-fn response_matches(kind: ServiceKind, response: &ServiceResponse) -> bool {
-    matches!(
-        (kind, response),
-        (ServiceKind::Text, ServiceResponse::Text(_))
-            | (ServiceKind::Chat, ServiceResponse::Chat(_))
-    )
+fn response_matches(kind: CompleteKind, response: &ServiceResponse) -> bool {
+    match (kind, response) {
+        (CompleteKind::Text, ServiceResponse::Text(_))
+        | (CompleteKind::Chat, ServiceResponse::Chat(_)) => true,
+        (CompleteKind::Embedding { expected_inputs }, ServiceResponse::Embedding(response)) => {
+            response.vectors().len() == expected_inputs
+        }
+        _ => false,
+    }
 }
