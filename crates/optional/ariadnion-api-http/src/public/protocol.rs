@@ -447,6 +447,7 @@ fn validate_request_mode(
     let actual = match request {
         ServiceRequest::Text(request) => request.response_mode(),
         ServiceRequest::Chat(request) => request.response_mode(),
+        ServiceRequest::Embedding(_) => ResponseMode::Complete,
         _ => return Err(internal_failure()),
     };
     if actual != declared {

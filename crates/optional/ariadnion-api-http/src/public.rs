@@ -27,9 +27,10 @@
 //
 // SPDX-License-Identifier: LicenseRef-AHCL-1.0
 //
-//! Axum ingress and native text projection over shared protocol execution.
+//! Axum ingress and native service projection over shared protocol execution.
 
 mod authentication;
+mod embedding;
 mod error;
 mod execution;
 mod identity;
@@ -246,12 +247,13 @@ pub type PublicApiRouter = Router;
 
 /// Builds the bounded version-one Ariadnion-native public HTTP router.
 ///
-/// POST /v1/text accepts strict JSON with application/json media type and one
-/// bounded Bearer authorization field. A validated request ID, absolute UTC
-/// deadline, and idempotency key are propagated when present. Header, body,
-/// credential, deadline-window, and aggregate in-flight limits are shared with
-/// every external protocol route. Complete responses and failures retain their
-/// stable native bytes and headers.
+/// POST /v1/text and POST /v1/embeddings accept strict JSON with
+/// application/json media type and one bounded Bearer authorization field.
+/// Embedding requests use complete delivery only. A validated request ID,
+/// absolute UTC deadline, and idempotency key are propagated when present.
+/// Header, body, credential, deadline-window, and aggregate in-flight limits
+/// are shared with every external protocol route. Complete responses and
+/// failures retain their stable native bytes and headers.
 ///
 /// Handler drop and timeout cancel the request child token. Authentication and
 /// dispatch ports receive the same deadline and cancellation context and must
@@ -259,6 +261,7 @@ pub type PublicApiRouter = Router;
 pub fn public_router(state: HttpApiState) -> PublicApiRouter {
     Router::new()
         .route("/v1/text", post(handle_text))
+        .route("/v1/embeddings", post(embedding::handle_embeddings))
         .fallback(not_found)
         .method_not_allowed_fallback(method_not_allowed)
         .with_state(state)
