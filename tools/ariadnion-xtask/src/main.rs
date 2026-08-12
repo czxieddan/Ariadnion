@@ -21,9 +21,8 @@
 // Complete Corresponding Source and history:     AHCL/AHCL-SOURCE.md
 // Dependencies, Referenced Materials, and licenses:
 //                                                   AHCL/AHCL-DEPENDENCIES.md
-// Additional Restrictions:                       Effective; both records apply:
+// Additional Restrictions:                       Effective; one record applies:
 //                                                   AHCL/AHCL-RESTRICTIONS/ARIADNION-AR-2026-001.md (ARIADNION-AR-2026-001)
-//                                                   AHCL/AHCL-RESTRICTIONS/ARIADNION-AR-2026-002.md (ARIADNION-AR-2026-002)
 //
 // SPDX-License-Identifier: LicenseRef-AHCL-1.0
 //
@@ -45,11 +44,11 @@ const MAX_POLICY_BYTES: u64 = 65_536;
 const MAX_LOCK_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_LOCK_FILES: usize = 512;
 const FIRST_PARTY_LICENSE: &str = "LicenseRef-AHCL-1.0";
-const RNMDB_AUTHORIZATION: &str = "special-commercial-authorization-from-project-owner";
-const RNMDB_AUTHORIZATION_SCOPE: &str = "ariadnion-and-reasonable-functional-forks";
-const RNMDB_AUTHORIZATION_NOTICE: &str = "AHCL/AHCL-SPECIAL-AUTHORIZATIONS.md";
+const RNMDB_SELECTED_LICENSE: &str = "LicenseRef-AHCL-1.0";
+const RNMDB_LICENSE_COPY: &str = "AHCL/AHCL-1.0.md";
+const RNMDB_ADDITIONAL_RESTRICTIONS: &str = "none";
 const RNMDB_REPOSITORY: &str = "https://github.com/czxieddan/RNovModularDB.git";
-const RNMDB_COMMIT: &str = "013ec2f48a1dab89997430d72c2b176be2c29d47";
+const RNMDB_COMMIT: &str = "f20040a127a56ec8c37b3398283df36f024a1dd2";
 const RNMDB_PACKAGE_PREFIX: &str = "rnmdb-";
 const RNMDB_PACKAGES: [&str; 15] = [
     "rnmdb-catalog",
@@ -68,37 +67,6 @@ const RNMDB_PACKAGES: [&str; 15] = [
     "rnmdb-types",
     "rnmdb-udf",
 ];
-const RNMDB_AUTHORIZATION_NOTICE_TEXT: &str = r#"# Ariadnion Special Authorization Information
-
-## RNovModularDB dependency authorization
-
-The RNovModularDB packages fixed by Ariadnion's dependency policy are used under special commercial authorization from the RNovModularDB project owner. RNMDB is not treated as AGPL for this project. The authorization is limited to the recorded repository, commit, and package set, and to Ariadnion itself plus forks or extensions that retain and provide a material part of Ariadnion's service-gateway or operations-platform functionality. It excludes unrelated projects, products, and services and standalone or general-purpose RNMDB reuse.
-
-The following record is the complete public boundary of this dependency authorization. No other text in this notice broadens it.
-
-```text
-record=ariadnion-rnmdb-authorization-boundary-v1
-authorization=special-commercial-authorization-from-project-owner
-license_basis=special-commercial-authorization-from-project-owner-not-AGPL
-repository=https://github.com/czxieddan/RNovModularDB.git
-commit=013ec2f48a1dab89997430d72c2b176be2c29d47
-package_prefix=rnmdb-
-packages=rnmdb-common,rnmdb-types,rnmdb-sql,rnmdb-planner,rnmdb-executor,rnmdb-txn,rnmdb-index,rnmdb-fts,rnmdb-catalog,rnmdb-storage,rnmdb-udf,rnmdb-security,rnmdb-instance,rnmdb-server,rnmdb-cli
-scope=ariadnion-and-reasonable-functional-forks
-included_scope=ariadnion-and-forks-or-extensions-retaining-material-ariadnion-service-gateway-or-operations-platform-functionality
-excluded_scope=unrelated-projects-products-or-services-and-standalone-or-general-purpose-rnmdb-reuse
-public_notice=AHCL/AHCL-SPECIAL-AUTHORIZATIONS.md
-```
-
-This public notice is not the authorization instrument, grants no rights to any third party, and does not disclose confidential commercial terms. No authorization-document identifier, cryptographic signature, public authorization evidence, fee term, territory term, dispute clause, or other confidential term is asserted here.
-
-## Channel for Ariadnion Special Authorization applications
-
-Requests for a separate non-AHCL Special Authorization for Ariadnion may be sent to `licensing@aperip.com`. This address is retained from the repository's prior tracked licensing materials.
-
-The channel above is solely for applying for or obtaining a separate Special Authorization. Channel information does not itself constitute a Special Authorization, modify AHCL 1.0, or waive or reduce an AHCL obligation not expressly covered by a valid written Special Authorization.
-"#;
-
 fn main() -> ExitCode {
     match run(env::args_os().skip(1)) {
         Ok(message) => {
@@ -211,19 +179,19 @@ struct AbiVersion {
 
 struct DependencyPolicy {
     core_abi: AbiVersion,
-    rnmdb_authorization: String,
-    rnmdb_authorization_scope: String,
-    rnmdb_public_notice: String,
+    rnmdb_selected_license: String,
+    rnmdb_license_copy: String,
+    rnmdb_additional_restrictions: String,
     rnmdb_repository: String,
     rnmdb_commit: String,
     rnmdb_package_prefix: String,
     rnmdb_packages: BTreeSet<String>,
 }
 
-struct RnmdbAuthorizationFields {
-    authorization: String,
-    scope: String,
-    public_notice: String,
+struct RnmdbLicenseFields {
+    selected_license: String,
+    license_copy: String,
+    additional_restrictions: String,
 }
 
 struct RnmdbSourceFields {
@@ -312,21 +280,21 @@ fn load_dependency_policy(root: &Path) -> Result<DependencyPolicy, String> {
         .join("versions.toml");
     let content = read_bounded_text(&path, MAX_POLICY_BYTES, "dependency policy")?;
     let policy = parse_dependency_policy(&content)?;
-    validate_rnmdb_commercial_authorization(root, &policy)?;
+    validate_rnmdb_ahcl_dependency(&policy)?;
     Ok(policy)
 }
 
 fn parse_dependency_policy(content: &str) -> Result<DependencyPolicy, String> {
     let abi = parse_string_field(content, "abi")?;
     let core_abi = parse_abi_value(&abi)?;
-    let rnmdb = rnmdb_policy::canonical_authorization_table(content)?;
-    let authorization = parse_rnmdb_authorization_fields(rnmdb)?;
+    let rnmdb = rnmdb_policy::canonical_dependency_table(content)?;
+    let license = parse_rnmdb_license_fields(rnmdb)?;
     let source = parse_rnmdb_source_fields(rnmdb)?;
     Ok(DependencyPolicy {
         core_abi,
-        rnmdb_authorization: authorization.authorization,
-        rnmdb_authorization_scope: authorization.scope,
-        rnmdb_public_notice: authorization.public_notice,
+        rnmdb_selected_license: license.selected_license,
+        rnmdb_license_copy: license.license_copy,
+        rnmdb_additional_restrictions: license.additional_restrictions,
         rnmdb_repository: source.repository,
         rnmdb_commit: source.commit,
         rnmdb_package_prefix: source.package_prefix,
@@ -334,11 +302,11 @@ fn parse_dependency_policy(content: &str) -> Result<DependencyPolicy, String> {
     })
 }
 
-fn parse_rnmdb_authorization_fields(content: &str) -> Result<RnmdbAuthorizationFields, String> {
-    Ok(RnmdbAuthorizationFields {
-        authorization: parse_string_field(content, "authorization")?,
-        scope: parse_string_field(content, "scope")?,
-        public_notice: parse_string_field(content, "public_notice")?,
+fn parse_rnmdb_license_fields(content: &str) -> Result<RnmdbLicenseFields, String> {
+    Ok(RnmdbLicenseFields {
+        selected_license: parse_string_field(content, "selected_license")?,
+        license_copy: parse_string_field(content, "license_copy")?,
+        additional_restrictions: parse_string_field(content, "additional_restrictions")?,
     })
 }
 
@@ -361,25 +329,19 @@ fn parse_rnmdb_package_set(content: &str) -> Result<BTreeSet<String>, String> {
     Ok(packages)
 }
 
-fn validate_rnmdb_commercial_authorization(
-    root: &Path,
-    policy: &DependencyPolicy,
-) -> Result<(), String> {
-    validate_rnmdb_authorization_declaration(policy)?;
+fn validate_rnmdb_ahcl_dependency(policy: &DependencyPolicy) -> Result<(), String> {
+    validate_rnmdb_license_declaration(policy)?;
     validate_rnmdb_source_identity(policy)?;
     validate_rnmdb_package_set(policy)?;
-    validate_rnmdb_authorization_notice(root, policy)?;
     Ok(())
 }
 
-fn validate_rnmdb_authorization_declaration(policy: &DependencyPolicy) -> Result<(), String> {
-    if policy.rnmdb_authorization != RNMDB_AUTHORIZATION
-        || policy.rnmdb_authorization_scope != RNMDB_AUTHORIZATION_SCOPE
+fn validate_rnmdb_license_declaration(policy: &DependencyPolicy) -> Result<(), String> {
+    if policy.rnmdb_selected_license != RNMDB_SELECTED_LICENSE
+        || policy.rnmdb_license_copy != RNMDB_LICENSE_COPY
+        || policy.rnmdb_additional_restrictions != RNMDB_ADDITIONAL_RESTRICTIONS
     {
-        return Err("RNovModularDB commercial authorization policy is invalid".into());
-    }
-    if policy.rnmdb_public_notice != RNMDB_AUTHORIZATION_NOTICE {
-        return Err("RNovModularDB public authorization notice path is invalid".into());
+        return Err("RNovModularDB AHCL license selection is invalid".into());
     }
     Ok(())
 }
@@ -399,28 +361,13 @@ fn validate_rnmdb_source_identity(policy: &DependencyPolicy) -> Result<(), Strin
 
 fn validate_rnmdb_package_set(policy: &DependencyPolicy) -> Result<(), String> {
     if !rnmdb_package_set_matches(&policy.rnmdb_packages) {
-        return Err("RNovModularDB authorized package set is invalid".into());
+        return Err("RNovModularDB approved package set is invalid".into());
     }
     Ok(())
 }
 
 fn rnmdb_package_set_matches(packages: &BTreeSet<String>) -> bool {
     packages.iter().map(String::as_str).eq(RNMDB_PACKAGES)
-}
-
-fn validate_rnmdb_authorization_notice(
-    root: &Path,
-    policy: &DependencyPolicy,
-) -> Result<(), String> {
-    let notice = read_bounded_text(
-        &root.join(&policy.rnmdb_public_notice),
-        MAX_POLICY_BYTES,
-        "RNovModularDB public authorization notice",
-    )?;
-    if notice != RNMDB_AUTHORIZATION_NOTICE_TEXT {
-        return Err("RNovModularDB public authorization notice is inconsistent".into());
-    }
-    Ok(())
 }
 
 fn parse_string_array(content: &str, key: &str) -> Result<Vec<String>, String> {

@@ -21,9 +21,8 @@
 # Complete Corresponding Source and history:     AHCL/AHCL-SOURCE.md
 # Dependencies, Referenced Materials, and licenses:
 #                                                   AHCL/AHCL-DEPENDENCIES.md
-# Additional Restrictions:                       Effective; both records apply:
+# Additional Restrictions:                       Effective; one record applies:
 #                                                   AHCL/AHCL-RESTRICTIONS/ARIADNION-AR-2026-001.md (ARIADNION-AR-2026-001)
-#                                                   AHCL/AHCL-RESTRICTIONS/ARIADNION-AR-2026-002.md (ARIADNION-AR-2026-002)
 #
 # SPDX-License-Identifier: LicenseRef-AHCL-1.0
 #
@@ -38,14 +37,14 @@ allowed = ["Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "CDLA-Permissive-2.0", 
 allowed_exceptions = ["LLVM-exception"]
 forbidden = ["GPL-2.0-only", "GPL-2.0-or-later", "GPL-3.0-only", "GPL-3.0-or-later", "AGPL-3.0-only", "AGPL-3.0-or-later"]
 
-[rnmdb_commercial_authorization]
-authorization = "special-commercial-authorization-from-project-owner"
-public_notice = "AHCL/AHCL-SPECIAL-AUTHORIZATIONS.md"
+[rnmdb_ahcl_dependency]
+selected_license = "LicenseRef-AHCL-1.0"
+license_copy = "AHCL/AHCL-1.0.md"
+additional_restrictions = "none"
 repository = "https://github.com/czxieddan/RNovModularDB.git"
-commit = "013ec2f48a1dab89997430d72c2b176be2c29d47"
+commit = "f20040a127a56ec8c37b3398283df36f024a1dd2"
 package_prefix = "rnmdb-"
 packages = ["rnmdb-common", "rnmdb-types", "rnmdb-sql", "rnmdb-planner", "rnmdb-executor", "rnmdb-txn", "rnmdb-index", "rnmdb-fts", "rnmdb-catalog", "rnmdb-storage", "rnmdb-udf", "rnmdb-security", "rnmdb-instance", "rnmdb-server", "rnmdb-cli"]
-scope = "ariadnion-and-reasonable-functional-forks"
 
 [versions]
 bytes = "1.12.1"

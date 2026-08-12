@@ -21,33 +21,33 @@
 // Complete Corresponding Source and history:     AHCL/AHCL-SOURCE.md
 // Dependencies, Referenced Materials, and licenses:
 //                                                   AHCL/AHCL-DEPENDENCIES.md
-// Additional Restrictions:                       Effective; both records apply:
+// Additional Restrictions:                       Effective; one record applies:
 //                                                   AHCL/AHCL-RESTRICTIONS/ARIADNION-AR-2026-001.md (ARIADNION-AR-2026-001)
-//                                                   AHCL/AHCL-RESTRICTIONS/ARIADNION-AR-2026-002.md (ARIADNION-AR-2026-002)
 //
 // SPDX-License-Identifier: LicenseRef-AHCL-1.0
 //
-//! Strict textual gates for the fixed RNovModularDB authorization boundary.
+//! Strict textual gates for the fixed RNovModularDB AHCL dependency boundary.
 
-const AUTHORIZATION_TABLE_HEADER: &str = "[rnmdb_commercial_authorization]";
-const CANONICAL_AUTHORIZATION_TABLE: &str = concat!(
-    "[rnmdb_commercial_authorization]\n",
-    "authorization = \"special-commercial-authorization-from-project-owner\"\n",
-    "public_notice = \"AHCL/AHCL-SPECIAL-AUTHORIZATIONS.md\"\n",
+const DEPENDENCY_TABLE_HEADER: &str = "[rnmdb_ahcl_dependency]";
+const LEGACY_AUTHORIZATION_TABLE_HEADER: &str = "[rnmdb_commercial_authorization]";
+const CANONICAL_DEPENDENCY_TABLE: &str = concat!(
+    "[rnmdb_ahcl_dependency]\n",
+    "selected_license = \"LicenseRef-AHCL-1.0\"\n",
+    "license_copy = \"AHCL/AHCL-1.0.md\"\n",
+    "additional_restrictions = \"none\"\n",
     "repository = \"https://github.com/czxieddan/RNovModularDB.git\"\n",
-    "commit = \"013ec2f48a1dab89997430d72c2b176be2c29d47\"\n",
+    "commit = \"f20040a127a56ec8c37b3398283df36f024a1dd2\"\n",
     "package_prefix = \"rnmdb-\"\n",
-    "packages = [\"rnmdb-common\", \"rnmdb-types\", \"rnmdb-sql\", \"rnmdb-planner\", \"rnmdb-executor\", \"rnmdb-txn\", \"rnmdb-index\", \"rnmdb-fts\", \"rnmdb-catalog\", \"rnmdb-storage\", \"rnmdb-udf\", \"rnmdb-security\", \"rnmdb-instance\", \"rnmdb-server\", \"rnmdb-cli\"]\n",
-    "scope = \"ariadnion-and-reasonable-functional-forks\"\n\n",
+    "packages = [\"rnmdb-common\", \"rnmdb-types\", \"rnmdb-sql\", \"rnmdb-planner\", \"rnmdb-executor\", \"rnmdb-txn\", \"rnmdb-index\", \"rnmdb-fts\", \"rnmdb-catalog\", \"rnmdb-storage\", \"rnmdb-udf\", \"rnmdb-security\", \"rnmdb-instance\", \"rnmdb-server\", \"rnmdb-cli\"]\n\n",
 );
 const POLICY_KEYS: [&str; 7] = [
-    "authorization",
-    "public_notice",
+    "selected_license",
+    "license_copy",
+    "additional_restrictions",
     "repository",
     "commit",
     "package_prefix",
     "packages",
-    "scope",
 ];
 const PACKAGE_MARKERS: [(&str, char); 6] = [
     ("package=\"", '"'),
@@ -58,13 +58,13 @@ const PACKAGE_MARKERS: [(&str, char); 6] = [
     ("'package'='", '\''),
 ];
 
-pub(crate) fn canonical_authorization_table(content: &str) -> Result<&str, String> {
+pub(crate) fn canonical_dependency_table(content: &str) -> Result<&str, String> {
     validate_no_multiline_strings(content)?;
     let start = find_unique_table_start(content)?;
     let end = find_table_end(content, start);
     let table = &content[start..end];
-    if table != CANONICAL_AUTHORIZATION_TABLE {
-        return Err("RNovModularDB authorization table is not canonical".into());
+    if table != CANONICAL_DEPENDENCY_TABLE {
+        return Err("RNovModularDB AHCL dependency table is not canonical".into());
     }
     validate_shadow_fragment(&content[..start])?;
     validate_shadow_fragment(&content[end..])?;
@@ -79,16 +79,16 @@ fn validate_no_multiline_strings(content: &str) -> Result<(), String> {
 }
 
 fn find_unique_table_start(content: &str) -> Result<usize, String> {
-    let mut matches = content.match_indices(AUTHORIZATION_TABLE_HEADER);
+    let mut matches = content.match_indices(DEPENDENCY_TABLE_HEADER);
     let start = matches
         .next()
         .map(|(index, _)| index)
-        .ok_or_else(|| "RNovModularDB authorization table is missing".to_owned())?;
+        .ok_or_else(|| "RNovModularDB AHCL dependency table is missing".to_owned())?;
     if matches.next().is_some() {
-        return Err("RNovModularDB authorization table is duplicated".into());
+        return Err("RNovModularDB AHCL dependency table is duplicated".into());
     }
     if !is_trimmed_line_start(content, start) {
-        return Err("RNovModularDB authorization table header is invalid".into());
+        return Err("RNovModularDB AHCL dependency table header is invalid".into());
     }
     Ok(start)
 }
@@ -101,7 +101,7 @@ fn is_trimmed_line_start(content: &str, index: usize) -> bool {
 }
 
 fn find_table_end(content: &str, start: usize) -> usize {
-    let header_end = start + AUTHORIZATION_TABLE_HEADER.len();
+    let header_end = start + DEPENDENCY_TABLE_HEADER.len();
     let mut offset = header_end;
     for line in content[header_end..].split_inclusive('\n') {
         if line.trim_start().starts_with('[') {
@@ -125,14 +125,15 @@ fn validate_shadow_line(line: &str) -> Result<(), String> {
         return Ok(());
     }
     if is_related_table_header(line) {
-        return Err("RNovModularDB authorization table boundary is invalid".into());
+        return Err("RNovModularDB AHCL dependency table boundary is invalid".into());
     }
     validate_shadow_assignment(line)
 }
 
 fn is_related_table_header(line: &str) -> bool {
-    line.starts_with("[rnmdb_commercial_authorization.")
-        || line.starts_with("[[rnmdb_commercial_authorization")
+    line.starts_with("[rnmdb_ahcl_dependency.")
+        || line.starts_with("[[rnmdb_ahcl_dependency")
+        || line.starts_with(LEGACY_AUTHORIZATION_TABLE_HEADER)
 }
 
 fn validate_shadow_assignment(line: &str) -> Result<(), String> {
@@ -140,14 +141,16 @@ fn validate_shadow_assignment(line: &str) -> Result<(), String> {
         return Ok(());
     };
     if is_policy_key(key) {
-        return Err("RNovModularDB authorization field is outside its canonical table".into());
+        return Err("RNovModularDB AHCL dependency field is outside its canonical table".into());
     }
     Ok(())
 }
 
 fn is_policy_key(key: &str) -> bool {
     let key = key.trim().trim_matches('"').trim_matches('\'');
-    POLICY_KEYS.contains(&key) || key.contains("rnmdb_commercial_authorization.")
+    POLICY_KEYS.contains(&key)
+        || key.contains("rnmdb_ahcl_dependency.")
+        || key.contains("rnmdb_commercial_authorization.")
 }
 
 pub(crate) fn validate_manifest_dependency_aliases(content: &str) -> Result<(), String> {
