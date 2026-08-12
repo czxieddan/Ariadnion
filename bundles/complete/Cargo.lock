@@ -93,6 +93,7 @@ dependencies = [
  "ariadnion-rbac",
  "ariadnion-user-domain",
  "axum",
+ "base64",
  "bytes",
  "futures-core",
  "serde",
@@ -245,6 +246,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "ariadnion-organization"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+ "ariadnion-user-domain",
+]
+
+[[package]]
+name = "ariadnion-principal-binding"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+ "ariadnion-organization",
+ "ariadnion-user-domain",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "ariadnion-protocol-openai"
 version = "0.1.0"
 dependencies = [
@@ -267,24 +286,6 @@ dependencies = [
  "ariadnion-core",
  "ariadnion-principal-binding",
  "ariadnion-provider-sdk",
-]
-
-[[package]]
-name = "ariadnion-organization"
-version = "0.1.0"
-dependencies = [
- "ariadnion-core",
- "ariadnion-user-domain",
-]
-
-[[package]]
-name = "ariadnion-principal-binding"
-version = "0.1.0"
-dependencies = [
- "ariadnion-core",
- "ariadnion-organization",
- "ariadnion-user-domain",
- "sha2 0.10.9",
 ]
 
 [[package]]
@@ -525,6 +526,12 @@ dependencies = [
  "tower-layer",
  "tower-service",
 ]
+
+[[package]]
+name = "base64"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "base64ct"
