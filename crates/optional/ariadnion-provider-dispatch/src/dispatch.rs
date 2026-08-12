@@ -36,8 +36,9 @@ use ariadnion_api_dispatch::{
     BoxServiceDispatchFuture, ServiceDispatchOutcome, ServiceDispatchPort,
 };
 use ariadnion_api_domain::{
-    ApiDomainError, ChatServiceRequest, EmbeddingServiceRequest, ModelSelector, ResponseMode,
-    ServiceRequest, ServiceResponse, TextServiceRequest,
+    ApiDomainError, ChatServiceRequest, EmbeddingServiceRequest, GeneratedImage,
+    ImageOutputSpecification, ImageServiceRequest, ModelSelector, ResponseMode, ServiceRequest,
+    ServiceResponse, TextServiceRequest,
 };
 use ariadnion_core::{AttemptId, RequestContext};
 use ariadnion_principal_binding::AuthenticatedPrincipalEvidence;
@@ -210,6 +211,7 @@ enum CompleteKind {
     Text,
     Chat,
     Embedding { expected_inputs: usize },
+    Image(ImageOutputSpecification),
 }
 
 #[derive(Clone, Copy)]
@@ -238,6 +240,7 @@ impl<'a> RequestAdmission<'a> {
             ServiceRequest::Text(request) => text_admission(request),
             ServiceRequest::Chat(request) => chat_admission(request),
             ServiceRequest::Embedding(request) => embedding_admission(request),
+            ServiceRequest::Image(request) => image_admission(request),
             _ => Err(internal_error()),
         }
     }
@@ -299,6 +302,22 @@ fn embedding_admission(
     Ok(RequestAdmission {
         delivery: DeliveryKind::Complete(CompleteKind::Embedding { expected_inputs }),
         required_capability: ProviderCapability::Embeddings,
+        selector: request.model(),
+        bounded_bytes,
+    })
+}
+
+fn image_admission(request: &ImageServiceRequest) -> Result<RequestAdmission<'_>, ApiDomainError> {
+    let specification = request.output_specification();
+    let bounded_bytes = checked_byte_sum(&[
+        request.model().as_str().len(),
+        request.prompt().encoded_bytes(),
+        specification.count().get(),
+        idempotency_bytes(request.idempotency_key()),
+    ])?;
+    Ok(RequestAdmission {
+        delivery: DeliveryKind::Complete(CompleteKind::Image(specification)),
+        required_capability: ProviderCapability::ImageGeneration,
         selector: request.model(),
         bounded_bytes,
     })
@@ -418,6 +437,31 @@ fn response_matches(kind: CompleteKind, response: &ServiceResponse) -> bool {
         (CompleteKind::Embedding { expected_inputs }, ServiceResponse::Embedding(response)) => {
             response.vectors().len() == expected_inputs
         }
+        (CompleteKind::Image(specification), ServiceResponse::Image(response)) => {
+            image_response_matches(specification, response.images().as_slice())
+        }
         _ => false,
     }
+}
+
+fn image_response_matches(
+    specification: ImageOutputSpecification,
+    images: &[GeneratedImage],
+) -> bool {
+    if images.len() != specification.count().get() {
+        return false;
+    }
+    images
+        .iter()
+        .all(|image| image_matches_specification(image, specification))
+}
+
+fn image_matches_specification(
+    image: &GeneratedImage,
+    specification: ImageOutputSpecification,
+) -> bool {
+    if image.dimensions() != specification.dimensions() {
+        return false;
+    }
+    image.media_type() == specification.media_type()
 }
