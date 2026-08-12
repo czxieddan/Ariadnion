@@ -285,6 +285,7 @@ impl ProviderAttempt {
         match &self.request {
             ServiceRequest::Text(request) => Some(request.response_mode()),
             ServiceRequest::Chat(request) => Some(request.response_mode()),
+            ServiceRequest::Embedding(_) => Some(ResponseMode::Complete),
             _ => None,
         }
     }
