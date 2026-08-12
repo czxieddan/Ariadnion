@@ -119,6 +119,8 @@ pub enum ProviderCapability {
     Realtime = 9,
     /// Batch requests are available.
     Batch = 10,
+    /// Image generation is available.
+    ImageGeneration = 11,
 }
 
 impl ProviderCapability {
@@ -127,7 +129,7 @@ impl ProviderCapability {
     }
 }
 
-const PROVIDER_CAPABILITY_ORDER: [ProviderCapability; 11] = [
+const PROVIDER_CAPABILITY_ORDER: [ProviderCapability; 12] = [
     ProviderCapability::TextGeneration,
     ProviderCapability::TextStreaming,
     ProviderCapability::ToolCalls,
@@ -136,6 +138,7 @@ const PROVIDER_CAPABILITY_ORDER: [ProviderCapability; 11] = [
     ProviderCapability::AudioInput,
     ProviderCapability::AudioOutput,
     ProviderCapability::Embeddings,
+    ProviderCapability::ImageGeneration,
     ProviderCapability::Files,
     ProviderCapability::Realtime,
     ProviderCapability::Batch,
