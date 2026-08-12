@@ -35,6 +35,7 @@
 mod chat;
 mod embedding;
 mod error;
+mod image;
 mod request;
 mod response;
 mod stream;
@@ -50,6 +51,11 @@ pub use embedding::{
     MAX_EMBEDDING_SCALARS, MAX_EMBEDDING_VECTORS,
 };
 pub use error::{ApiDomainError, ApiDomainErrorCode};
+pub use image::{
+    GeneratedImage, GeneratedImages, ImageCount, ImageDimensions, ImageMediaType, ImagePrompt,
+    MAX_GENERATED_IMAGE_BYTES, MAX_GENERATED_IMAGES, MAX_GENERATED_IMAGES_BYTES, MAX_IMAGE_EDGE,
+    MAX_IMAGE_PIXELS, MAX_IMAGE_PROMPT_BYTES,
+};
 pub use request::{
     ChatServiceRequest, EmbeddingServiceRequest, IdempotencyKey, MAX_IDEMPOTENCY_KEY_BYTES,
     MAX_MODEL_SELECTOR_BYTES, MAX_OUTPUT_TOKENS, MAX_TEXT_INPUT_BYTES, ModelSelector,
