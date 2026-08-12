@@ -31,6 +31,7 @@
 
 use crate::embedding::EmbeddingVectors;
 use crate::error::{ApiDomainError, invalid_argument, limit_exceeded};
+use crate::image::GeneratedImages;
 use crate::request::ServiceContractVersion;
 use crate::usage::TokenUsage;
 
@@ -220,6 +221,33 @@ impl EmbeddingServiceResponse {
     }
 }
 
+/// A complete response from an image-generation service.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ImageServiceResponse {
+    version: ServiceContractVersion,
+    images: GeneratedImages,
+}
+
+impl ImageServiceResponse {
+    /// Creates a complete image response from validated generated images.
+    #[must_use]
+    pub const fn new(version: ServiceContractVersion, images: GeneratedImages) -> Self {
+        Self { version, images }
+    }
+
+    /// Returns the service contract version.
+    #[must_use]
+    pub const fn version(&self) -> ServiceContractVersion {
+        self.version
+    }
+
+    /// Returns ordered generated images correlated to the request count.
+    #[must_use]
+    pub const fn images(&self) -> &GeneratedImages {
+        &self.images
+    }
+}
+
 /// A complete transport-neutral service response.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -230,6 +258,8 @@ pub enum ServiceResponse {
     Chat(ChatServiceResponse),
     /// A complete ordered embedding response.
     Embedding(EmbeddingServiceResponse),
+    /// A complete ordered image-generation response.
+    Image(ImageServiceResponse),
 }
 
 fn validate_text_output(value: &str) -> Result<(), ApiDomainError> {
