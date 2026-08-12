@@ -21,9 +21,8 @@
 // Complete Corresponding Source and history:     AHCL/AHCL-SOURCE.md
 // Dependencies, Referenced Materials, and licenses:
 //                                                   AHCL/AHCL-DEPENDENCIES.md
-// Additional Restrictions:                       Effective; both records apply:
+// Additional Restrictions:                       Effective; one record applies:
 //                                                   AHCL/AHCL-RESTRICTIONS/ARIADNION-AR-2026-001.md (ARIADNION-AR-2026-001)
-//                                                   AHCL/AHCL-RESTRICTIONS/ARIADNION-AR-2026-002.md (ARIADNION-AR-2026-002)
 // SPDX-License-Identifier: LicenseRef-AHCL-1.0
 
 use std::collections::BTreeSet;
