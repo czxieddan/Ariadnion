@@ -46,6 +46,7 @@ ariadnion-principal-binding = { path = "../ariadnion-principal-binding" }
 ariadnion-rbac = { path = "../ariadnion-rbac" }
 ariadnion-user-domain = { path = "../ariadnion-user-domain" }
 axum = { version = "=0.8.9", default-features = false, features = ["json"] }
+base64 = { version = "=0.22.1", default-features = false, features = ["alloc"] }
 bytes = "=1.12.1"
 futures-core = "=0.3.33"
 serde = { version = "=1.0.228", features = ["derive"] }
