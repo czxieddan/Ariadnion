@@ -27,7 +27,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-AHCL-1.0
 //
-//! Fixed bounded text and chat generation without external side effects.
+//! Fixed bounded text, chat, and embedding generation without external side effects.
 
 use std::fmt::{self, Debug, Formatter};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
@@ -36,9 +36,10 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use ariadnion_api_domain::{
-    ChatServiceRequest, ChatServiceResponse, FinishReason, ResponseMode, ServiceContractVersion,
-    ServiceRequest, ServiceResponse, TextOutput, TextServiceRequest, TextServiceResponse,
-    TokenUsage,
+    ChatServiceRequest, ChatServiceResponse, EmbeddingInput, EmbeddingServiceRequest,
+    EmbeddingServiceResponse, EmbeddingVector, EmbeddingVectors, FinishReason, ResponseMode,
+    ServiceContractVersion, ServiceRequest, ServiceResponse, TextOutput, TextServiceRequest,
+    TextServiceResponse, TokenUsage,
 };
 use ariadnion_core::{CancellationToken, ErrorCode, EventEnvelope, ModuleVersion, RequestContext};
 use ariadnion_provider_sdk::{
@@ -57,6 +58,10 @@ pub const MOCK_PROVIDER_ID: &str = "mock";
 pub const MOCK_PROVIDER_MODEL_ID: &str = "mock-chat-v1";
 /// Stable text provider model identifier accepted by the deterministic adapter.
 pub const MOCK_PROVIDER_TEXT_MODEL_ID: &str = "mock-text-v1";
+/// Stable embedding provider model identifier accepted by the deterministic adapter.
+pub const MOCK_PROVIDER_EMBEDDING_MODEL_ID: &str = "mock-embedding-v1";
+/// Fixed output dimensions produced by the deterministic embedding model.
+pub const MOCK_PROVIDER_EMBEDDING_DIMENSIONS: usize = 4;
 /// Maximum UTF-8 bytes carried by one deterministic mock stream delta.
 pub const MAX_MOCK_STREAM_DELTA_BYTES: usize = 1_024;
 
@@ -106,7 +111,8 @@ impl DeterministicMockProvider {
     pub fn new() -> Result<Self, ProviderContractError> {
         let id = ProviderId::new(MOCK_PROVIDER_ID)?;
         let capabilities = ProviderCapabilities::new(ProviderCapability::TextGeneration)
-            .with(ProviderCapability::TextStreaming);
+            .with(ProviderCapability::TextStreaming)
+            .with(ProviderCapability::Embeddings);
         let limits = ProviderLimits::new(
             MAX_MOCK_REQUEST_BYTES,
             MAX_MOCK_STREAM_DELTA_BYTES,
@@ -263,9 +269,18 @@ enum GenerationPlan {
     Text(TextPlan),
 }
 
+enum AttemptPlan {
+    Generation {
+        mode: ResponseMode,
+        plan: GenerationPlan,
+    },
+    Embedding(EmbeddingServiceResponse),
+}
+
 enum ProviderModelKind {
     Chat,
     Text,
+    Embedding,
 }
 
 impl GenerationPlan {
@@ -320,24 +335,25 @@ fn execute(
     stream_executor: &StreamExecutor,
 ) -> Result<ProviderRawOutcome, ProviderFailure> {
     check_active(&attempt)?;
-    let (mode, plan) = plan_attempt(&attempt)?;
+    let plan = plan_attempt(&attempt)?;
     check_active(&attempt)?;
-    outcome_for_mode(attempt, limits, stream_executor, mode, plan)
+    outcome_for_plan(attempt, limits, stream_executor, plan)
 }
 
-fn plan_attempt(
-    attempt: &ProviderAttempt,
-) -> Result<(ResponseMode, GenerationPlan), ProviderFailure> {
+fn plan_attempt(attempt: &ProviderAttempt) -> Result<AttemptPlan, ProviderFailure> {
     let model = provider_model_kind(attempt.model().as_str())?;
     match (model, attempt.request()) {
-        (ProviderModelKind::Chat, ServiceRequest::Chat(request)) => Ok((
-            request.response_mode(),
-            GenerationPlan::Chat(plan_chat(request)?),
-        )),
-        (ProviderModelKind::Text, ServiceRequest::Text(request)) => Ok((
-            request.response_mode(),
-            GenerationPlan::Text(plan_text(request)?),
-        )),
+        (ProviderModelKind::Chat, ServiceRequest::Chat(request)) => Ok(AttemptPlan::Generation {
+            mode: request.response_mode(),
+            plan: GenerationPlan::Chat(plan_chat(request)?),
+        }),
+        (ProviderModelKind::Text, ServiceRequest::Text(request)) => Ok(AttemptPlan::Generation {
+            mode: request.response_mode(),
+            plan: GenerationPlan::Text(plan_text(request)?),
+        }),
+        (ProviderModelKind::Embedding, ServiceRequest::Embedding(request)) => {
+            plan_embedding(request).map(AttemptPlan::Embedding)
+        }
         _ => Err(failure(ProviderFailureClass::InvalidRequest)),
     }
 }
@@ -346,7 +362,25 @@ fn provider_model_kind(model: &str) -> Result<ProviderModelKind, ProviderFailure
     match model {
         MOCK_PROVIDER_MODEL_ID => Ok(ProviderModelKind::Chat),
         MOCK_PROVIDER_TEXT_MODEL_ID => Ok(ProviderModelKind::Text),
+        MOCK_PROVIDER_EMBEDDING_MODEL_ID => Ok(ProviderModelKind::Embedding),
         _ => Err(failure(ProviderFailureClass::NotFound)),
+    }
+}
+
+fn outcome_for_plan(
+    attempt: ProviderAttempt,
+    limits: ProviderLimits,
+    stream_executor: &StreamExecutor,
+    plan: AttemptPlan,
+) -> Result<ProviderRawOutcome, ProviderFailure> {
+    match plan {
+        AttemptPlan::Generation { mode, plan } => {
+            outcome_for_mode(attempt, limits, stream_executor, mode, plan)
+        }
+        AttemptPlan::Embedding(response) => {
+            mark_response_started(&attempt.evidence())?;
+            Ok(complete_response(ServiceResponse::Embedding(response)))
+        }
     }
 }
 
@@ -388,6 +422,49 @@ fn plan_text(request: &TextServiceRequest) -> Result<TextPlan, ProviderFailure> 
         request.output_token_limit().get() as usize,
     )?;
     Ok(TextPlan { output })
+}
+
+fn plan_embedding(
+    request: &EmbeddingServiceRequest,
+) -> Result<EmbeddingServiceResponse, ProviderFailure> {
+    let mut vectors = Vec::with_capacity(request.inputs().len());
+    let mut input_tokens = 0_u64;
+    for input in request.inputs().as_slice() {
+        let (vector, tokens) = embedding_vector(input)?;
+        input_tokens = input_tokens
+            .checked_add(tokens)
+            .ok_or_else(response_limit)?;
+        vectors.push(vector);
+    }
+    let count = request.inputs().len();
+    let vectors = EmbeddingVectors::new(vectors, count, MOCK_PROVIDER_EMBEDDING_DIMENSIONS)
+        .map_err(|_| internal_failure())?;
+    let usage = TokenUsage::new(input_tokens, 0).map_err(|_| response_limit())?;
+    EmbeddingServiceResponse::new(request.version(), vectors, usage).map_err(|_| internal_failure())
+}
+
+fn embedding_vector(input: &EmbeddingInput) -> Result<(EmbeddingVector, u64), ProviderFailure> {
+    let value = input.as_str();
+    let first = value.chars().next().ok_or_else(invalid_request)?;
+    let scalar_count = scalar_count(value)?;
+    let values = vec![
+        value.len() as f32,
+        scalar_count as f32,
+        u32::from(first) as f32,
+        embedding_fingerprint(value) as f32,
+    ];
+    let vector = EmbeddingVector::new(values).map_err(|_| internal_failure())?;
+    Ok((vector, scalar_count))
+}
+
+fn embedding_fingerprint(value: &str) -> u32 {
+    let mut hash = 2_166_136_261_u32;
+    for byte in value.bytes() {
+        hash ^= u32::from(byte);
+        hash = hash.wrapping_mul(16_777_619);
+    }
+    // This non-cryptographic mock fingerprint stays exactly representable as f32.
+    hash & 0x00ff_ffff
 }
 
 fn plan_output(
@@ -454,7 +531,11 @@ fn complete_outcome(
             plan.output.finish_reason,
         )),
     };
-    Ok(ProviderRawOutcome::Complete(response))
+    Ok(complete_response(response))
+}
+
+const fn complete_response(response: ServiceResponse) -> ProviderRawOutcome {
+    ProviderRawOutcome::Complete(response)
 }
 
 fn complete_output(plan: &OutputPlan) -> Result<TextOutput, ProviderFailure> {
@@ -684,6 +765,14 @@ const fn failure_class(code: ErrorCode) -> ProviderFailureClass {
 
 const fn response_limit() -> ProviderFailure {
     failure(ProviderFailureClass::ResponseLimit)
+}
+
+const fn invalid_request() -> ProviderFailure {
+    failure(ProviderFailureClass::InvalidRequest)
+}
+
+const fn internal_failure() -> ProviderFailure {
+    failure(ProviderFailureClass::Internal)
 }
 
 const fn failure(class: ProviderFailureClass) -> ProviderFailure {
