@@ -27,7 +27,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-AHCL-1.0
 //
-//! Fixed bounded text, chat, and embedding generation without external side effects.
+//! Fixed bounded text, chat, embedding, and image generation without external side effects.
 
 use std::fmt::{self, Debug, Formatter};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
@@ -51,6 +51,7 @@ use ariadnion_provider_sdk::{
 };
 
 use crate::chunk::for_each_delta;
+use crate::image::plan_image;
 
 /// Stable provider identifier for the deterministic in-process adapter.
 pub const MOCK_PROVIDER_ID: &str = "mock";
@@ -60,6 +61,8 @@ pub const MOCK_PROVIDER_MODEL_ID: &str = "mock-chat-v1";
 pub const MOCK_PROVIDER_TEXT_MODEL_ID: &str = "mock-text-v1";
 /// Stable embedding provider model identifier accepted by the deterministic adapter.
 pub const MOCK_PROVIDER_EMBEDDING_MODEL_ID: &str = "mock-embedding-v1";
+/// Stable image provider model identifier accepted by the deterministic adapter.
+pub const MOCK_PROVIDER_IMAGE_MODEL_ID: &str = "mock-image-v1";
 /// Fixed output dimensions produced by the deterministic embedding model.
 pub const MOCK_PROVIDER_EMBEDDING_DIMENSIONS: usize = 4;
 /// Maximum UTF-8 bytes carried by one deterministic mock stream delta.
@@ -112,7 +115,8 @@ impl DeterministicMockProvider {
         let id = ProviderId::new(MOCK_PROVIDER_ID)?;
         let capabilities = ProviderCapabilities::new(ProviderCapability::TextGeneration)
             .with(ProviderCapability::TextStreaming)
-            .with(ProviderCapability::Embeddings);
+            .with(ProviderCapability::Embeddings)
+            .with(ProviderCapability::ImageGeneration);
         let limits = ProviderLimits::new(
             MAX_MOCK_REQUEST_BYTES,
             MAX_MOCK_STREAM_DELTA_BYTES,
@@ -274,13 +278,14 @@ enum AttemptPlan {
         mode: ResponseMode,
         plan: GenerationPlan,
     },
-    Embedding(EmbeddingServiceResponse),
+    Complete(ServiceResponse),
 }
 
 enum ProviderModelKind {
     Chat,
     Text,
     Embedding,
+    Image,
 }
 
 impl GenerationPlan {
@@ -343,17 +348,26 @@ fn execute(
 fn plan_attempt(attempt: &ProviderAttempt) -> Result<AttemptPlan, ProviderFailure> {
     let model = provider_model_kind(attempt.model().as_str())?;
     match (model, attempt.request()) {
-        (ProviderModelKind::Chat, ServiceRequest::Chat(request)) => Ok(AttemptPlan::Generation {
-            mode: request.response_mode(),
-            plan: GenerationPlan::Chat(plan_chat(request)?),
+        (ProviderModelKind::Chat, ServiceRequest::Chat(request)) => plan_chat(request).map(|plan| {
+            AttemptPlan::Generation {
+                mode: request.response_mode(),
+                plan: GenerationPlan::Chat(plan),
+            }
         }),
-        (ProviderModelKind::Text, ServiceRequest::Text(request)) => Ok(AttemptPlan::Generation {
-            mode: request.response_mode(),
-            plan: GenerationPlan::Text(plan_text(request)?),
+        (ProviderModelKind::Text, ServiceRequest::Text(request)) => plan_text(request).map(|plan| {
+            AttemptPlan::Generation {
+                mode: request.response_mode(),
+                plan: GenerationPlan::Text(plan),
+            }
         }),
         (ProviderModelKind::Embedding, ServiceRequest::Embedding(request)) => {
-            plan_embedding(request).map(AttemptPlan::Embedding)
+            plan_embedding(request)
+                .map(ServiceResponse::Embedding)
+                .map(AttemptPlan::Complete)
         }
+        (ProviderModelKind::Image, ServiceRequest::Image(request)) => plan_image(request)
+            .map(ServiceResponse::Image)
+            .map(AttemptPlan::Complete),
         _ => Err(failure(ProviderFailureClass::InvalidRequest)),
     }
 }
@@ -363,6 +377,7 @@ fn provider_model_kind(model: &str) -> Result<ProviderModelKind, ProviderFailure
         MOCK_PROVIDER_MODEL_ID => Ok(ProviderModelKind::Chat),
         MOCK_PROVIDER_TEXT_MODEL_ID => Ok(ProviderModelKind::Text),
         MOCK_PROVIDER_EMBEDDING_MODEL_ID => Ok(ProviderModelKind::Embedding),
+        MOCK_PROVIDER_IMAGE_MODEL_ID => Ok(ProviderModelKind::Image),
         _ => Err(failure(ProviderFailureClass::NotFound)),
     }
 }
@@ -377,9 +392,9 @@ fn outcome_for_plan(
         AttemptPlan::Generation { mode, plan } => {
             outcome_for_mode(attempt, limits, stream_executor, mode, plan)
         }
-        AttemptPlan::Embedding(response) => {
+        AttemptPlan::Complete(response) => {
             mark_response_started(&attempt.evidence())?;
-            Ok(complete_response(ServiceResponse::Embedding(response)))
+            Ok(complete_response(response))
         }
     }
 }
