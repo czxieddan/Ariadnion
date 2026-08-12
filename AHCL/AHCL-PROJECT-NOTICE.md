@@ -26,4 +26,6 @@ Version Adoption records are maintained in `AHCL/AHCL-VERSION-ADOPTION.md`. This
 
 ## Effective Additional Restrictions
 
-`ARIADNION-AR-2026-001` and `ARIADNION-AR-2026-002` are effective from `2026-07-29T11:14:32Z` for the scope stated in their independent records and the distribution chain identified by the activation instrument. The complete records are stored under `AHCL/AHCL-RESTRICTIONS/`; the electronically signed written instrument is `AHCL/AHCL-RESTRICTIONS/ACTIVATION-2026-07-29.md`, and verification details are in `AHCL/AHCL-RESTRICTIONS/VERIFICATION.md`.
+`ARIADNION-AR-2026-001` is the sole current Additional Restriction. It remains effective from `2026-07-29T11:14:32Z` for the scope stated in its independent record. Its historical electronically signed activation instrument is preserved in the Complete Modification History, and current verification details are in `AHCL/AHCL-RESTRICTIONS/VERIFICATION.md`.
+
+`ARIADNION-AR-2026-002` was removed by its Restriction Author effective `2026-08-12T11:35:39Z`. The Article 11.4 removal record and immutable historical locations are listed in `AHCL/AHCL-RESTRICTIONS/INDEX.md`.

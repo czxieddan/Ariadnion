@@ -14,7 +14,7 @@ The canonical branch is `master`. A corresponding source publication or release 
 
 The repository records its Rust toolchain in `rust-toolchain.toml`, formatting policy in `rustfmt.toml`, shared Cargo configuration in `.cargo/config.toml`, and each independently resolved build graph in its `Cargo.toml` and `Cargo.lock`. The root workspace builds the core-only distribution. `bundles/edge/`, `bundles/standard/`, and `bundles/complete/` contain the independent composition manifests and locks. Optional crates retain independent manifests and locks under `crates/optional/`.
 
-Dependency acquisition locations, versions, lock checksums, authorization status, and license-copy mappings are recorded in `AHCL/AHCL-DEPENDENCIES.md`.
+Dependency acquisition locations, versions, lock checksums, selected licenses, Additional Restriction status, and license-copy mappings are recorded in `AHCL/AHCL-DEPENDENCIES.md`.
 
 ## Release mappings
 
