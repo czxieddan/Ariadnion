@@ -30,19 +30,26 @@
 
 use std::io::{self, Write};
 
+use ariadnion_core::RequestContext;
 use axum::body::Bytes;
 use serde::Serialize;
 
 use super::protocol::ProtocolFailure;
 use super::{ApiHttpError, ApiHttpErrorCode, MAX_PUBLIC_BODY_BYTES};
 
-struct BoundedJsonWriter {
+const JSON_WRITE_CHUNK_BYTES: usize = 16 * 1024;
+
+struct BoundedJsonWriter<'a> {
     bytes: Vec<u8>,
+    context: Option<&'a RequestContext>,
 }
 
-impl BoundedJsonWriter {
-    const fn new() -> Self {
-        Self { bytes: Vec::new() }
+impl<'a> BoundedJsonWriter<'a> {
+    const fn new(context: Option<&'a RequestContext>) -> Self {
+        Self {
+            bytes: Vec::new(),
+            context,
+        }
     }
 
     fn into_bytes(self) -> Bytes {
@@ -50,19 +57,22 @@ impl BoundedJsonWriter {
     }
 }
 
-impl Write for BoundedJsonWriter {
+impl Write for BoundedJsonWriter<'_> {
     fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        check_context(self.context)?;
         let remaining = MAX_PUBLIC_BODY_BYTES.saturating_sub(self.bytes.len());
-        if buffer.len() > remaining {
+        let accepted = buffer.len().min(JSON_WRITE_CHUNK_BYTES).min(remaining);
+        if accepted == 0 && !buffer.is_empty() {
             return Err(io::Error::other(
                 "native JSON response exceeds its byte limit",
             ));
         }
         self.bytes
-            .try_reserve_exact(buffer.len())
+            .try_reserve_exact(accepted)
             .map_err(|_| io::Error::other("native JSON response allocation failed"))?;
-        self.bytes.extend_from_slice(buffer);
-        Ok(buffer.len())
+        self.bytes.extend_from_slice(&buffer[..accepted]);
+        check_context(self.context)?;
+        Ok(accepted)
     }
 
     fn flush(&mut self) -> io::Result<()> {
@@ -71,9 +81,31 @@ impl Write for BoundedJsonWriter {
 }
 
 pub(super) fn serialize_bounded(value: &impl Serialize) -> Result<Bytes, ProtocolFailure> {
-    let mut writer = BoundedJsonWriter::new();
+    serialize_with_context(value, None)
+}
+
+pub(super) fn serialize_bounded_cancellable(
+    value: &impl Serialize,
+    context: &RequestContext,
+) -> Result<Bytes, ProtocolFailure> {
+    serialize_with_context(value, Some(context))
+}
+
+fn serialize_with_context(
+    value: &impl Serialize,
+    context: Option<&RequestContext>,
+) -> Result<Bytes, ProtocolFailure> {
+    let mut writer = BoundedJsonWriter::new(context);
     serde_json::to_writer(&mut writer, value).map_err(|_| internal_failure())?;
     Ok(writer.into_bytes())
+}
+
+fn check_context(context: Option<&RequestContext>) -> io::Result<()> {
+    context
+        .map(RequestContext::check_active)
+        .transpose()
+        .map_err(|_| io::Error::other("native JSON response context is inactive"))?;
+    Ok(())
 }
 
 const fn internal_failure() -> ProtocolFailure {
