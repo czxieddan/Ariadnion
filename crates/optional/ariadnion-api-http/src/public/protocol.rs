@@ -373,9 +373,9 @@ pub trait HttpProtocolProjection: Send + Sync {
         context: &RequestContext,
     ) -> Result<ProtocolBufferedResponse, ProtocolFailure> {
         context.check_active().map_err(ApiDomainError::from)?;
-        let projected = self.project_complete(identity, response)?;
+        let projected = self.project_complete(identity, response);
         context.check_active().map_err(ApiDomainError::from)?;
-        Ok(projected)
+        projected
     }
 
     /// Projects a matching service subscriber into an exact streaming response.
