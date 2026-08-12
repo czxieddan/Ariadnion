@@ -30,7 +30,6 @@
 //! Strict complete-only embedding ingress and bounded JSON response encoding.
 
 use std::fmt;
-use std::io::{self, Write};
 use std::sync::Arc;
 
 use ariadnion_api_domain::{
@@ -43,18 +42,17 @@ use axum::body::Body;
 use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, Request, StatusCode, header};
 use axum::response::Response;
-use bytes::Bytes;
 use serde::de::{IgnoredAny, SeqAccess, Visitor};
 use serde::ser::{SerializeSeq, Serializer};
 use serde::{Deserialize, Deserializer, Serialize};
 
+use super::json::serialize_bounded;
 use super::protocol::{
     HttpProtocolAdapter, HttpProtocolProjection, ProtocolBufferedResponse, ProtocolFailure,
     ProtocolRequest, ProtocolRequestBody, ProtocolStreamResponse,
 };
 use super::{
-    HttpApiState, HttpRequestIdentity, MAX_PUBLIC_BODY_BYTES, execution, parse_idempotency,
-    project_native_failure,
+    HttpApiState, HttpRequestIdentity, execution, parse_idempotency, project_native_failure,
 };
 
 pub(super) async fn handle_embeddings(
@@ -248,46 +246,6 @@ fn project_embedding_response(
         HeaderValue::from_static("application/json"),
     );
     ProtocolBufferedResponse::new(StatusCode::OK, headers, body)
-}
-
-struct BoundedJsonWriter {
-    bytes: Vec<u8>,
-}
-
-impl BoundedJsonWriter {
-    const fn new() -> Self {
-        Self { bytes: Vec::new() }
-    }
-
-    fn into_bytes(self) -> Bytes {
-        Bytes::from(self.bytes)
-    }
-}
-
-impl Write for BoundedJsonWriter {
-    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
-        let remaining = MAX_PUBLIC_BODY_BYTES.saturating_sub(self.bytes.len());
-        if buffer.len() > remaining {
-            return Err(io::Error::other(
-                "native embedding response exceeds its byte limit",
-            ));
-        }
-        self.bytes
-            .try_reserve_exact(buffer.len())
-            .map_err(|_| io::Error::other("native embedding response allocation failed"))?;
-        self.bytes.extend_from_slice(buffer);
-        Ok(buffer.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-
-fn serialize_bounded(value: &impl Serialize) -> Result<Bytes, ProtocolFailure> {
-    let mut writer = BoundedJsonWriter::new();
-    serde_json::to_writer(&mut writer, value).map_err(|_| internal_failure())?;
-    Ok(writer.into_bytes())
 }
 
 const fn project_version(version: ServiceContractVersion) -> Result<u16, ProtocolFailure> {

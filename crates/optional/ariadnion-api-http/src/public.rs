@@ -34,6 +34,7 @@ mod embedding;
 mod error;
 mod execution;
 mod identity;
+mod json;
 mod protocol;
 
 use std::future::Future;
