@@ -15,7 +15,7 @@ Effective under AHCL Section 11.2 as of `2026-07-29T11:14:32Z`.
 - Scope: The Restriction Author's Ariadnion `master` working copy derived from the corresponding baseline revision at the effective time, the first canonical revision that publishes the activation instrument and this record, and subsequent derivatives and the distribution chain originating from that restricted copy
 - Text digest algorithm: SHA-256 over the UTF-8 bytes of the complete terms block below, with LF line endings and one final LF
 - Text digest: `0B0E06EE4C7D70145B2F3450D58325BCDE2B305EBA6D7824B24EC92364F682C1`
-- Activation instrument: `AHCL/AHCL-RESTRICTIONS/ACTIVATION-2026-07-29.md` (`ARIADNION-AR-ACTIVATION-2026-07-29`)
+- Activation instrument: `43638e898bd2e8a810957673f57c5e13ac9c43cb:AHCL/AHCL-RESTRICTIONS/ACTIVATION-2026-07-29.md` (`ARIADNION-AR-ACTIVATION-2026-07-29`, preserved in the Complete Modification History)
 
 ## Complete terms
 
@@ -33,4 +33,4 @@ This restriction does not require a notice where Ariadnion presents none. It pre
 
 Only the complete terms block is within the recorded text-digest scope. Status, activation metadata, and this effect-boundary explanation are outside that scope and do not alter the terms or their digest.
 
-The electronically signed written activation instrument bears `/s/ czxieddan`. Its nature, SHA-256 digest, and verification evidence are recorded in `AHCL/AHCL-RESTRICTIONS/VERIFICATION.md`.
+The historical electronically signed written activation instrument bears `/s/ czxieddan`. Its immutable Git location, nature, SHA-256 digest, and verification evidence are recorded in `AHCL/AHCL-RESTRICTIONS/VERIFICATION.md`.
