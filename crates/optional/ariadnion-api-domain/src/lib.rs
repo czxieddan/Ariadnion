@@ -33,6 +33,7 @@
 #![deny(missing_docs)]
 
 mod chat;
+mod embedding;
 mod error;
 mod request;
 mod response;
@@ -42,6 +43,11 @@ mod usage;
 pub use chat::{
     ChatMessage, ChatMessageContent, ChatMessages, ChatRole, MAX_CHAT_MESSAGE_CONTENT_BYTES,
     MAX_CHAT_MESSAGES, MAX_CHAT_MESSAGES_BYTES,
+};
+pub use embedding::{
+    EmbeddingInput, EmbeddingInputs, EmbeddingVector, EmbeddingVectors, MAX_EMBEDDING_DIMENSIONS,
+    MAX_EMBEDDING_INPUT_BYTES, MAX_EMBEDDING_INPUTS, MAX_EMBEDDING_INPUTS_BYTES,
+    MAX_EMBEDDING_SCALARS, MAX_EMBEDDING_VECTORS,
 };
 pub use error::{ApiDomainError, ApiDomainErrorCode};
 pub use request::{
