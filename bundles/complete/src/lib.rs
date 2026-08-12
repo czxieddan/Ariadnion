@@ -46,7 +46,8 @@ use ariadnion_provider_dispatch::{
     MonotonicAttemptIdIssuer, ProviderDispatcher, StaticProviderModelResolver,
 };
 use ariadnion_provider_mock::{
-    DeterministicMockProvider, MOCK_PROVIDER_MODEL_ID, MOCK_PROVIDER_TEXT_MODEL_ID,
+    DeterministicMockProvider, MOCK_PROVIDER_EMBEDDING_MODEL_ID, MOCK_PROVIDER_MODEL_ID,
+    MOCK_PROVIDER_TEXT_MODEL_ID,
 };
 use ariadnion_provider_sdk::{ProviderModelId, ProviderPort};
 
@@ -107,17 +108,18 @@ pub fn assemble_openai_mock_loop_with_provider(
     Ok(openai_chat_completions_router(state))
 }
 
-/// Assembles the complete bundle's Ariadnion-native text mock loop.
+/// Assembles the complete bundle's Ariadnion-native mock loop.
 ///
-/// The caller supplies the authentication port. The bundle owns the fixed
-/// `mock-text` to `mock-text-v1` mapping, request and attempt identities,
-/// checked provider dispatch, cancellation, and bounded native SSE bridge.
-/// Assembly performs no provider call or external I/O.
+/// The caller supplies the authentication port. The bundle owns the fixed text
+/// and embedding model mappings, request and attempt identities, checked provider
+/// dispatch, cancellation, and bounded native SSE bridge. Both native routes share
+/// one provider, resolver, dispatcher, HTTP state, and public router. Assembly
+/// performs no provider call or external I/O.
 ///
 /// # Errors
 ///
-/// Returns a redacted internal error if the deterministic provider, fixed model
-/// mapping, or request identity issuer cannot be constructed.
+/// Returns a redacted internal error if the deterministic provider, a fixed model
+/// mapping, or the request identity issuer cannot be constructed.
 pub fn assemble_native_text_mock_loop(
     authentication: Arc<dyn ServiceAuthenticationPort>,
 ) -> Result<PublicApiRouter, CoreError> {
@@ -125,12 +127,7 @@ pub fn assemble_native_text_mock_loop(
         DeterministicMockProvider::new()
             .map_err(|_| assembly_error("complete native mock provider is unavailable"))?,
     );
-    let selector = ModelSelector::new("mock-text")
-        .map_err(|_| assembly_error("complete native selector is invalid"))?;
-    let model = ProviderModelId::new(MOCK_PROVIDER_TEXT_MODEL_ID)
-        .map_err(|_| assembly_error("complete native provider model is invalid"))?;
-    let resolver = StaticProviderModelResolver::new([(selector, model)])
-        .map_err(|_| assembly_error("complete native model mapping is invalid"))?;
+    let resolver = native_model_resolver()?;
     let dispatcher = Arc::new(ProviderDispatcher::new(
         Arc::new(resolver),
         Arc::new(MonotonicAttemptIdIssuer::new()),
@@ -148,6 +145,22 @@ pub fn assemble_native_text_mock_loop(
     )
     .with_stream_bridge(Arc::new(SseBridge::default()));
     Ok(public_router(state))
+}
+
+fn native_model_resolver() -> Result<StaticProviderModelResolver, CoreError> {
+    let text_selector = ModelSelector::new("mock-text")
+        .map_err(|_| assembly_error("complete native text selector is invalid"))?;
+    let text_model = ProviderModelId::new(MOCK_PROVIDER_TEXT_MODEL_ID)
+        .map_err(|_| assembly_error("complete native text provider model is invalid"))?;
+    let embedding_selector = ModelSelector::new("mock-embedding")
+        .map_err(|_| assembly_error("complete native embedding selector is invalid"))?;
+    let embedding_model = ProviderModelId::new(MOCK_PROVIDER_EMBEDDING_MODEL_ID)
+        .map_err(|_| assembly_error("complete native embedding provider model is invalid"))?;
+    StaticProviderModelResolver::new([
+        (text_selector, text_model),
+        (embedding_selector, embedding_model),
+    ])
+    .map_err(|_| assembly_error("complete native model mapping is invalid"))
 }
 
 fn assembly_error(context: &'static str) -> CoreError {
