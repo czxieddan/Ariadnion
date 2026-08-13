@@ -21,9 +21,8 @@
 // Complete Corresponding Source and history:     AHCL/AHCL-SOURCE.md
 // Dependencies, Referenced Materials, and licenses:
 //                                                   AHCL/AHCL-DEPENDENCIES.md
-// Additional Restrictions:                       Effective; both records apply:
+// Additional Restrictions:                       Effective; one record applies:
 //                                                   AHCL/AHCL-RESTRICTIONS/ARIADNION-AR-2026-001.md (ARIADNION-AR-2026-001)
-//                                                   AHCL/AHCL-RESTRICTIONS/ARIADNION-AR-2026-002.md (ARIADNION-AR-2026-002)
 //
 // SPDX-License-Identifier: LicenseRef-AHCL-1.0
 //
@@ -34,6 +33,7 @@ mod embedding;
 mod error;
 mod execution;
 mod identity;
+mod image;
 mod json;
 mod protocol;
 
@@ -248,9 +248,9 @@ pub type PublicApiRouter = Router;
 
 /// Builds the bounded version-one Ariadnion-native public HTTP router.
 ///
-/// POST /v1/text and POST /v1/embeddings accept strict JSON with
+/// POST /v1/text, POST /v1/embeddings, and POST /v1/images accept strict JSON with
 /// application/json media type and one bounded Bearer authorization field.
-/// Embedding requests use complete delivery only. A validated request ID,
+/// Embedding and image requests use complete delivery only. A validated request ID,
 /// absolute UTC deadline, and idempotency key are propagated when present.
 /// Header, body, credential, deadline-window, and aggregate in-flight limits
 /// are shared with every external protocol route. Complete responses and
@@ -263,6 +263,7 @@ pub fn public_router(state: HttpApiState) -> PublicApiRouter {
     Router::new()
         .route("/v1/text", post(handle_text))
         .route("/v1/embeddings", post(embedding::handle_embeddings))
+        .route("/v1/images", post(image::handle_images))
         .fallback(not_found)
         .method_not_allowed_fallback(method_not_allowed)
         .with_state(state)

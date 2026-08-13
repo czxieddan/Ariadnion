@@ -21,9 +21,8 @@
 // Complete Corresponding Source and history:     AHCL/AHCL-SOURCE.md
 // Dependencies, Referenced Materials, and licenses:
 //                                                   AHCL/AHCL-DEPENDENCIES.md
-// Additional Restrictions:                       Effective; both records apply:
+// Additional Restrictions:                       Effective; one record applies:
 //                                                   AHCL/AHCL-RESTRICTIONS/ARIADNION-AR-2026-001.md (ARIADNION-AR-2026-001)
-//                                                   AHCL/AHCL-RESTRICTIONS/ARIADNION-AR-2026-002.md (ARIADNION-AR-2026-002)
 //
 // SPDX-License-Identifier: LicenseRef-AHCL-1.0
 //
@@ -467,16 +466,20 @@ fn validate_request_mode(
     request: &ServiceRequest,
     declared: ResponseMode,
 ) -> Result<(), ProtocolFailure> {
-    let actual = match request {
-        ServiceRequest::Text(request) => request.response_mode(),
-        ServiceRequest::Chat(request) => request.response_mode(),
-        ServiceRequest::Embedding(_) => ResponseMode::Complete,
-        _ => return Err(internal_failure()),
-    };
+    let actual = request_response_mode(request)?;
     if actual != declared {
         return Err(internal_failure());
     }
     Ok(())
+}
+
+fn request_response_mode(request: &ServiceRequest) -> Result<ResponseMode, ProtocolFailure> {
+    match request {
+        ServiceRequest::Text(request) => Ok(request.response_mode()),
+        ServiceRequest::Chat(request) => Ok(request.response_mode()),
+        ServiceRequest::Embedding(_) | ServiceRequest::Image(_) => Ok(ResponseMode::Complete),
+        _ => Err(internal_failure()),
+    }
 }
 
 fn checked_response_headers(mut headers: HeaderMap) -> Result<HeaderMap, ProtocolFailure> {
