@@ -45,8 +45,8 @@ use ariadnion_provider_dispatch::{
     MonotonicAttemptIdIssuer, ProviderDispatcher, StaticProviderModelResolver,
 };
 use ariadnion_provider_mock::{
-    DeterministicMockProvider, MOCK_PROVIDER_EMBEDDING_MODEL_ID, MOCK_PROVIDER_MODEL_ID,
-    MOCK_PROVIDER_TEXT_MODEL_ID,
+    DeterministicMockProvider, MOCK_PROVIDER_EMBEDDING_MODEL_ID, MOCK_PROVIDER_IMAGE_MODEL_ID,
+    MOCK_PROVIDER_MODEL_ID, MOCK_PROVIDER_TEXT_MODEL_ID,
 };
 use ariadnion_provider_sdk::{ProviderModelId, ProviderPort};
 
@@ -111,11 +111,11 @@ pub fn assemble_openai_mock_loop_with_provider(
 
 /// Assembles the standard bundle's Ariadnion-native mock loop.
 ///
-/// The caller supplies the authentication port. The bundle owns the fixed text
-/// and embedding model mappings, request and attempt identities, checked provider
-/// dispatch, cancellation, and bounded native SSE bridge. Both native routes share
-/// one provider, resolver, dispatcher, HTTP state, and public router. Assembly
-/// performs no provider call or external I/O.
+/// The caller supplies the authentication port. The bundle owns the fixed text,
+/// embedding, and image model mappings, request and attempt identities, checked
+/// provider dispatch, cancellation, and bounded native SSE bridge. All three native
+/// routes share one provider, resolver, dispatcher, HTTP state, and public router.
+/// Assembly performs no provider call or external I/O.
 ///
 /// # Errors
 ///
@@ -157,9 +157,14 @@ fn native_model_resolver() -> Result<StaticProviderModelResolver, CoreError> {
         .map_err(|_| assembly_error("standard native embedding selector is invalid"))?;
     let embedding_model = ProviderModelId::new(MOCK_PROVIDER_EMBEDDING_MODEL_ID)
         .map_err(|_| assembly_error("standard native embedding provider model is invalid"))?;
+    let image_selector = ModelSelector::new("mock-image")
+        .map_err(|_| assembly_error("standard native image selector is invalid"))?;
+    let image_model = ProviderModelId::new(MOCK_PROVIDER_IMAGE_MODEL_ID)
+        .map_err(|_| assembly_error("standard native image provider model is invalid"))?;
     StaticProviderModelResolver::new([
         (text_selector, text_model),
         (embedding_selector, embedding_model),
+        (image_selector, image_model),
     ])
     .map_err(|_| assembly_error("standard native model mapping is invalid"))
 }

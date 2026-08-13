@@ -64,7 +64,7 @@ fn run() -> Result<String, CoreError> {
     let snapshot = reader.service()?.read();
     let (storage_state, storage_error) = module_status(&report, &storage_id)?;
     Ok(format!(
-        "{} diagnostics_module={} diagnostics_version={} storage_module={} storage_state={} storage_error={} storage_rnmdb_revision={} provider_http_transport_version={} openai_mock_loop=mounted native_text_mock_loop=mounted native_embedding_mock_loop=mounted",
+        "{} diagnostics_module={} diagnostics_version={} storage_module={} storage_state={} storage_error={} storage_rnmdb_revision={} provider_http_transport_version={} openai_mock_loop=mounted native_text_mock_loop=mounted native_embedding_mock_loop=mounted native_image_mock_loop=mounted",
         report.render_line(),
         snapshot.module_id(),
         snapshot.version(),
