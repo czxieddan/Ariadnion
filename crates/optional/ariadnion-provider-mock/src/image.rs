@@ -198,10 +198,7 @@ fn write_zero_tail(writer: &mut BitWriter, remaining: usize) -> Result<(), Provi
     }
 }
 
-fn write_zero_literals(
-    writer: &mut BitWriter,
-    remaining: usize,
-) -> Result<(), ProviderFailure> {
+fn write_zero_literals(writer: &mut BitWriter, remaining: usize) -> Result<(), ProviderFailure> {
     for _ in 0..remaining {
         write_fixed_symbol(writer, 0)?;
     }

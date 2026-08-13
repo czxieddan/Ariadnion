@@ -347,18 +347,18 @@ fn execute(
 fn plan_attempt(attempt: &ProviderAttempt) -> Result<AttemptPlan, ProviderFailure> {
     let model = provider_model_kind(attempt.model().as_str())?;
     match (model, attempt.request()) {
-        (ProviderModelKind::Chat, ServiceRequest::Chat(request)) => plan_chat(request).map(|plan| {
-            AttemptPlan::Generation {
+        (ProviderModelKind::Chat, ServiceRequest::Chat(request)) => {
+            plan_chat(request).map(|plan| AttemptPlan::Generation {
                 mode: request.response_mode(),
                 plan: GenerationPlan::Chat(plan),
-            }
-        }),
-        (ProviderModelKind::Text, ServiceRequest::Text(request)) => plan_text(request).map(|plan| {
-            AttemptPlan::Generation {
+            })
+        }
+        (ProviderModelKind::Text, ServiceRequest::Text(request)) => {
+            plan_text(request).map(|plan| AttemptPlan::Generation {
                 mode: request.response_mode(),
                 plan: GenerationPlan::Text(plan),
-            }
-        }),
+            })
+        }
         (ProviderModelKind::Embedding, ServiceRequest::Embedding(request)) => {
             plan_embedding(request)
                 .map(ServiceResponse::Embedding)
