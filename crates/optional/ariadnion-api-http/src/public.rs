@@ -29,6 +29,7 @@
 //! Axum ingress and native service projection over shared protocol execution.
 
 mod authentication;
+mod base64_encoding;
 mod embedding;
 mod error;
 mod execution;

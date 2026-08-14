@@ -41,10 +41,9 @@ use axum::body::Body;
 use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, Request, StatusCode, header};
 use axum::response::Response;
-use base64::Engine as _;
-use base64::engine::general_purpose::STANDARD;
 use serde::{Deserialize, Serialize};
 
+use super::base64_encoding::{encode_bounded, encode_bounded_cancellable, encoded_length};
 use super::json::{serialize_bounded, serialize_bounded_cancellable};
 use super::protocol::{
     HttpProtocolAdapter, HttpProtocolProjection, ProtocolBufferedResponse, ProtocolFailure,
@@ -54,8 +53,6 @@ use super::{
     ApiHttpError, ApiHttpErrorCode, HttpApiState, HttpRequestIdentity, MAX_PUBLIC_BODY_BYTES,
     execution, parse_idempotency, project_native_failure,
 };
-
-const BASE64_INPUT_CHUNK_BYTES: usize = 12 * 1024;
 
 pub(super) async fn handle_images(
     State(state): State<HttpApiState>,
@@ -243,7 +240,7 @@ fn validate_encoded_budget(images: &[GeneratedImage]) -> Result<(), ProtocolFail
     let mut total = 0_usize;
     for image in images {
         total = total
-            .checked_add(base64_length(image.encoded_bytes())?)
+            .checked_add(encoded_length(image.encoded_bytes())?)
             .ok_or_else(internal_failure)?;
     }
     if total > MAX_PUBLIC_BODY_BYTES {
@@ -269,53 +266,10 @@ fn encode_image_bytes(
     input: &[u8],
     context: Option<&RequestContext>,
 ) -> Result<String, ProtocolFailure> {
-    check_context(context)?;
-    let output_length = base64_length(input.len())?;
-    let mut output = allocate_encoding(output_length)?;
-    encode_chunks(input, &mut output, context)?;
-    check_context(context)?;
-    String::from_utf8(output).map_err(|_| internal_failure())
-}
-
-fn allocate_encoding(length: usize) -> Result<Vec<u8>, ProtocolFailure> {
-    let mut output = Vec::new();
-    output
-        .try_reserve_exact(length)
-        .map_err(|_| internal_failure())?;
-    output.resize(length, 0);
-    Ok(output)
-}
-
-fn encode_chunks(
-    input: &[u8],
-    output: &mut [u8],
-    context: Option<&RequestContext>,
-) -> Result<(), ProtocolFailure> {
-    let mut offset = 0_usize;
-    for chunk in input.chunks(BASE64_INPUT_CHUNK_BYTES) {
-        check_context(context)?;
-        offset = encode_chunk(chunk, output, offset)?;
-        check_context(context)?;
+    match context {
+        Some(context) => encode_bounded_cancellable(input, context),
+        None => encode_bounded(input),
     }
-    if offset != output.len() {
-        return Err(internal_failure());
-    }
-    Ok(())
-}
-
-fn encode_chunk(input: &[u8], output: &mut [u8], offset: usize) -> Result<usize, ProtocolFailure> {
-    let encoded_length = base64_length(input.len())?;
-    let end = offset
-        .checked_add(encoded_length)
-        .ok_or_else(internal_failure)?;
-    let target = output.get_mut(offset..end).ok_or_else(internal_failure)?;
-    let written = STANDARD
-        .encode_slice(input, target)
-        .map_err(|_| internal_failure())?;
-    if written != encoded_length {
-        return Err(internal_failure());
-    }
-    Ok(end)
 }
 
 fn check_context(context: Option<&RequestContext>) -> Result<(), ProtocolFailure> {
@@ -324,10 +278,6 @@ fn check_context(context: Option<&RequestContext>) -> Result<(), ProtocolFailure
         .transpose()
         .map_err(ApiDomainError::from)?;
     Ok(())
-}
-
-fn base64_length(input_length: usize) -> Result<usize, ProtocolFailure> {
-    base64::encoded_len(input_length, true).ok_or_else(internal_failure)
 }
 
 const fn project_version(version: ServiceContractVersion) -> Result<u16, ProtocolFailure> {
