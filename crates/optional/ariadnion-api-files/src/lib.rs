@@ -31,6 +31,8 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+mod port;
+
 use std::fmt::{self, Debug, Display, Formatter};
 use std::num::NonZeroUsize;
 
@@ -39,6 +41,10 @@ use ariadnion_api_domain::{
     IdempotencyKey,
 };
 use ariadnion_core::{CoreError, ErrorCode};
+
+pub use port::{
+    BoxFileFuture, FileCatalogPort, FileDownloadSink, FileServicePort, FileUploadSource,
+};
 
 /// Maximum number of bytes carried by one in-memory file chunk.
 pub const MAX_FILE_CHUNK_BYTES: usize = 65_536;
