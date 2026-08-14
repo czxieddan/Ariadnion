@@ -477,7 +477,9 @@ fn request_response_mode(request: &ServiceRequest) -> Result<ResponseMode, Proto
     match request {
         ServiceRequest::Text(request) => Ok(request.response_mode()),
         ServiceRequest::Chat(request) => Ok(request.response_mode()),
-        ServiceRequest::Embedding(_) | ServiceRequest::Image(_) => Ok(ResponseMode::Complete),
+        ServiceRequest::Embedding(_) | ServiceRequest::Image(_) | ServiceRequest::Audio(_) => {
+            Ok(ResponseMode::Complete)
+        }
         _ => Err(internal_failure()),
     }
 }

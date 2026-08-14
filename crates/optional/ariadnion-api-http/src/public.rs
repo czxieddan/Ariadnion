@@ -28,6 +28,7 @@
 //
 //! Axum ingress and native service projection over shared protocol execution.
 
+mod audio;
 mod authentication;
 mod base64_encoding;
 mod embedding;
@@ -249,10 +250,10 @@ pub type PublicApiRouter = Router;
 
 /// Builds the bounded version-one Ariadnion-native public HTTP router.
 ///
-/// POST /v1/text, POST /v1/embeddings, and POST /v1/images accept strict JSON with
-/// application/json media type and one bounded Bearer authorization field.
-/// Embedding and image requests use complete delivery only. A validated request ID,
-/// absolute UTC deadline, and idempotency key are propagated when present.
+/// POST /v1/text, POST /v1/embeddings, POST /v1/images, and POST /v1/audio accept
+/// strict JSON with application/json media type and one bounded Bearer authorization
+/// field. Embedding, image, and audio requests use complete delivery only. A validated
+/// request ID, absolute UTC deadline, and idempotency key are propagated when present.
 /// Header, body, credential, deadline-window, and aggregate in-flight limits
 /// are shared with every external protocol route. Complete responses and
 /// failures retain their stable native bytes and headers.
@@ -265,6 +266,7 @@ pub fn public_router(state: HttpApiState) -> PublicApiRouter {
         .route("/v1/text", post(handle_text))
         .route("/v1/embeddings", post(embedding::handle_embeddings))
         .route("/v1/images", post(image::handle_images))
+        .route("/v1/audio", post(audio::handle_audio))
         .fallback(not_found)
         .method_not_allowed_fallback(method_not_allowed)
         .with_state(state)
