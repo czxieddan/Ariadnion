@@ -35,8 +35,9 @@ use ariadnion_api_dispatch::{
     BoxServiceDispatchFuture, ServiceDispatchOutcome, ServiceDispatchPort,
 };
 use ariadnion_api_domain::{
-    ApiDomainError, ChatServiceRequest, EmbeddingServiceRequest, GeneratedImage,
-    ImageOutputSpecification, ImageServiceRequest, ModelSelector, ResponseMode, ServiceRequest,
+    ApiDomainError, AudioOutputSpecification, AudioServiceRequest, AudioServiceResponse,
+    ChatServiceRequest, EmbeddingServiceRequest, GeneratedImage, ImageOutputSpecification,
+    ImageServiceRequest, ModelSelector, ResponseMode, ServiceContractVersion, ServiceRequest,
     ServiceResponse, TextServiceRequest,
 };
 use ariadnion_core::{AttemptId, RequestContext};
@@ -209,8 +210,14 @@ pub(crate) enum ServiceKind {
 enum CompleteKind {
     Text,
     Chat,
-    Embedding { expected_inputs: usize },
+    Embedding {
+        expected_inputs: usize,
+    },
     Image(ImageOutputSpecification),
+    Audio {
+        version: ServiceContractVersion,
+        specification: AudioOutputSpecification,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -240,6 +247,7 @@ impl<'a> RequestAdmission<'a> {
             ServiceRequest::Chat(request) => chat_admission(request),
             ServiceRequest::Embedding(request) => embedding_admission(request),
             ServiceRequest::Image(request) => image_admission(request),
+            ServiceRequest::Audio(request) => audio_admission(request),
             _ => Err(internal_error()),
         }
     }
@@ -317,6 +325,25 @@ fn image_admission(request: &ImageServiceRequest) -> Result<RequestAdmission<'_>
     Ok(RequestAdmission {
         delivery: DeliveryKind::Complete(CompleteKind::Image(specification)),
         required_capability: ProviderCapability::ImageGeneration,
+        selector: request.model(),
+        bounded_bytes,
+    })
+}
+
+fn audio_admission(request: &AudioServiceRequest) -> Result<RequestAdmission<'_>, ApiDomainError> {
+    let specification = request.output_specification();
+    let bounded_bytes = checked_byte_sum(&[
+        request.model().as_str().len(),
+        request.input().encoded_bytes(),
+        request.voice().encoded_bytes(),
+        idempotency_bytes(request.idempotency_key()),
+    ])?;
+    Ok(RequestAdmission {
+        delivery: DeliveryKind::Complete(CompleteKind::Audio {
+            version: request.version(),
+            specification,
+        }),
+        required_capability: ProviderCapability::AudioOutput,
         selector: request.model(),
         bounded_bytes,
     })
@@ -439,8 +466,31 @@ fn response_matches(kind: CompleteKind, response: &ServiceResponse) -> bool {
         (CompleteKind::Image(specification), ServiceResponse::Image(response)) => {
             image_response_matches(specification, response.images().as_slice())
         }
+        (
+            CompleteKind::Audio {
+                version,
+                specification,
+            },
+            ServiceResponse::Audio(response),
+        ) => audio_response_matches(version, specification, response),
         _ => false,
     }
+}
+
+fn audio_response_matches(
+    version: ServiceContractVersion,
+    specification: AudioOutputSpecification,
+    response: &AudioServiceResponse,
+) -> bool {
+    if response.version() != version {
+        return false;
+    }
+    let audio = response.audio();
+    AudioOutputSpecification::new(
+        audio.media_type(),
+        audio.sample_rate(),
+        audio.channel_count(),
+    ) == specification
 }
 
 fn image_response_matches(
