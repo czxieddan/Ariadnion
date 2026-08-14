@@ -30,6 +30,7 @@
 
 mod debug;
 
+use crate::audio::{AudioOutputSpecification, AudioText, AudioVoiceSelector};
 use crate::chat::ChatMessages;
 use crate::embedding::EmbeddingInputs;
 use crate::error::{ApiDomainError, ApiDomainErrorCode, invalid_argument, limit_exceeded};
@@ -72,7 +73,7 @@ impl ServiceContractVersion {
 pub type ServiceRequestVersion = ServiceContractVersion;
 
 /// A bounded model selector independent of provider-specific model types.
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ModelSelector(Box<str>);
 
 impl ModelSelector {
@@ -495,6 +496,79 @@ impl ImageServiceRequest {
     }
 }
 
+/// A fully validated request for complete-only audio synthesis.
+#[derive(Clone, Eq, PartialEq)]
+pub struct AudioServiceRequest {
+    version: ServiceContractVersion,
+    model: ModelSelector,
+    input: AudioText,
+    voice: AudioVoiceSelector,
+    output_specification: AudioOutputSpecification,
+    idempotency_key: Option<IdempotencyKey>,
+}
+
+impl AudioServiceRequest {
+    /// Creates an audio request from validated, transport-neutral values.
+    ///
+    /// Audio responses are complete-only. Provider quality controls, protocol
+    /// encoding choices, input-audio metadata, request identifiers, principals,
+    /// deadlines, cancellation handles, and trace state remain outside this value.
+    #[must_use]
+    pub const fn new(
+        version: ServiceContractVersion,
+        model: ModelSelector,
+        input: AudioText,
+        voice: AudioVoiceSelector,
+        output_specification: AudioOutputSpecification,
+        idempotency_key: Option<IdempotencyKey>,
+    ) -> Self {
+        Self {
+            version,
+            model,
+            input,
+            voice,
+            output_specification,
+            idempotency_key,
+        }
+    }
+
+    /// Returns the request contract version.
+    #[must_use]
+    pub const fn version(&self) -> ServiceContractVersion {
+        self.version
+    }
+
+    /// Returns the provider-independent model selector.
+    #[must_use]
+    pub const fn model(&self) -> &ModelSelector {
+        &self.model
+    }
+
+    /// Returns the validated synthesis text.
+    #[must_use]
+    pub const fn input(&self) -> &AudioText {
+        &self.input
+    }
+
+    /// Returns the provider-neutral voice selector.
+    #[must_use]
+    pub const fn voice(&self) -> &AudioVoiceSelector {
+        &self.voice
+    }
+
+    /// Returns the complete-only output requirements.
+    #[must_use]
+    pub const fn output_specification(&self) -> AudioOutputSpecification {
+        self.output_specification
+    }
+
+    /// Returns the optional idempotency key.
+    #[must_use]
+    pub const fn idempotency_key(&self) -> Option<&IdempotencyKey> {
+        self.idempotency_key.as_ref()
+    }
+}
+
 /// A transport-neutral service request accepted by the public service layer.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -507,6 +581,8 @@ pub enum ServiceRequest {
     Embedding(EmbeddingServiceRequest),
     /// A bounded complete-only image-generation request.
     Image(ImageServiceRequest),
+    /// A bounded complete-only audio-synthesis request.
+    Audio(AudioServiceRequest),
 }
 
 fn validate_model_selector(value: &str) -> Result<(), ApiDomainError> {

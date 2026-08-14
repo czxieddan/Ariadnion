@@ -31,9 +31,18 @@
 use std::fmt::{self, Debug, Formatter};
 
 use super::{
-    ChatServiceRequest, EmbeddingServiceRequest, IdempotencyKey, ImageServiceRequest, TextInput,
-    TextServiceRequest,
+    AudioServiceRequest, ChatServiceRequest, EmbeddingServiceRequest, IdempotencyKey,
+    ImageServiceRequest, ModelSelector, TextInput, TextServiceRequest,
 };
+
+impl Debug for ModelSelector {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ModelSelector")
+            .field("bytes", &self.0.len())
+            .finish_non_exhaustive()
+    }
+}
 
 impl Debug for IdempotencyKey {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
@@ -100,6 +109,20 @@ impl Debug for ImageServiceRequest {
             .field("version", &self.version)
             .field("model", &self.model)
             .field("prompt", &self.prompt)
+            .field("output_specification", &self.output_specification)
+            .field("idempotency_key", &self.idempotency_key)
+            .finish()
+    }
+}
+
+impl Debug for AudioServiceRequest {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AudioServiceRequest")
+            .field("version", &self.version)
+            .field("model_bytes", &self.model.as_str().len())
+            .field("input", &self.input)
+            .field("voice", &self.voice)
             .field("output_specification", &self.output_specification)
             .field("idempotency_key", &self.idempotency_key)
             .finish()
