@@ -35,6 +35,7 @@ mod audio;
 mod chat;
 mod embedding;
 mod error;
+mod file;
 mod image;
 mod request;
 mod response;
@@ -56,6 +57,11 @@ pub use embedding::{
     MAX_EMBEDDING_SCALARS, MAX_EMBEDDING_VECTORS,
 };
 pub use error::{ApiDomainError, ApiDomainErrorCode};
+pub use file::{
+    FileByteLength, FileDescriptor, FileDigest, FileDisplayName, FileMediaType, FileReference,
+    FileUploadSpecification, MAX_FILE_BYTES, MAX_FILE_DISPLAY_NAME_BYTES,
+    MAX_FILE_MEDIA_TYPE_BYTES,
+};
 pub use image::{
     GeneratedImage, GeneratedImages, ImageCount, ImageDimensions, ImageMediaType, ImagePrompt,
     MAX_GENERATED_IMAGE_BYTES, MAX_GENERATED_IMAGES, MAX_GENERATED_IMAGES_BYTES, MAX_IMAGE_EDGE,
