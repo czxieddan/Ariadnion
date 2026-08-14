@@ -28,6 +28,7 @@
 //
 //! Bounded values for complete service responses.
 
+use crate::audio::GeneratedAudio;
 use crate::embedding::EmbeddingVectors;
 use crate::error::{ApiDomainError, invalid_argument, limit_exceeded};
 use crate::image::GeneratedImages;
@@ -247,6 +248,33 @@ impl ImageServiceResponse {
     }
 }
 
+/// A complete response from an audio-synthesis service.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AudioServiceResponse {
+    version: ServiceContractVersion,
+    audio: GeneratedAudio,
+}
+
+impl AudioServiceResponse {
+    /// Creates a complete audio response from validated generated audio.
+    #[must_use]
+    pub const fn new(version: ServiceContractVersion, audio: GeneratedAudio) -> Self {
+        Self { version, audio }
+    }
+
+    /// Returns the service contract version.
+    #[must_use]
+    pub const fn version(&self) -> ServiceContractVersion {
+        self.version
+    }
+
+    /// Returns the validated complete audio output.
+    #[must_use]
+    pub const fn audio(&self) -> &GeneratedAudio {
+        &self.audio
+    }
+}
+
 /// A complete transport-neutral service response.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -259,6 +287,8 @@ pub enum ServiceResponse {
     Embedding(EmbeddingServiceResponse),
     /// A complete ordered image-generation response.
     Image(ImageServiceResponse),
+    /// A complete bounded audio-synthesis response.
+    Audio(AudioServiceResponse),
 }
 
 fn validate_text_output(value: &str) -> Result<(), ApiDomainError> {
