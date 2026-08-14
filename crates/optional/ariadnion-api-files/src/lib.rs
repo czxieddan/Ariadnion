@@ -39,12 +39,13 @@ mod port;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::num::NonZeroUsize;
 
-use ariadnion_api_domain::{
-    ApiDomainError, ApiDomainErrorCode, FileDescriptor, FileReference, FileUploadSpecification,
-    IdempotencyKey,
-};
+use ariadnion_api_domain::{ApiDomainError, ApiDomainErrorCode};
 use ariadnion_core::{CoreError, ErrorCode};
 
+pub use ariadnion_api_domain::{
+    FileByteLength, FileDescriptor, FileDigest, FileDisplayName, FileMediaType, FileReference,
+    FileUploadSpecification, IdempotencyKey,
+};
 pub use catalog::FileCatalogRecord;
 pub use port::{
     BoxFileFuture, FileCatalogPort, FileDownloadSink, FileReferenceIssuerPort, FileServicePort,
