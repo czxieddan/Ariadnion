@@ -31,6 +31,7 @@
 use std::sync::Arc;
 
 use ariadnion_api_admin::migrations::IDENTITY_ADMIN_COMMAND_MIGRATION_ID;
+use ariadnion_api_files::migrations::FILES_CATALOG_MIGRATION_ID;
 use ariadnion_audit_domain::migrations::IDENTITY_AUDIT_MIGRATION_ID;
 use ariadnion_auth_api_key::migrations::{
     IDENTITY_API_KEY_REQUEST_EVIDENCE_MIGRATION_ID, IDENTITY_API_KEYS_MIGRATION_ID,
@@ -329,6 +330,20 @@ pub fn identity_principal_authenticators_migration() -> Result<MigrationDescript
 /// the frozen canonical checksum fail validation.
 pub fn identity_api_key_request_evidence_migration() -> Result<MigrationDescriptor, StorageError> {
     compiled_migration_definitions()?.descriptor(IDENTITY_API_KEY_REQUEST_EVIDENCE_MIGRATION_ID)
+}
+
+/// Returns the durable file-catalog migration after canonical digest verification.
+///
+/// The migration remains outside module startup. Callers must request the
+/// version-nineteen to version-twenty transition explicitly through the registry.
+/// This synchronous accessor performs no I/O and has no cancellation boundary.
+///
+/// # Errors
+///
+/// Returns an integrity error when registry metadata, migration statements, or
+/// the frozen canonical checksum fail validation.
+pub fn file_catalog_migration() -> Result<MigrationDescriptor, StorageError> {
+    compiled_migration_definitions()?.descriptor(FILES_CATALOG_MIGRATION_ID)
 }
 
 fn migration_insert(

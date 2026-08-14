@@ -39,6 +39,12 @@ use ariadnion_api_admin::migrations::{
     IDENTITY_ADMIN_COMMAND_MIGRATION_REQUIRES_BACKUP, IDENTITY_ADMIN_COMMAND_MIGRATION_STATEMENTS,
     IDENTITY_ADMIN_COMMAND_MIGRATION_TO_VERSION,
 };
+use ariadnion_api_files::migrations::{
+    FILES_CATALOG_MIGRATION_CANONICAL_V1_SHA256, FILES_CATALOG_MIGRATION_DOMAIN,
+    FILES_CATALOG_MIGRATION_FROM_VERSION, FILES_CATALOG_MIGRATION_ID,
+    FILES_CATALOG_MIGRATION_REQUIRES_BACKUP, FILES_CATALOG_MIGRATION_STATEMENTS,
+    FILES_CATALOG_MIGRATION_TO_VERSION,
+};
 use ariadnion_audit_domain::migrations::{
     IDENTITY_AUDIT_MIGRATION_CANONICAL_V1_SHA256, IDENTITY_AUDIT_MIGRATION_DOMAIN,
     IDENTITY_AUDIT_MIGRATION_FROM_VERSION, IDENTITY_AUDIT_MIGRATION_ID,
@@ -292,6 +298,7 @@ impl RnmdbMigrationDefinitions {
     fn compile() -> Result<Self, StorageError> {
         let (mut definitions, bootstrap_ids) = compile_bootstrap_definitions()?;
         compile_identity_definitions(&mut definitions)?;
+        compile_file_definitions(&mut definitions)?;
         Ok(Self {
             definitions,
             bootstrap_ids,
@@ -407,6 +414,12 @@ fn compile_identity_definitions(
 ) -> Result<(), StorageError> {
     compile_identity_base_definitions(definitions)?;
     compile_identity_security_definitions(definitions)
+}
+
+fn compile_file_definitions(
+    definitions: &mut BTreeMap<MigrationId, RnmdbMigrationDefinition>,
+) -> Result<(), StorageError> {
+    insert_definition(definitions, compile_file_catalog_definition()?)
 }
 
 fn compile_identity_base_definitions(
@@ -786,6 +799,19 @@ fn compile_identity_api_key_request_evidence_definition()
         statements: IDENTITY_API_KEY_REQUEST_EVIDENCE_MIGRATION_STATEMENTS,
         expected_checksum: IDENTITY_API_KEY_REQUEST_EVIDENCE_MIGRATION_CANONICAL_V1_SHA256,
         requires_backup: IDENTITY_API_KEY_REQUEST_EVIDENCE_MIGRATION_REQUIRES_BACKUP,
+    };
+    compile_migration_definition(input, CanonicalAstV1)
+}
+
+fn compile_file_catalog_definition() -> Result<RnmdbMigrationDefinition, StorageError> {
+    let input = CanonicalMigrationDefinitionInput {
+        id: FILES_CATALOG_MIGRATION_ID,
+        domain: FILES_CATALOG_MIGRATION_DOMAIN,
+        from: FILES_CATALOG_MIGRATION_FROM_VERSION,
+        to: FILES_CATALOG_MIGRATION_TO_VERSION,
+        statements: FILES_CATALOG_MIGRATION_STATEMENTS,
+        expected_checksum: FILES_CATALOG_MIGRATION_CANONICAL_V1_SHA256,
+        requires_backup: FILES_CATALOG_MIGRATION_REQUIRES_BACKUP,
     };
     compile_migration_definition(input, CanonicalAstV1)
 }

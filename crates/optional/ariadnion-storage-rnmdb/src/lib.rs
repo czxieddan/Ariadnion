@@ -90,15 +90,15 @@ pub use maintenance::{
     VerificationSummary,
 };
 pub use migration::{
-    MigrationApplyStatus, RnmdbMigrationRunner, identity_admin_command_migration,
-    identity_api_key_migration, identity_api_key_request_evidence_migration,
-    identity_audit_migration, identity_invitation_migration,
-    identity_organization_event_replay_migration, identity_organization_migration,
-    identity_password_commit_evidence_migration, identity_password_migration,
-    identity_principal_authenticators_migration, identity_principal_bindings_migration,
-    identity_rbac_migration, identity_session_migration, identity_tenant_enforcement_migration,
-    identity_users_migration, platform_initial_migration, platform_outbox_migration,
-    platform_secret_references_migration,
+    MigrationApplyStatus, RnmdbMigrationRunner, file_catalog_migration,
+    identity_admin_command_migration, identity_api_key_migration,
+    identity_api_key_request_evidence_migration, identity_audit_migration,
+    identity_invitation_migration, identity_organization_event_replay_migration,
+    identity_organization_migration, identity_password_commit_evidence_migration,
+    identity_password_migration, identity_principal_authenticators_migration,
+    identity_principal_bindings_migration, identity_rbac_migration, identity_session_migration,
+    identity_tenant_enforcement_migration, identity_users_migration, platform_initial_migration,
+    platform_outbox_migration, platform_secret_references_migration,
 };
 pub use migration_definition::canonical_migration_checksum;
 pub use migration_executor::{RnmdbMigrationExecutor, RnmdbMigrationPageKeys};
