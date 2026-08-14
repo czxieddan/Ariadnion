@@ -31,6 +31,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+mod audio;
 mod chat;
 mod embedding;
 mod error;
@@ -40,6 +41,11 @@ mod response;
 mod stream;
 mod usage;
 
+pub use audio::{
+    AudioChannelCount, AudioMediaType, AudioOutputSpecification, AudioSampleRate, AudioText,
+    AudioVoiceSelector, GeneratedAudio, MAX_AUDIO_DURATION_MILLIS, MAX_AUDIO_TEXT_BYTES,
+    MAX_AUDIO_VOICE_SELECTOR_BYTES, MAX_GENERATED_AUDIO_BYTES,
+};
 pub use chat::{
     ChatMessage, ChatMessageContent, ChatMessages, ChatRole, MAX_CHAT_MESSAGE_CONTENT_BYTES,
     MAX_CHAT_MESSAGES, MAX_CHAT_MESSAGES_BYTES,
