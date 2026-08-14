@@ -31,6 +31,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+mod catalog;
 mod port;
 
 use std::fmt::{self, Debug, Display, Formatter};
@@ -42,8 +43,10 @@ use ariadnion_api_domain::{
 };
 use ariadnion_core::{CoreError, ErrorCode};
 
+pub use catalog::FileCatalogRecord;
 pub use port::{
-    BoxFileFuture, FileCatalogPort, FileDownloadSink, FileServicePort, FileUploadSource,
+    BoxFileFuture, FileCatalogPort, FileDownloadSink, FileReferenceIssuerPort, FileServicePort,
+    FileUploadSource,
 };
 
 /// Maximum number of bytes carried by one in-memory file chunk.

@@ -35,8 +35,8 @@ use ariadnion_api_domain::{FileDescriptor, FileReference};
 use ariadnion_core::RequestContext;
 
 use crate::{
-    ApiFilesError, FileChunk, FileDeleteReconciliation, FileDeleteRequest, FileListPage,
-    FileListRequest, FileUploadReconciliation, FileUploadRequest,
+    ApiFilesError, FileCatalogRecord, FileChunk, FileDeleteReconciliation, FileDeleteRequest,
+    FileListPage, FileListRequest, FileUploadReconciliation, FileUploadRequest,
 };
 
 /// A boxed asynchronous file operation result.
@@ -46,6 +46,31 @@ use crate::{
 /// safe to move between executor workers, borrows its port and all borrowed
 /// arguments for at most `'a`, and does not require a particular runtime.
 pub type BoxFileFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+/// Issues opaque file references through a runtime-neutral security boundary.
+///
+/// Every returned [`BoxFileFuture`] is lazy and `Send`: constructing it must not
+/// authenticate, inspect context state, access entropy, or perform other work.
+/// Polling must authenticate the supplied [`RequestContext`] and check
+/// cancellation and deadline state before any entropy access. Implementations
+/// must use a cryptographically secure random number generator and must never
+/// fall back to counters, clocks, digests, request material, storage keys, or
+/// provider identifiers. Catalog insertion is the authoritative collision check;
+/// a collision returns [`crate::ApiFilesErrorCode::Conflict`] and never overwrites
+/// an existing record.
+pub trait FileReferenceIssuerPort: Send + Sync {
+    /// Lazily issues one cryptographically random opaque file reference.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable redacted authentication, context, entropy, resource, or
+    /// availability failure. Reference collisions are resolved only by the
+    /// authoritative catalog insertion boundary.
+    fn issue_reference<'a>(
+        &'a self,
+        context: &'a RequestContext,
+    ) -> BoxFileFuture<'a, Result<FileReference, ApiFilesError>>;
+}
 
 /// Supplies bounded upload bytes sequentially to a file service.
 ///
@@ -215,13 +240,20 @@ pub trait FileServicePort: Send + Sync {
 /// Persists authenticated file metadata without content or storage locations.
 ///
 /// A catalog must never receive or retain content bytes or storage paths.
-/// `publish` binds the exact upload request material to the exact verified
-/// descriptor. `delete` receives the expected descriptor and must compare it
-/// with authoritative state to prevent deletion races. The same anonymous,
-/// tenant-visibility, cursor, cancellation, deadline, durable-commit, and
-/// reconciliation rules documented for [`FileServicePort`] apply here.
+/// `publish` receives an already validated [`FileCatalogRecord`] that binds the
+/// exact authenticated owner, upload request, and verified descriptor. `delete`
+/// receives the expected descriptor and must compare it with authoritative state
+/// to prevent deletion races. The same anonymous, tenant-visibility, cursor,
+/// cancellation, deadline, durable-commit, and reconciliation rules documented
+/// for [`FileServicePort`] apply here.
 pub trait FileCatalogPort: Send + Sync {
-    /// Lazily publishes exact verified metadata for one exact upload request.
+    /// Lazily publishes one exact authenticated catalog record.
+    ///
+    /// Before I/O, an implementation must independently require an authenticated
+    /// context and compare its exact principal context with [`FileCatalogRecord::owner`].
+    /// An owner mismatch is [`crate::ApiFilesErrorCode::IntegrityFailure`]. The
+    /// insert is authoritative: any reference collision is
+    /// [`crate::ApiFilesErrorCode::Conflict`] and must never overwrite existing state.
     ///
     /// # Errors
     ///
@@ -229,8 +261,7 @@ pub trait FileCatalogPort: Send + Sync {
     /// availability, or indeterminate-commit failures.
     fn publish<'a>(
         &'a self,
-        request: &'a FileUploadRequest,
-        descriptor: &'a FileDescriptor,
+        record: &'a FileCatalogRecord,
         context: &'a RequestContext,
     ) -> BoxFileFuture<'a, Result<(), ApiFilesError>>;
 
