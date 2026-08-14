@@ -26,7 +26,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-AHCL-1.0
 //
-//! Fixed bounded text, chat, embedding, and image generation without external side effects.
+//! Fixed bounded text, chat, embedding, image, and audio generation without external side effects.
 
 use std::fmt::{self, Debug, Formatter};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
@@ -49,6 +49,7 @@ use ariadnion_provider_sdk::{
     bounded_provider_stream,
 };
 
+use crate::audio::plan_audio;
 use crate::chunk::for_each_delta;
 use crate::image::plan_image;
 
@@ -62,6 +63,8 @@ pub const MOCK_PROVIDER_TEXT_MODEL_ID: &str = "mock-text-v1";
 pub const MOCK_PROVIDER_EMBEDDING_MODEL_ID: &str = "mock-embedding-v1";
 /// Stable image provider model identifier accepted by the deterministic adapter.
 pub const MOCK_PROVIDER_IMAGE_MODEL_ID: &str = "mock-image-v1";
+/// Stable audio provider model identifier accepted by the deterministic adapter.
+pub const MOCK_PROVIDER_AUDIO_MODEL_ID: &str = "mock-audio-v1";
 /// Fixed output dimensions produced by the deterministic embedding model.
 pub const MOCK_PROVIDER_EMBEDDING_DIMENSIONS: usize = 4;
 /// Maximum UTF-8 bytes carried by one deterministic mock stream delta.
@@ -115,7 +118,8 @@ impl DeterministicMockProvider {
         let capabilities = ProviderCapabilities::new(ProviderCapability::TextGeneration)
             .with(ProviderCapability::TextStreaming)
             .with(ProviderCapability::Embeddings)
-            .with(ProviderCapability::ImageGeneration);
+            .with(ProviderCapability::ImageGeneration)
+            .with(ProviderCapability::AudioOutput);
         let limits = ProviderLimits::new(
             MAX_MOCK_REQUEST_BYTES,
             MAX_MOCK_STREAM_DELTA_BYTES,
@@ -285,6 +289,7 @@ enum ProviderModelKind {
     Text,
     Embedding,
     Image,
+    Audio,
 }
 
 impl GenerationPlan {
@@ -367,6 +372,11 @@ fn plan_attempt(attempt: &ProviderAttempt) -> Result<AttemptPlan, ProviderFailur
         (ProviderModelKind::Image, ServiceRequest::Image(request)) => plan_image(request)
             .map(ServiceResponse::Image)
             .map(AttemptPlan::Complete),
+        (ProviderModelKind::Audio, ServiceRequest::Audio(request)) => {
+            plan_audio(request, attempt.context())
+                .map(ServiceResponse::Audio)
+                .map(AttemptPlan::Complete)
+        }
         _ => Err(failure(ProviderFailureClass::InvalidRequest)),
     }
 }
@@ -377,6 +387,7 @@ fn provider_model_kind(model: &str) -> Result<ProviderModelKind, ProviderFailure
         MOCK_PROVIDER_TEXT_MODEL_ID => Ok(ProviderModelKind::Text),
         MOCK_PROVIDER_EMBEDDING_MODEL_ID => Ok(ProviderModelKind::Embedding),
         MOCK_PROVIDER_IMAGE_MODEL_ID => Ok(ProviderModelKind::Image),
+        MOCK_PROVIDER_AUDIO_MODEL_ID => Ok(ProviderModelKind::Audio),
         _ => Err(failure(ProviderFailureClass::NotFound)),
     }
 }
@@ -763,7 +774,7 @@ fn check_active(attempt: &ProviderAttempt) -> Result<(), ProviderFailure> {
     check_context(attempt.context())
 }
 
-fn check_context(context: &RequestContext) -> Result<(), ProviderFailure> {
+pub(crate) fn check_context(context: &RequestContext) -> Result<(), ProviderFailure> {
     context
         .check_active()
         .map_err(|error| failure(failure_class(error.code())))
