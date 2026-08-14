@@ -42,6 +42,7 @@ test-hooks = ["rnmdb-cli/test-hooks"]
 
 [dependencies]
 ariadnion-api-admin = { path = "../ariadnion-api-admin" }
+ariadnion-api-files = { path = "../ariadnion-api-files" }
 ariadnion-audit-domain = { path = "../ariadnion-audit-domain" }
 ariadnion-audit-store = { path = "../ariadnion-audit-store" }
 ariadnion-auth-password = { path = "../ariadnion-auth-password" }
