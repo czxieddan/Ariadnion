@@ -26,11 +26,12 @@
 //
 // SPDX-License-Identifier: LicenseRef-AHCL-1.0
 //
-//! Single-lock transaction handling for identity repositories.
+//! Single-lock transaction handling for storage repositories.
 
 use ariadnion_core::RequestContext;
 use ariadnion_storage_domain::{StorageError, StorageErrorCode};
-use rnmdb_cli::LocalSession;
+use rnmdb_cli::{CommandOutput, LocalSession};
+use rnmdb_common::RnovError;
 
 use crate::session::{check_context, map_rnmdb_error};
 
@@ -76,22 +77,64 @@ pub(crate) fn run_identity_transaction<T>(
     context: &RequestContext,
     operation: impl FnOnce(&mut LocalSession) -> Result<T, StorageError>,
 ) -> IdentityTransactionResult<T> {
-    match session.execute("BEGIN") {
-        Ok(_) if session.in_transaction() => {}
-        Ok(_) => {
-            return Err(IdentityTransactionFailure::tainted(integrity_failure()));
-        }
-        Err(error) => {
-            let error = map_rnmdb_error(error);
-            return Err(if session.in_transaction() {
-                IdentityTransactionFailure::tainted(integrity_failure())
-            } else {
-                IdentityTransactionFailure::ordinary(error)
-            });
-        }
-    }
+    run_transaction_with_begin_boundary(session, context, || check_context(context), operation)
+}
+
+pub(crate) fn run_transaction_with_begin_boundary<T>(
+    session: &mut LocalSession,
+    context: &RequestContext,
+    after_begin: impl FnOnce() -> Result<(), StorageError>,
+    operation: impl FnOnce(&mut LocalSession) -> Result<T, StorageError>,
+) -> IdentityTransactionResult<T> {
+    begin_transaction(session, context, after_begin)?;
     let result = operation(session);
     finish_identity_transaction(session, context, result)
+}
+
+fn begin_transaction(
+    session: &mut LocalSession,
+    context: &RequestContext,
+    after_begin: impl FnOnce() -> Result<(), StorageError>,
+) -> IdentityTransactionResult<()> {
+    if let Err(error) = check_context(context) {
+        return Err(IdentityTransactionFailure::ordinary(error));
+    }
+    let begin = session.execute("BEGIN");
+    project_begin_result(session, context, begin)?;
+    let boundary = after_begin();
+    match boundary {
+        Ok(()) => Ok(()),
+        Err(error) => Err(rollback_started_transaction(session, error)),
+    }
+}
+
+fn project_begin_result(
+    session: &LocalSession,
+    context: &RequestContext,
+    begin: Result<CommandOutput, RnovError>,
+) -> Result<(), IdentityTransactionFailure> {
+    match begin {
+        Ok(_) if session.in_transaction() => Ok(()),
+        Ok(_) => Err(IdentityTransactionFailure::tainted(integrity_failure())),
+        Err(error) => {
+            let error = map_rnmdb_error(error);
+            Err(if session.in_transaction() {
+                IdentityTransactionFailure::tainted(integrity_failure())
+            } else {
+                ordinary_failure_with_context(context, error)
+            })
+        }
+    }
+}
+
+fn rollback_started_transaction(
+    session: &mut LocalSession,
+    error: StorageError,
+) -> IdentityTransactionFailure {
+    match rollback_precommit_error::<()>(session, error) {
+        Err(failure) => failure,
+        Ok(()) => IdentityTransactionFailure::tainted(integrity_failure()),
+    }
 }
 
 pub(crate) fn require_active_identity_transaction(
@@ -110,7 +153,7 @@ fn finish_identity_transaction<T>(
 ) -> IdentityTransactionResult<T> {
     match result {
         Ok(value) => commit_identity_transaction(session, context, value),
-        Err(error) => rollback_precommit_error(session, error),
+        Err(error) => rollback_precommit_error_with_context(session, context, error),
     }
 }
 
@@ -161,6 +204,30 @@ fn rollback_precommit_error<T>(
         return Err(IdentityTransactionFailure::tainted(integrity_failure()));
     }
     Err(IdentityTransactionFailure::ordinary(error))
+}
+
+fn rollback_precommit_error_with_context<T>(
+    session: &mut LocalSession,
+    context: &RequestContext,
+    error: StorageError,
+) -> IdentityTransactionResult<T> {
+    match rollback_precommit_error(session, error) {
+        Err(failure) if !failure.taints_session() => {
+            Err(ordinary_failure_with_context(context, failure.error))
+        }
+        result => result,
+    }
+}
+
+fn ordinary_failure_with_context(
+    context: &RequestContext,
+    fallback: StorageError,
+) -> IdentityTransactionFailure {
+    let error = match check_context(context) {
+        Ok(()) => fallback,
+        Err(error) => error,
+    };
+    IdentityTransactionFailure::ordinary(error)
 }
 
 const fn integrity_failure() -> StorageError {

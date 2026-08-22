@@ -37,6 +37,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard};
 use std::time::SystemTime;
 
+use ariadnion_api_files::migrations::FILES_RUNTIME_ROLE;
 use ariadnion_core::{ErrorCode, RequestContext, TenantId};
 use ariadnion_rbac::migrations::IDENTITY_RUNTIME_ROLE;
 use ariadnion_storage_domain::{
@@ -161,6 +162,8 @@ pub struct RnmdbSessionOwner {
     #[cfg(feature = "test-hooks")]
     inject_next_identity_commit_indeterminate: AtomicBool,
     #[cfg(feature = "test-hooks")]
+    inject_next_files_commit_indeterminate: AtomicBool,
+    #[cfg(feature = "test-hooks")]
     identity_storage_scope_entries: AtomicU64,
     #[cfg(feature = "test-hooks")]
     identity_transaction_scope_entries: AtomicU64,
@@ -180,6 +183,8 @@ impl RnmdbSessionOwner {
             tainted: AtomicBool::new(false),
             #[cfg(feature = "test-hooks")]
             inject_next_identity_commit_indeterminate: AtomicBool::new(false),
+            #[cfg(feature = "test-hooks")]
+            inject_next_files_commit_indeterminate: AtomicBool::new(false),
             #[cfg(feature = "test-hooks")]
             identity_storage_scope_entries: AtomicU64::new(0),
             #[cfg(feature = "test-hooks")]
@@ -262,6 +267,36 @@ impl RnmdbSessionOwner {
             return Err(StorageError::new(StorageErrorCode::Conflict));
         }
         self.inject_next_identity_commit_indeterminate
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map(|_| ())
+            .map_err(|_| StorageError::new(StorageErrorCode::Conflict))
+    }
+
+    /// Arms one files post-commit ambiguity for contract verification.
+    ///
+    /// The next files transaction that returns after a successful commit is
+    /// reported as indeterminate and permanently taints this owner. A failure
+    /// before commit does not consume the injection.
+    ///
+    /// # Errors
+    ///
+    /// Returns a context or integrity error when the owner is unavailable, or
+    /// a conflict when a transaction is active or an injection is already armed.
+    #[cfg(feature = "test-hooks")]
+    #[doc(hidden)]
+    pub fn inject_next_files_commit_indeterminate(
+        &self,
+        context: &RequestContext,
+    ) -> Result<(), StorageError> {
+        check_context(context)?;
+        self.ensure_usable()?;
+        let session = lock_session(&self.session);
+        check_context(context)?;
+        self.ensure_usable()?;
+        if session.in_transaction() {
+            return Err(StorageError::new(StorageErrorCode::Conflict));
+        }
+        self.inject_next_files_commit_indeterminate
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .map(|_| ())
             .map_err(|_| StorageError::new(StorageErrorCode::Conflict))
@@ -406,7 +441,7 @@ impl RnmdbSessionOwner {
         let mut session = lock_session(&self.session);
         check_context(context)?;
         self.ensure_usable()?;
-        let result = run_identity_tenant_scope(&mut session, tenant_id, |session| {
+        let result = run_tenant_scope(&mut session, IDENTITY_RUNTIME_ROLE, tenant_id, |session| {
             #[cfg(feature = "test-hooks")]
             self.identity_storage_scope_entries
                 .fetch_add(1, Ordering::Relaxed);
@@ -431,8 +466,9 @@ impl RnmdbSessionOwner {
         let mut session = lock_session(&self.session);
         check_context(context)?;
         self.ensure_usable()?;
-        let result = run_identity_tenant_scope_injected_cleanup_failure(
+        let result = run_tenant_scope_injected_cleanup_failure(
             &mut session,
+            IDENTITY_RUNTIME_ROLE,
             tenant_id,
             |session| {
                 self.identity_storage_scope_entries
@@ -462,17 +498,75 @@ impl RnmdbSessionOwner {
             return Err(StorageError::new(StorageErrorCode::Conflict));
         }
         let mut operation_tainted = false;
-        let result = run_identity_tenant_scope(&mut session, tenant_id, |session| {
+        let result = run_tenant_scope(&mut session, IDENTITY_RUNTIME_ROLE, tenant_id, |session| {
             #[cfg(feature = "test-hooks")]
             self.identity_transaction_scope_entries
                 .fetch_add(1, Ordering::Relaxed);
             let result = operation(session);
             #[cfg(feature = "test-hooks")]
-            let result = self.inject_commit_indeterminate_after_success(result);
+            let result = Self::inject_commit_indeterminate_after_success(
+                result,
+                &self.inject_next_identity_commit_indeterminate,
+            );
             operation_tainted = transaction_result_taints(&result);
             result
         });
         self.finish_identity_tenant_scope(&session, result, operation_tainted)
+    }
+
+    pub(crate) fn with_files_storage_session<T>(
+        &self,
+        context: &RequestContext,
+        tenant_id: &TenantId,
+        operation: impl FnOnce(&mut LocalSession) -> Result<T, StorageError>,
+    ) -> Result<T, StorageError> {
+        check_context(context)?;
+        self.ensure_usable()?;
+        let mut session = lock_session(&self.session);
+        check_context(context)?;
+        self.ensure_usable()?;
+        let result = run_tenant_scope(&mut session, FILES_RUNTIME_ROLE, tenant_id, operation);
+        let result = self.finish_identity_storage_scope(&session, result);
+        check_context(context)?;
+        result
+    }
+
+    pub(crate) fn with_files_transaction_session<T>(
+        &self,
+        context: &RequestContext,
+        tenant_id: &TenantId,
+        operation: impl FnOnce(
+            &mut LocalSession,
+        ) -> crate::identity_transaction::IdentityTransactionResult<T>,
+    ) -> Result<T, StorageError> {
+        check_context(context)?;
+        self.ensure_usable()?;
+        let mut session = lock_session(&self.session);
+        check_context(context)?;
+        self.ensure_usable()?;
+        if session.in_transaction() {
+            return Err(StorageError::new(StorageErrorCode::Conflict));
+        }
+        let mut operation_tainted = false;
+        let result = run_tenant_scope(&mut session, FILES_RUNTIME_ROLE, tenant_id, |session| {
+            let result = operation(session);
+            #[cfg(feature = "test-hooks")]
+            let result = Self::inject_commit_indeterminate_after_success(
+                result,
+                &self.inject_next_files_commit_indeterminate,
+            );
+            operation_tainted = transaction_result_taints(&result);
+            result
+        });
+        self.finish_identity_tenant_scope(&session, result, operation_tainted)
+    }
+
+    pub(crate) fn quarantine_after_worker_panic(&self) {
+        self.mark_tainted();
+        let mut session = lock_session(&self.session);
+        if session.in_transaction() {
+            let _rollback = session.execute("ROLLBACK");
+        }
     }
 
     /// Configures one managed column while holding the configuration lock.
@@ -540,14 +634,10 @@ impl RnmdbSessionOwner {
 
     #[cfg(feature = "test-hooks")]
     fn inject_commit_indeterminate_after_success<T>(
-        &self,
         result: crate::identity_transaction::IdentityTransactionResult<T>,
+        injection: &AtomicBool,
     ) -> crate::identity_transaction::IdentityTransactionResult<T> {
-        if result.is_ok()
-            && self
-                .inject_next_identity_commit_indeterminate
-                .swap(false, Ordering::AcqRel)
-        {
+        if result.is_ok() && injection.swap(false, Ordering::AcqRel) {
             return Err(
                 crate::identity_transaction::IdentityTransactionFailure::injected_commit_indeterminate(),
             );
@@ -614,14 +704,13 @@ impl<E> TenantScopeFailure<E> {
     }
 }
 
-fn run_identity_tenant_scope<T, E>(
+fn run_tenant_scope<T, E>(
     session: &mut LocalSession,
+    role: &'static str,
     tenant_id: &TenantId,
     operation: impl FnOnce(&mut LocalSession) -> Result<T, E>,
 ) -> Result<T, TenantScopeFailure<E>> {
-    match session.with_tenant_context(IDENTITY_RUNTIME_ROLE, tenant_id.as_str(), |session| {
-        Ok(operation(session))
-    }) {
+    match session.with_tenant_context(role, tenant_id.as_str(), |session| Ok(operation(session))) {
         Ok(Ok(value)) => Ok(value),
         Ok(Err(error)) => Err(TenantScopeFailure::Operation(error)),
         Err(_) => Err(TenantScopeFailure::Scope),
@@ -629,13 +718,14 @@ fn run_identity_tenant_scope<T, E>(
 }
 
 #[cfg(feature = "test-hooks")]
-fn run_identity_tenant_scope_injected_cleanup_failure<T, E>(
+fn run_tenant_scope_injected_cleanup_failure<T, E>(
     session: &mut LocalSession,
+    role: &'static str,
     tenant_id: &TenantId,
     operation: impl FnOnce(&mut LocalSession) -> Result<T, E>,
 ) -> Result<T, TenantScopeFailure<E>> {
     match session.with_tenant_context_injected_cleanup_failure(
-        IDENTITY_RUNTIME_ROLE,
+        role,
         tenant_id.as_str(),
         |session| Ok(operation(session)),
     ) {
