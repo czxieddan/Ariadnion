@@ -41,6 +41,7 @@ mod authenticated_principal;
 mod authoritative_policy;
 mod backup;
 mod codec;
+mod file_catalog_repository;
 mod file_integrity;
 mod identity_transaction;
 mod index;
@@ -80,6 +81,13 @@ pub use authenticated_principal::{
 pub use authoritative_policy::RnmdbAuthoritativePolicyPort;
 pub use backup::{RnmdbBackupAdapter, RnmdbBackupEnvironment};
 pub use codec::{CurrencyCode, MoneyValue, NormalizedJson, StorageUuid, UtcTimestampMicros};
+#[cfg(feature = "test-hooks")]
+#[doc(hidden)]
+pub use file_catalog_repository::FileCatalogWorkerPause;
+pub use file_catalog_repository::{
+    FileCatalogCommitmentKeyMaterial, FileCatalogCommitmentKeyVersion, FileCatalogCommitmentKeys,
+    FileCatalogLookupKeyMaterial, RnmdbFileCatalogRepository,
+};
 pub use index::{FixedIndexDefinition, RnmdbIndexManager, RnmdbIndexMethod};
 pub use inspection::{RnmdbInspectionAdapter, RnmdbInspectionResolver};
 pub use instance::{RnmdbInstanceProfile, RnmdbInstanceRegistry, RnmdbInstanceResourceLimits};
