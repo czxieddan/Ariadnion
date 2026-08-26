@@ -439,7 +439,7 @@ async fn collect_body(
     })
 }
 
-async fn within_deadline<T>(
+pub(super) async fn within_deadline<T>(
     deadline: SystemTime,
     future: impl Future<Output = T>,
 ) -> Result<T, ApiDomainError> {
@@ -451,7 +451,7 @@ async fn within_deadline<T>(
         .map_err(|_| ApiDomainError::new(ApiDomainErrorCode::DeadlineExceeded))
 }
 
-async fn within_request_context<T>(
+pub(super) async fn within_request_context<T>(
     context: &RequestContext,
     future: impl Future<Output = T>,
 ) -> Result<T, ApiDomainError> {
@@ -490,7 +490,7 @@ pub(super) fn resolve_identity(
     Ok(generated.replace_request_id(request_id))
 }
 
-fn validate_header_budget(headers: &HeaderMap) -> Result<(), ApiHttpError> {
+pub(super) fn validate_header_budget(headers: &HeaderMap) -> Result<(), ApiHttpError> {
     if headers.len() > MAX_PUBLIC_HEADERS {
         return Err(invalid_request());
     }
@@ -537,7 +537,10 @@ fn validate_content_length(headers: &HeaderMap) -> Result<(), ApiHttpError> {
     Ok(())
 }
 
-fn parse_deadline(headers: &HeaderMap, now: SystemTime) -> Result<SystemTime, ApiHttpError> {
+pub(super) fn parse_deadline(
+    headers: &HeaderMap,
+    now: SystemTime,
+) -> Result<SystemTime, ApiHttpError> {
     let Some(value) = one_header(headers, DEADLINE_HEADER, false)? else {
         return now
             .checked_add(DEFAULT_DEADLINE_WINDOW)
@@ -564,7 +567,7 @@ fn validate_deadline_window(now: SystemTime, deadline: SystemTime) -> Result<(),
     Ok(())
 }
 
-fn parse_authorization(headers: &HeaderMap) -> Result<PresentedBearer, ApiHttpError> {
+pub(super) fn parse_authorization(headers: &HeaderMap) -> Result<PresentedBearer, ApiHttpError> {
     let value =
         one_header(headers, header::AUTHORIZATION.as_str(), false)?.ok_or_else(unauthenticated)?;
     PresentedBearer::parse(value.as_bytes())
