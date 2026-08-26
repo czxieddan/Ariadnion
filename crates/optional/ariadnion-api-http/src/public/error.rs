@@ -31,6 +31,7 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
 use ariadnion_api_domain::{ApiDomainError, ApiDomainErrorCode};
+use ariadnion_api_files::{ApiFilesError, ApiFilesErrorCode};
 use ariadnion_core::RequestId;
 use axum::Json;
 use axum::http::{HeaderValue, StatusCode, header};
@@ -238,6 +239,15 @@ impl AuthenticationFailure {
     }
 }
 
+impl ResponseFailure {
+    pub(super) fn file(identity: HttpRequestIdentity, error: ApiFilesError) -> Self {
+        Self {
+            identity,
+            projection: project_files_error(error),
+        }
+    }
+}
+
 fn project_http_error(error: ApiHttpError) -> ErrorProjection {
     let code = error.code();
     ErrorProjection {
@@ -262,6 +272,117 @@ fn project_domain_error(error: ApiDomainError) -> ErrorProjection {
         message: domain_message(code),
         retryable: domain_retryable(code),
     }
+}
+
+fn project_files_error(error: ApiFilesError) -> ErrorProjection {
+    let code = error.code();
+    ErrorProjection {
+        status: files_status(code),
+        code: code.as_str(),
+        message: files_message(code),
+        retryable: files_retryable(code),
+    }
+}
+
+const fn files_status(code: ApiFilesErrorCode) -> StatusCode {
+    match code {
+        ApiFilesErrorCode::InvalidArgument
+        | ApiFilesErrorCode::LimitExceeded
+        | ApiFilesErrorCode::Unauthenticated
+        | ApiFilesErrorCode::NotFound => files_client_status(code),
+        ApiFilesErrorCode::Conflict
+        | ApiFilesErrorCode::PolicyRejected
+        | ApiFilesErrorCode::Cancelled
+        | ApiFilesErrorCode::DeadlineExceeded
+        | ApiFilesErrorCode::ResourceExhausted => files_operational_status(code),
+        ApiFilesErrorCode::Unavailable | ApiFilesErrorCode::CommitIndeterminate => {
+            StatusCode::SERVICE_UNAVAILABLE
+        }
+        ApiFilesErrorCode::IntegrityFailure | ApiFilesErrorCode::Internal | _ => internal_status(),
+    }
+}
+
+const fn files_client_status(code: ApiFilesErrorCode) -> StatusCode {
+    match code {
+        ApiFilesErrorCode::InvalidArgument => StatusCode::BAD_REQUEST,
+        ApiFilesErrorCode::LimitExceeded => StatusCode::PAYLOAD_TOO_LARGE,
+        ApiFilesErrorCode::Unauthenticated => StatusCode::UNAUTHORIZED,
+        ApiFilesErrorCode::NotFound => StatusCode::NOT_FOUND,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
+const fn files_operational_status(code: ApiFilesErrorCode) -> StatusCode {
+    match code {
+        ApiFilesErrorCode::Conflict => StatusCode::CONFLICT,
+        ApiFilesErrorCode::PolicyRejected => StatusCode::FORBIDDEN,
+        ApiFilesErrorCode::Cancelled => status_499(),
+        ApiFilesErrorCode::DeadlineExceeded => StatusCode::GATEWAY_TIMEOUT,
+        ApiFilesErrorCode::ResourceExhausted => StatusCode::TOO_MANY_REQUESTS,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
+const fn internal_status() -> StatusCode {
+    StatusCode::INTERNAL_SERVER_ERROR
+}
+
+const fn files_message(code: ApiFilesErrorCode) -> &'static str {
+    match code {
+        ApiFilesErrorCode::InvalidArgument
+        | ApiFilesErrorCode::LimitExceeded
+        | ApiFilesErrorCode::Unauthenticated
+        | ApiFilesErrorCode::NotFound => files_client_message(code),
+        ApiFilesErrorCode::Conflict
+        | ApiFilesErrorCode::PolicyRejected
+        | ApiFilesErrorCode::Cancelled
+        | ApiFilesErrorCode::DeadlineExceeded
+        | ApiFilesErrorCode::ResourceExhausted => files_operational_message(code),
+        ApiFilesErrorCode::Unavailable | ApiFilesErrorCode::CommitIndeterminate => {
+            files_availability_message(code)
+        }
+        ApiFilesErrorCode::IntegrityFailure | ApiFilesErrorCode::Internal | _ => {
+            "The file request could not be completed."
+        }
+    }
+}
+
+const fn files_client_message(code: ApiFilesErrorCode) -> &'static str {
+    match code {
+        ApiFilesErrorCode::InvalidArgument => "A file request value is invalid.",
+        ApiFilesErrorCode::LimitExceeded => "A file request limit was exceeded.",
+        ApiFilesErrorCode::Unauthenticated => "Authentication is required.",
+        ApiFilesErrorCode::NotFound => "The requested file was not found.",
+        _ => "The file request could not be completed.",
+    }
+}
+
+const fn files_operational_message(code: ApiFilesErrorCode) -> &'static str {
+    match code {
+        ApiFilesErrorCode::Conflict => "The file request conflicts with current state.",
+        ApiFilesErrorCode::PolicyRejected => "The file request is not permitted.",
+        ApiFilesErrorCode::Cancelled => "The file request was cancelled.",
+        ApiFilesErrorCode::DeadlineExceeded => "The file request deadline was exceeded.",
+        ApiFilesErrorCode::ResourceExhausted => "File service capacity is exhausted.",
+        _ => "The file request could not be completed.",
+    }
+}
+
+const fn files_availability_message(code: ApiFilesErrorCode) -> &'static str {
+    match code {
+        ApiFilesErrorCode::Unavailable => "The file service is unavailable.",
+        ApiFilesErrorCode::CommitIndeterminate => "The file commit requires reconciliation.",
+        _ => "The file request could not be completed.",
+    }
+}
+
+const fn files_retryable(code: ApiFilesErrorCode) -> bool {
+    matches!(
+        code,
+        ApiFilesErrorCode::DeadlineExceeded
+            | ApiFilesErrorCode::ResourceExhausted
+            | ApiFilesErrorCode::Unavailable
+    )
 }
 
 const fn http_status(code: ApiHttpErrorCode) -> StatusCode {

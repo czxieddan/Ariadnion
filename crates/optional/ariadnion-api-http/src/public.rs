@@ -34,6 +34,7 @@ mod base64_encoding;
 mod embedding;
 mod error;
 mod execution;
+mod files;
 mod identity;
 mod image;
 mod json;
@@ -48,6 +49,7 @@ use ariadnion_api_domain::{
     OutputTokenLimit, ResponseMode, ServiceContractVersion, ServiceRequest, ServiceResponse,
     ServiceStreamEvent, TextInput, TextServiceRequest,
 };
+use ariadnion_api_files::FileServicePort;
 use ariadnion_core::{CancellationToken, EventSubscriber, RequestContext, RequestId, TraceId};
 use ariadnion_principal_binding::AuthenticatedPrincipalEvidence;
 use axum::Router;
@@ -55,7 +57,7 @@ use axum::body::Body;
 use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, Request, StatusCode, header};
 use axum::response::Response;
-use axum::routing::post;
+use axum::routing::{get, post};
 use bytes::Bytes;
 use futures_core::Stream;
 use serde::{Deserialize, Serialize};
@@ -199,6 +201,7 @@ pub struct HttpApiState {
     authentication: Arc<dyn ServiceAuthenticationPort>,
     dispatch: Arc<dyn ariadnion_api_dispatch::ServiceDispatchPort>,
     stream_bridge: Option<Arc<dyn ServiceStreamBridgePort>>,
+    file_service: Option<Arc<dyn FileServicePort>>,
     shutdown: CancellationToken,
     admission: Arc<Semaphore>,
 }
@@ -222,6 +225,7 @@ impl HttpApiState {
             authentication,
             dispatch,
             stream_bridge: None,
+            file_service: None,
             shutdown,
             admission: Arc::new(Semaphore::new(MAX_PUBLIC_IN_FLIGHT_REQUESTS)),
         }
@@ -240,6 +244,18 @@ impl HttpApiState {
         self.stream_bridge = Some(bridge);
         self
     }
+
+    /// Installs the optional authenticated file-service capability.
+    ///
+    /// Without this capability, native file routes fail with a stable
+    /// service-unavailable response before polling an upload body. The service
+    /// owns tenant authorization, streaming persistence, integrity checks, and
+    /// commit reconciliation; HTTP only supplies validated metadata and bytes.
+    #[must_use]
+    pub fn with_file_service(mut self, service: Arc<dyn FileServicePort>) -> Self {
+        self.file_service = Some(service);
+        self
+    }
 }
 
 /// The concrete HTTP router returned by the Ariadnion-native public API.
@@ -254,6 +270,9 @@ pub type PublicApiRouter = Router;
 /// strict JSON with application/json media type and one bounded Bearer authorization
 /// field. Embedding, image, and audio requests use complete delivery only. A validated
 /// request ID, absolute UTC deadline, and idempotency key are propagated when present.
+/// When [`HttpApiState::with_file_service`] is configured, POST /v1/files accepts a
+/// bounded streaming upload and GET /v1/files/{reference} returns verified metadata;
+/// without that capability both native file operations fail closed as unavailable.
 /// Header, body, credential, deadline-window, and aggregate in-flight limits
 /// are shared with every external protocol route. Complete responses and
 /// failures retain their stable native bytes and headers.
@@ -267,6 +286,8 @@ pub fn public_router(state: HttpApiState) -> PublicApiRouter {
         .route("/v1/embeddings", post(embedding::handle_embeddings))
         .route("/v1/images", post(image::handle_images))
         .route("/v1/audio", post(audio::handle_audio))
+        .route("/v1/files", post(files::handle_upload))
+        .route("/v1/files/{reference}", get(files::handle_metadata))
         .fallback(not_found)
         .method_not_allowed_fallback(method_not_allowed)
         .with_state(state)
