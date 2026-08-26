@@ -35,6 +35,7 @@ mod embedding;
 mod error;
 mod execution;
 mod file_content;
+mod file_delete;
 mod file_list;
 mod files;
 mod identity;
@@ -278,7 +279,9 @@ pub type PublicApiRouter = Router;
 /// GET /v1/files/{reference}/content streams verified bytes with bounded
 /// backpressure; without that capability native file operations fail closed as
 /// unavailable. The list route defaults to a page limit of 100 and returns
-/// `files` plus a nullable `next_cursor`.
+/// `files` plus a nullable `next_cursor`. DELETE /v1/files/{reference} requires
+/// one canonical lowercase reference and one bounded idempotency key, then
+/// returns an empty 204 response after the file service confirms deletion.
 /// Header, body, credential, deadline-window, and aggregate in-flight limits
 /// are shared with every external protocol route. Complete responses and
 /// failures retain their stable native bytes and headers.
@@ -298,7 +301,10 @@ pub fn public_router(state: HttpApiState) -> PublicApiRouter {
             "/v1/files/{reference}/content",
             get(file_content::handle_content),
         )
-        .route("/v1/files/{reference}", get(files::handle_metadata))
+        .route(
+            "/v1/files/{reference}",
+            get(files::handle_metadata).delete(file_delete::handle_delete),
+        )
         .fallback(not_found)
         .method_not_allowed_fallback(method_not_allowed)
         .with_state(state)
