@@ -19,15 +19,15 @@ Selected alternatives are checked against exact packaged license metadata and `t
 | Lockfile | SHA-256 | Bytes | Package records |
 | --- | --- | ---: | ---: |
 | `Cargo.lock` | `4690eb01d3b15a1697f2d813c74deb0b9d3a3d3616b4a894700a47c3d6d5b7e0` | 2780 | 13 |
-| `bundles/complete/Cargo.lock` | `ba6dc0910beed0cfee7d9b9d1ecb24662c7d1bad03f0931de0d0f574fcb0121d` | 61631 | 258 |
+| `bundles/complete/Cargo.lock` | `ddfbcb3200107a45fc21c630c6e9ec2de992b59037c18c4bd549daa7ef3f0211` | 61655 | 258 |
 | `bundles/edge/Cargo.lock` | `f565d723b2faf01953c3660d2d406ffa5b6e2b2ae1f83a5b95fb8e5773e70ec1` | 3124 | 16 |
-| `bundles/standard/Cargo.lock` | `0467d77e01d6bb2b092850d6a8efc439a45a05171395c5f7a2ca285725d48c29` | 61631 | 258 |
-| `crates/optional/ariadnion-api-admin/Cargo.lock` | `e41a35a8e0a1088bc5f5ffea56abd61fd11a9695849b024e9e8971ee74fa87db` | 15107 | 70 |
+| `bundles/standard/Cargo.lock` | `ac255d2ab87050e556ac42e051b9f742adfb91794642e0792df0effa099daa2f` | 61655 | 258 |
+| `crates/optional/ariadnion-api-admin/Cargo.lock` | `ee4cf02630fe6985069f8b9bde6398e555e95623cf458c68bae927e1896aa5e4` | 15254 | 71 |
 | `crates/optional/ariadnion-api-dispatch/Cargo.lock` | `567ff9912807989778b82bc15d2277ade481b05f01a1cf621fdf2ccb7f35582b` | 5263 | 26 |
 | `crates/optional/ariadnion-api-domain/Cargo.lock` | `f6a083a6018eafc2676a3cccba14f8650265c1656dfddd6f0fb10b89911e8ba6` | 2879 | 14 |
 | `crates/optional/ariadnion-api-files/Cargo.lock` | `e19cdb93353f88b6400e31bd2825ffef72c0911123f323dc2f57478a4de738a6` | 3002 | 15 |
-| `crates/optional/ariadnion-api-http/Cargo.lock` | `83937c455a19bb6ae7c742f86e00bdaebff81f375553d9a0bd17f9978d33a61b` | 14734 | 67 |
-| `crates/optional/ariadnion-api-stream/Cargo.lock` | `d74bf2b5ff0fe50233978a11b53350e174e82d5f32bd8c65644007e15b989103` | 15200 | 69 |
+| `crates/optional/ariadnion-api-http/Cargo.lock` | `4f066611336ca912aa8efbb6058f4326cd43d5e306036ac4e2aaa1de3e1db6fe` | 14881 | 68 |
+| `crates/optional/ariadnion-api-stream/Cargo.lock` | `5ecf89f6eb3f8cf4a754ab530080bc521d0b9fb08af03f7b4c838d766e939515` | 15347 | 70 |
 | `crates/optional/ariadnion-audit-domain/Cargo.lock` | `a07d38f9022086c57d1dddb06bf97623daaf268865653057287e37889c5baf4e` | 4847 | 23 |
 | `crates/optional/ariadnion-audit-store/Cargo.lock` | `1f18d029a762141eea47a81e5b3ebbae2de2f4b8780cffd2817b38de7af684ac` | 5000 | 24 |
 | `crates/optional/ariadnion-auth-api-key/Cargo.lock` | `32998c7e6f75c5f04f6d483c6861b7f1016d6b8fcc9fe1d1d63b85bcde38bb7b` | 5048 | 24 |
@@ -43,7 +43,7 @@ Selected alternatives are checked against exact packaged license metadata and `t
 | `crates/optional/ariadnion-job-runner/Cargo.lock` | `a84414340e7c384dc50c2da435bcf2d74bb9f93d673595176271e6d992233431` | 6122 | 30 |
 | `crates/optional/ariadnion-organization/Cargo.lock` | `13a32cff1d2f549f3ac32dae9edcd3b0aaa476750e8663e7923a388f44e77f23` | 3007 | 15 |
 | `crates/optional/ariadnion-principal-binding/Cargo.lock` | `0cf7cc4b65ac3e8c1a7a64eaba81006d48508fe26affdaba4c06c22b942d51f2` | 5006 | 24 |
-| `crates/optional/ariadnion-protocol-openai/Cargo.lock` | `47c1033b4a8899303bef4c04cc28e46141ec3a9f129c5606dbcfdba2996f2012` | 15032 | 68 |
+| `crates/optional/ariadnion-protocol-openai/Cargo.lock` | `d41f78f019a3b9b62ba3d4f5ed5b9f8a533e8f3715ccf8552a9fdd98827ea3ee` | 15179 | 69 |
 | `crates/optional/ariadnion-provider-dispatch/Cargo.lock` | `1c490c5aa5d9d3393d2be7f2fa741ba99bf066f7d63cd32beddcf34dfd589f9c` | 5659 | 28 |
 | `crates/optional/ariadnion-provider-http/Cargo.lock` | `64a51ab016ffea732dbbb93d25abde6b2502f04f5e13bb6af9c3902156e16a7b` | 14318 | 64 |
 | `crates/optional/ariadnion-provider-mock/Cargo.lock` | `2ed636ded820586385c5182f3331132b4ec0149aa43514aa049ec8ef0723cb7e` | 3159 | 16 |
@@ -57,7 +57,7 @@ Selected alternatives are checked against exact packaged license metadata and `t
 | `crates/optional/ariadnion-storage-outbox/Cargo.lock` | `a03032bc03866517be657779f3dfbc6259f10c8c0526e86012a06147aeb63cd1` | 3218 | 16 |
 | `crates/optional/ariadnion-storage-query/Cargo.lock` | `867744f76384f852b3275df7bd81fcaba1403661348a8a07acb4b0e9f1ed90ba` | 3014 | 15 |
 | `crates/optional/ariadnion-storage-restore/Cargo.lock` | `dfa5e9c5ee28860069c5df9ad3f0d16f7e369b6a717bff1707c5fe03c5bcfda3` | 3016 | 15 |
-| `crates/optional/ariadnion-storage-rnmdb/Cargo.lock` | `d5201bf83456ba89f68f42643390b938b20748f7e87ad3d12873ca4410d7efa1` | 50209 | 210 |
+| `crates/optional/ariadnion-storage-rnmdb/Cargo.lock` | `5c242cfcb1da63fed9fae1cb73e0ef5d8b54195ccdae8e24153d3d547c819b9a` | 50233 | 210 |
 | `crates/optional/ariadnion-storage-upgrade/Cargo.lock` | `490b0470c83513a0736a80ba8c62d6c1a05b59c83064afcf26333bff95211e59` | 3016 | 15 |
 | `crates/optional/ariadnion-user-domain/Cargo.lock` | `788edb6fc74c57a895b4880b18d62f2c5e22c6b48aeb778ec8846bab10ec8b92` | 2880 | 14 |
 | `crates/optional/ariadnion-user-service/Cargo.lock` | `8ade7ce2c9a43ec6858ab3a7154c40d25d0975f5310902c49071014944bdb8a6` | 3007 | 15 |
