@@ -40,6 +40,7 @@ publish = false
 ariadnion-api-admin = { path = "../ariadnion-api-admin" }
 ariadnion-api-dispatch = { path = "../ariadnion-api-dispatch" }
 ariadnion-api-domain = { path = "../ariadnion-api-domain" }
+ariadnion-api-files = { path = "../ariadnion-api-files" }
 ariadnion-core = { path = "../../ariadnion-core" }
 ariadnion-principal-binding = { path = "../ariadnion-principal-binding" }
 ariadnion-rbac = { path = "../ariadnion-rbac" }
