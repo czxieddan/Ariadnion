@@ -34,6 +34,7 @@ mod base64_encoding;
 mod embedding;
 mod error;
 mod execution;
+mod file_content;
 mod file_list;
 mod files;
 mod identity;
@@ -272,10 +273,12 @@ pub type PublicApiRouter = Router;
 /// field. Embedding, image, and audio requests use complete delivery only. A validated
 /// request ID, absolute UTC deadline, and idempotency key are propagated when present.
 /// When [`HttpApiState::with_file_service`] is configured, POST /v1/files accepts a
-/// bounded streaming upload, GET /v1/files lists verified metadata pages, and
-/// GET /v1/files/{reference} returns verified metadata; without that capability
-/// native file operations fail closed as unavailable. The list route defaults to
-/// a page limit of 100 and returns `files` plus a nullable `next_cursor`.
+/// bounded streaming upload, GET /v1/files lists verified metadata pages,
+/// GET /v1/files/{reference} returns verified metadata, and
+/// GET /v1/files/{reference}/content streams verified bytes with bounded
+/// backpressure; without that capability native file operations fail closed as
+/// unavailable. The list route defaults to a page limit of 100 and returns
+/// `files` plus a nullable `next_cursor`.
 /// Header, body, credential, deadline-window, and aggregate in-flight limits
 /// are shared with every external protocol route. Complete responses and
 /// failures retain their stable native bytes and headers.
@@ -291,6 +294,10 @@ pub fn public_router(state: HttpApiState) -> PublicApiRouter {
         .route("/v1/audio", post(audio::handle_audio))
         .route("/v1/files", post(files::handle_upload))
         .route("/v1/files", get(file_list::handle_list))
+        .route(
+            "/v1/files/{reference}/content",
+            get(file_content::handle_content),
+        )
         .route("/v1/files/{reference}", get(files::handle_metadata))
         .fallback(not_found)
         .method_not_allowed_fallback(method_not_allowed)
