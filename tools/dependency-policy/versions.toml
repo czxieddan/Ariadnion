@@ -48,6 +48,8 @@ packages = ["rnmdb-common", "rnmdb-types", "rnmdb-sql", "rnmdb-planner", "rnmdb-
 
 [versions]
 bytes = "1.12.1"
+cap-fs-ext = "4.0.3"
+cap-std = "4.0.3"
 ctrlc = "3.5.2"
 http = "1.5.0"
 http-body = "1.1.0"
@@ -55,6 +57,7 @@ http-body-util = "0.1.4"
 hyper = "1.11.0"
 hyper-util = "0.1.20"
 rustls = "0.23.41"
+sha2 = "0.10.9"
 tokio = "1.52.3"
 tokio-rustls = "0.26.4"
 webpki-roots = "1.0.8"
