@@ -36,9 +36,16 @@ publish = false
 
 [workspace]
 
+[features]
+default = []
+test-hooks = []
+
 [dependencies]
 ariadnion-core = { path = "../../ariadnion-core" }
 ariadnion-storage-domain = { path = "../ariadnion-storage-domain" }
+cap-fs-ext = "=4.0.3"
+cap-std = "=4.0.3"
+sha2 = "=0.10.9"
 zeroize = "1.9.0"
 
 [lints.rust]
