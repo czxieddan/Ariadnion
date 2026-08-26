@@ -38,12 +38,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "ariadnion-api-files"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-api-domain",
+ "ariadnion-core",
+]
+
+[[package]]
 name = "ariadnion-api-http"
 version = "0.1.0"
 dependencies = [
  "ariadnion-api-admin",
  "ariadnion-api-dispatch",
  "ariadnion-api-domain",
+ "ariadnion-api-files",
  "ariadnion-core",
  "ariadnion-principal-binding",
  "ariadnion-rbac",
