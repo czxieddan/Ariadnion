@@ -44,6 +44,11 @@ use ariadnion_core::{RequestContext, TenantId};
 pub use ariadnion_storage_domain::{StorageError, StorageErrorCode};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
+mod local_volume;
+mod manifest;
+
+pub use local_volume::{LocalVolume, StageTokenIssuer};
+
 /// A SHA-256 digest used as an immutable asset content address.
 #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct AssetDigest([u8; 32]);
