@@ -96,6 +96,7 @@ dependencies = [
  "ariadnion-api-admin",
  "ariadnion-api-dispatch",
  "ariadnion-api-domain",
+ "ariadnion-api-files",
  "ariadnion-core",
  "ariadnion-principal-binding",
  "ariadnion-rbac",
