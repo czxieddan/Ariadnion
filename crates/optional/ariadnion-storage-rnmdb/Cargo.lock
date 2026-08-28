@@ -87,6 +87,7 @@ version = "0.1.0"
 dependencies = [
  "ariadnion-api-domain",
  "ariadnion-core",
+ "zeroize",
 ]
 
 [[package]]
