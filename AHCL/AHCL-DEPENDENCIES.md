@@ -19,15 +19,15 @@ Selected alternatives are checked against exact packaged license metadata and `t
 | Lockfile | SHA-256 | Bytes | Package records |
 | --- | --- | ---: | ---: |
 | `Cargo.lock` | `4690eb01d3b15a1697f2d813c74deb0b9d3a3d3616b4a894700a47c3d6d5b7e0` | 2780 | 13 |
-| `bundles/complete/Cargo.lock` | `ddfbcb3200107a45fc21c630c6e9ec2de992b59037c18c4bd549daa7ef3f0211` | 61655 | 258 |
+| `bundles/complete/Cargo.lock` | `cb9c630891feba949e6dc56f5fd59c22ec2be20097beb08f2b83b4c249889e21` | 61667 | 258 |
 | `bundles/edge/Cargo.lock` | `f565d723b2faf01953c3660d2d406ffa5b6e2b2ae1f83a5b95fb8e5773e70ec1` | 3124 | 16 |
-| `bundles/standard/Cargo.lock` | `ac255d2ab87050e556ac42e051b9f742adfb91794642e0792df0effa099daa2f` | 61655 | 258 |
-| `crates/optional/ariadnion-api-admin/Cargo.lock` | `ee4cf02630fe6985069f8b9bde6398e555e95623cf458c68bae927e1896aa5e4` | 15254 | 71 |
+| `bundles/standard/Cargo.lock` | `3ba7e9968ba6b6fee28d70c5ccdc24592e3183e03cb5013043ad6efd61984f9a` | 61667 | 258 |
+| `crates/optional/ariadnion-api-admin/Cargo.lock` | `cd5d4aaa883c73c1a97af185dbfad99d86b83cc0ece1e21229fecc4e05cf29d1` | 15266 | 71 |
 | `crates/optional/ariadnion-api-dispatch/Cargo.lock` | `567ff9912807989778b82bc15d2277ade481b05f01a1cf621fdf2ccb7f35582b` | 5263 | 26 |
 | `crates/optional/ariadnion-api-domain/Cargo.lock` | `f6a083a6018eafc2676a3cccba14f8650265c1656dfddd6f0fb10b89911e8ba6` | 2879 | 14 |
-| `crates/optional/ariadnion-api-files/Cargo.lock` | `e19cdb93353f88b6400e31bd2825ffef72c0911123f323dc2f57478a4de738a6` | 3002 | 15 |
-| `crates/optional/ariadnion-api-http/Cargo.lock` | `4f066611336ca912aa8efbb6058f4326cd43d5e306036ac4e2aaa1de3e1db6fe` | 14881 | 68 |
-| `crates/optional/ariadnion-api-stream/Cargo.lock` | `5ecf89f6eb3f8cf4a754ab530080bc521d0b9fb08af03f7b4c838d766e939515` | 15347 | 70 |
+| `crates/optional/ariadnion-api-files/Cargo.lock` | `a88234e13ab71b44b94ec64605a13686f65333a0f73b0f267dd7bd0ed0010db4` | 3205 | 16 |
+| `crates/optional/ariadnion-api-http/Cargo.lock` | `22eaaf2075b3837ee098878934c958ae3da4bf8c0476ea6d021baed51310c0a1` | 14893 | 68 |
+| `crates/optional/ariadnion-api-stream/Cargo.lock` | `745958ca7515d179ab80fb53996f9db7b7a24ee2c4418a7eef285a3aec37a3f6` | 15359 | 70 |
 | `crates/optional/ariadnion-audit-domain/Cargo.lock` | `a07d38f9022086c57d1dddb06bf97623daaf268865653057287e37889c5baf4e` | 4847 | 23 |
 | `crates/optional/ariadnion-audit-store/Cargo.lock` | `1f18d029a762141eea47a81e5b3ebbae2de2f4b8780cffd2817b38de7af684ac` | 5000 | 24 |
 | `crates/optional/ariadnion-auth-api-key/Cargo.lock` | `32998c7e6f75c5f04f6d483c6861b7f1016d6b8fcc9fe1d1d63b85bcde38bb7b` | 5048 | 24 |
@@ -43,7 +43,7 @@ Selected alternatives are checked against exact packaged license metadata and `t
 | `crates/optional/ariadnion-job-runner/Cargo.lock` | `a84414340e7c384dc50c2da435bcf2d74bb9f93d673595176271e6d992233431` | 6122 | 30 |
 | `crates/optional/ariadnion-organization/Cargo.lock` | `13a32cff1d2f549f3ac32dae9edcd3b0aaa476750e8663e7923a388f44e77f23` | 3007 | 15 |
 | `crates/optional/ariadnion-principal-binding/Cargo.lock` | `0cf7cc4b65ac3e8c1a7a64eaba81006d48508fe26affdaba4c06c22b942d51f2` | 5006 | 24 |
-| `crates/optional/ariadnion-protocol-openai/Cargo.lock` | `d41f78f019a3b9b62ba3d4f5ed5b9f8a533e8f3715ccf8552a9fdd98827ea3ee` | 15179 | 69 |
+| `crates/optional/ariadnion-protocol-openai/Cargo.lock` | `63a506ed0a563017025f3e984093eaa0bb7163550b8714eed6ee92328afad6f5` | 15191 | 69 |
 | `crates/optional/ariadnion-provider-dispatch/Cargo.lock` | `1c490c5aa5d9d3393d2be7f2fa741ba99bf066f7d63cd32beddcf34dfd589f9c` | 5659 | 28 |
 | `crates/optional/ariadnion-provider-http/Cargo.lock` | `64a51ab016ffea732dbbb93d25abde6b2502f04f5e13bb6af9c3902156e16a7b` | 14318 | 64 |
 | `crates/optional/ariadnion-provider-mock/Cargo.lock` | `2ed636ded820586385c5182f3331132b4ec0149aa43514aa049ec8ef0723cb7e` | 3159 | 16 |
@@ -57,7 +57,7 @@ Selected alternatives are checked against exact packaged license metadata and `t
 | `crates/optional/ariadnion-storage-outbox/Cargo.lock` | `a03032bc03866517be657779f3dfbc6259f10c8c0526e86012a06147aeb63cd1` | 3218 | 16 |
 | `crates/optional/ariadnion-storage-query/Cargo.lock` | `867744f76384f852b3275df7bd81fcaba1403661348a8a07acb4b0e9f1ed90ba` | 3014 | 15 |
 | `crates/optional/ariadnion-storage-restore/Cargo.lock` | `dfa5e9c5ee28860069c5df9ad3f0d16f7e369b6a717bff1707c5fe03c5bcfda3` | 3016 | 15 |
-| `crates/optional/ariadnion-storage-rnmdb/Cargo.lock` | `5c242cfcb1da63fed9fae1cb73e0ef5d8b54195ccdae8e24153d3d547c819b9a` | 50233 | 210 |
+| `crates/optional/ariadnion-storage-rnmdb/Cargo.lock` | `82057d322f86edb0d8ebd7074f027eb27478cd09f34cb434ce5c5827ff222aec` | 50245 | 210 |
 | `crates/optional/ariadnion-storage-upgrade/Cargo.lock` | `490b0470c83513a0736a80ba8c62d6c1a05b59c83064afcf26333bff95211e59` | 3016 | 15 |
 | `crates/optional/ariadnion-user-domain/Cargo.lock` | `788edb6fc74c57a895b4880b18d62f2c5e22c6b48aeb778ec8846bab10ec8b92` | 2880 | 14 |
 | `crates/optional/ariadnion-user-service/Cargo.lock` | `8ade7ce2c9a43ec6858ab3a7154c40d25d0975f5310902c49071014944bdb8a6` | 3007 | 15 |
@@ -1732,7 +1732,7 @@ Canonical upstream: <https://github.com/RustCrypto/utils>
 | `cpufeatures` | `0.3.0` | transitive | `registry+https://github.com/rust-lang/crates.io-index` | `8b2a41393f66f16b0823bb79094d54ac5fbd34ab292ddafb9a0456ac9f87d201` | `MIT OR Apache-2.0` | `Apache-2.0` | declared metadata and dependency policy | `bundles/complete/Cargo.lock`; `bundles/standard/Cargo.lock`; `crates/optional/ariadnion-storage-rnmdb/Cargo.lock` |
 | `ctutils` | `0.4.2` | transitive | `registry+https://github.com/rust-lang/crates.io-index` | `7d5515a3834141de9eafb9717ad39eea8247b5674e6066c404e8c4b365d2a29e` | `Apache-2.0 OR MIT` | `Apache-2.0` | declared metadata and dependency policy | `bundles/complete/Cargo.lock`; `bundles/standard/Cargo.lock`; `crates/optional/ariadnion-storage-rnmdb/Cargo.lock` |
 | `inout` | `0.2.2` | transitive | `registry+https://github.com/rust-lang/crates.io-index` | `4250ce6452e92010fdf7268ccc5d14faa80bb12fc741938534c58f16804e03c7` | `MIT OR Apache-2.0` | `Apache-2.0` | declared metadata and dependency policy | `bundles/complete/Cargo.lock`; `bundles/standard/Cargo.lock`; `crates/optional/ariadnion-storage-rnmdb/Cargo.lock` |
-| `zeroize` | `1.9.0` | direct runtime; transitive | `registry+https://github.com/rust-lang/crates.io-index` | `e13c156562582aa81c60cb29407084cdb54c4164760106ab78e6c5b0858cf64e` | `Apache-2.0 OR MIT` | `Apache-2.0` | declared metadata and dependency policy | `bundles/complete/Cargo.lock`; `bundles/standard/Cargo.lock`; `crates/optional/ariadnion-api-admin/Cargo.lock`; `crates/optional/ariadnion-api-http/Cargo.lock`; `crates/optional/ariadnion-api-stream/Cargo.lock`; `crates/optional/ariadnion-auth-password/Cargo.lock`; `crates/optional/ariadnion-protocol-openai/Cargo.lock`; `crates/optional/ariadnion-provider-http/Cargo.lock`; `crates/optional/ariadnion-storage-asset/Cargo.lock`; `crates/optional/ariadnion-storage-outbox/Cargo.lock`; `crates/optional/ariadnion-storage-rnmdb/Cargo.lock` |
+| `zeroize` | `1.9.0` | direct runtime; transitive | `registry+https://github.com/rust-lang/crates.io-index` | `e13c156562582aa81c60cb29407084cdb54c4164760106ab78e6c5b0858cf64e` | `Apache-2.0 OR MIT` | `Apache-2.0` | declared metadata and dependency policy | `bundles/complete/Cargo.lock`; `bundles/standard/Cargo.lock`; `crates/optional/ariadnion-api-admin/Cargo.lock`; `crates/optional/ariadnion-api-files/Cargo.lock`; `crates/optional/ariadnion-api-http/Cargo.lock`; `crates/optional/ariadnion-api-stream/Cargo.lock`; `crates/optional/ariadnion-auth-password/Cargo.lock`; `crates/optional/ariadnion-protocol-openai/Cargo.lock`; `crates/optional/ariadnion-provider-http/Cargo.lock`; `crates/optional/ariadnion-storage-asset/Cargo.lock`; `crates/optional/ariadnion-storage-outbox/Cargo.lock`; `crates/optional/ariadnion-storage-rnmdb/Cargo.lock` |
 
 License evidence:
 
