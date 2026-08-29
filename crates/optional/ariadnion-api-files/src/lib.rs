@@ -119,9 +119,17 @@ const fn execution_machine_code(code: ApiFilesErrorCode) -> &'static str {
         ApiFilesErrorCode::Cancelled => "API_FILES_CANCELLED",
         ApiFilesErrorCode::DeadlineExceeded => "API_FILES_DEADLINE_EXCEEDED",
         ApiFilesErrorCode::ResourceExhausted => "API_FILES_RESOURCE_EXHAUSTED",
+        ApiFilesErrorCode::Unavailable
+        | ApiFilesErrorCode::CommitIndeterminate
+        | ApiFilesErrorCode::Internal => availability_machine_code(code),
+        _ => "API_FILES_INTERNAL",
+    }
+}
+
+const fn availability_machine_code(code: ApiFilesErrorCode) -> &'static str {
+    match code {
         ApiFilesErrorCode::Unavailable => "API_FILES_UNAVAILABLE",
         ApiFilesErrorCode::CommitIndeterminate => "API_FILES_COMMIT_INDETERMINATE",
-        ApiFilesErrorCode::Internal => "API_FILES_INTERNAL",
         _ => "API_FILES_INTERNAL",
     }
 }
