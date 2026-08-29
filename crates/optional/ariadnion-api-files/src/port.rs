@@ -35,8 +35,9 @@ use ariadnion_api_domain::{FileDescriptor, FileReference};
 use ariadnion_core::RequestContext;
 
 use crate::{
-    ApiFilesError, FileCatalogRecord, FileChunk, FileDeleteReconciliation, FileDeleteRequest,
-    FileListPage, FileListRequest, FileUploadReconciliation, FileUploadRequest,
+    ApiFilesError, FileAccessTicket, FileAccessTicketGrant, FileAccessTicketIssueReconciliation,
+    FileAccessTicketIssueRequest, FileCatalogRecord, FileChunk, FileDeleteReconciliation,
+    FileDeleteRequest, FileListPage, FileListRequest, FileUploadReconciliation, FileUploadRequest,
 };
 
 /// A boxed asynchronous file operation result.
@@ -46,6 +47,128 @@ use crate::{
 /// safe to move between executor workers, borrows its port and all borrowed
 /// arguments for at most `'a`, and does not require a particular runtime.
 pub type BoxFileFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+/// Issues and reconciles provider-neutral content-read access tickets.
+///
+/// Every returned future is lazy: construction performs no authentication,
+/// entropy, clock, digest, lookup, or cancellation setup. On first poll, the
+/// implementation authenticates the context and then checks cancellation and
+/// deadline state before entropy or authoritative lookup. Each future owns an
+/// independent adapter-local child cancellation token and an active drop guard
+/// that cancels only its pending adapter work, never the caller's shared token.
+///
+/// Durable issue idempotency is scoped to the exact authenticated tenant,
+/// principal, and visible idempotency key. A new slot is claimed atomically
+/// before entropy or clock access. During recovery-envelope retention, an
+/// identical replay returns the original grant without new entropy, newly
+/// selected issuance timestamps, or writes; authoritative UTC may be sampled
+/// only to enforce retention cutoffs. A changed reference or lifetime returns
+/// `Conflict`. The encrypted recovery envelope remains available through the
+/// exclusive expiry plus exactly 24 hours. At that boundary, the adapter refuses
+/// to open it, zeroizes and removes the encrypted bearer, discards the request
+/// commitment, request-commitment key version, and recovery-envelope key
+/// version, and retains only the issue-lookup version and digest, terminal
+/// cutoff, and committed state in a non-secret terminal marker through expiry
+/// plus exactly 30 days. Between those boundaries, issue returns `Conflict` and
+/// reconciliation returns `NotFound`; after terminal retirement, reconciliation
+/// remains `NotFound` while issue may establish a new slot. Cleanup failure
+/// fails closed and cannot extend bearer access beyond its exclusive expiry.
+///
+/// At most 100,000 unretired issue slots may exist for one tenant across all
+/// principals. Pending reservations, live envelopes, explicit no-commit rows,
+/// and committed terminal markers all count. A new claim at the limit returns
+/// `ResourceExhausted` before entropy, issuance-time sampling, or a durable
+/// write. Implementations must not evict an unretired slot, shorten either
+/// retention horizon, or substitute an unbounded queue.
+pub trait FileAccessTicketIssuerPort: Send + Sync {
+    /// Lazily issues one ticket bound to the authenticated tenant, principal,
+    /// exact reference, and requested lifetime.
+    ///
+    /// On a first successful claim, the first poll takes exactly one trusted UTC
+    /// sample, floors it toward the past to signed Unix microseconds, and uses
+    /// checked signed-microsecond addition of exactly `request.lifetime()` for
+    /// expiry. An unrepresentable conversion or addition returns
+    /// `InvalidArgument` before durable state commits.
+    ///
+    /// # Errors
+    ///
+    /// A pre-commit cancellation or deadline wins. Once the durable commit
+    /// boundary begins, a known committed success wins over later context
+    /// cancellation, a known durable failure returns that stable failure, and
+    /// an unknown outcome returns `CommitIndeterminate`. The latter must be
+    /// resolved only by [`Self::reconcile_issue`] with the preserved exact
+    /// request and idempotency material.
+    ///
+    /// Returns a stable redacted authentication, context, conflict, resource,
+    /// availability, integrity, or commit-indeterminate failure. Concrete
+    /// adapters own the cryptography and persistence while preserving these
+    /// observable boundaries.
+    fn issue<'a>(
+        &'a self,
+        request: FileAccessTicketIssueRequest,
+        context: &'a RequestContext,
+    ) -> BoxFileFuture<'a, Result<FileAccessTicketGrant, ApiFilesError>>;
+
+    /// Lazily reconciles an issue whose durable commit outcome was unknown.
+    ///
+    /// Only the exact original request and idempotency material may resolve the
+    /// outcome; a replacement bearer must never be synthesized. Every supplied
+    /// authenticated identity, reference, lifetime, or idempotency mismatch
+    /// projects to `NotFound` without revealing which field differed. `Committed`
+    /// requires an authenticated exact request commitment and a successfully
+    /// opened recovery envelope. `NotCommitted` requires an explicit
+    /// authoritative no-commit terminal row retained for exactly 30 days from
+    /// the first trusted attempt timestamp. If that checked signed-microsecond
+    /// cutoff is unrepresentable, issue returns `InvalidArgument` before its
+    /// reservation can become durable. Row absence, expiry, cleanup, or a
+    /// missing recovery key is `NotFound`, never proof of no commit. Corrupt
+    /// recovery material is `IntegrityFailure`.
+    ///
+    /// Cancellation or deadline wins before authoritative lookup. Once a
+    /// committed or no-commit row is known, that result wins over later context
+    /// cancellation while commitment verification and envelope opening finish.
+    /// Dropping the future cancels only its local open, zeroizes partial
+    /// plaintext, and leaves durable state available to another reconciliation.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable redacted authentication, context, not-found, integrity,
+    /// or availability failure.
+    fn reconcile_issue<'a>(
+        &'a self,
+        request: &'a FileAccessTicketIssueRequest,
+        context: &'a RequestContext,
+    ) -> BoxFileFuture<'a, Result<FileAccessTicketIssueReconciliation, ApiFilesError>>;
+}
+
+/// Verifies a ticket against authoritative tenant, principal, reference,
+/// audience, validity, and revocation state.
+///
+/// The future follows the same lazy first-poll authentication, context check,
+/// independent child cancellation, and active drop-guard requirements as issue
+/// futures. Each call uses one authoritative lookup and current UTC clock and
+/// checks the digest, fixed audience, exact reference, exact tenant and
+/// principal, inclusive-issue/exclusive-expiry window, and permanent current
+/// revocation state. A stale positive cache cannot authorize a ticket.
+pub trait FileAccessTicketVerifierPort: Send + Sync {
+    /// Lazily verifies one exact content-read ticket binding.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ApiFilesErrorCode::Unauthenticated`] for an anonymous
+    /// context. Cancellation or deadline wins before authoritative lookup; once
+    /// lookup completes, its exact match or negative result wins over later
+    /// context cancellation. Every authorization mismatch, including a digest,
+    /// audience, reference, identity, validity, malformed-record, or revocation
+    /// mismatch, projects to [`crate::ApiFilesErrorCode::NotFound`]. Operational
+    /// failures remain stable and redacted.
+    fn verify<'a>(
+        &'a self,
+        ticket: &'a FileAccessTicket,
+        reference: &'a FileReference,
+        context: &'a RequestContext,
+    ) -> BoxFileFuture<'a, Result<(), ApiFilesError>>;
+}
 
 /// Issues opaque file references through a runtime-neutral security boundary.
 ///

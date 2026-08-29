@@ -33,6 +33,7 @@
 
 pub mod migrations;
 
+mod access;
 mod catalog;
 mod port;
 
@@ -42,14 +43,19 @@ use std::num::NonZeroUsize;
 use ariadnion_api_domain::{ApiDomainError, ApiDomainErrorCode};
 use ariadnion_core::{CoreError, ErrorCode};
 
+pub use access::{
+    FileAccessTicket, FileAccessTicketAudience, FileAccessTicketGrant,
+    FileAccessTicketIssueReconciliation, FileAccessTicketIssueRequest, FileAccessTicketLifetime,
+    FileAccessTicketValidityWindow,
+};
 pub use ariadnion_api_domain::{
     FileByteLength, FileDescriptor, FileDigest, FileDisplayName, FileMediaType, FileReference,
     FileUploadSpecification, IdempotencyKey,
 };
 pub use catalog::FileCatalogRecord;
 pub use port::{
-    BoxFileFuture, FileCatalogPort, FileDownloadSink, FileReferenceIssuerPort, FileServicePort,
-    FileUploadSource,
+    BoxFileFuture, FileAccessTicketIssuerPort, FileAccessTicketVerifierPort, FileCatalogPort,
+    FileDownloadSink, FileReferenceIssuerPort, FileServicePort, FileUploadSource,
 };
 
 /// Maximum number of bytes carried by one in-memory file chunk.
