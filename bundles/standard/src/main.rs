@@ -32,7 +32,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use ariadnion_api_http::UnavailableServiceAuthentication;
-use ariadnion_bundle_standard::{assemble_native_text_mock_loop, assemble_openai_mock_loop};
+use ariadnion_bundle_standard::{StandardPublicApiProfile, assemble_mock_public_api};
 use ariadnion_compose::CompositionBuilder;
 use ariadnion_core::{
     CancellationToken, CoreError, ErrorCode, ModuleConfigurationSnapshot, ModuleFactory, ModuleId,
@@ -59,12 +59,15 @@ fn run() -> Result<String, CoreError> {
     let mut composition = CompositionBuilder::new("standard")?;
     let reader = register_diagnostics(&mut composition)?;
     let storage_id = register_storage(&mut composition)?;
-    assemble_public_routers()?;
+    let _public_api_router = assemble_mock_public_api(
+        StandardPublicApiProfile::Compatibility,
+        Arc::new(UnavailableServiceAuthentication),
+    )?;
     let report = composition.run_once()?;
     let snapshot = reader.service()?.read();
     let (storage_state, storage_error) = module_status(&report, &storage_id)?;
     Ok(format!(
-        "{} diagnostics_module={} diagnostics_version={} storage_module={} storage_state={} storage_error={} storage_rnmdb_revision={} provider_http_transport_version={} openai_mock_loop=mounted native_text_mock_loop=mounted native_embedding_mock_loop=mounted native_image_mock_loop=mounted native_audio_mock_loop=mounted",
+        "{} diagnostics_module={} diagnostics_version={} storage_module={} storage_state={} storage_error={} storage_rnmdb_revision={} provider_http_transport_version={} public_api_profile=compatibility compatibility_protocols=openai public_api_router=assembled mock_provider=enabled",
         report.render_line(),
         snapshot.module_id(),
         snapshot.version(),
@@ -74,13 +77,6 @@ fn run() -> Result<String, CoreError> {
         REVIEWED_RNMDB_COMMIT,
         PROVIDER_HTTP_TRANSPORT_VERSION
     ))
-}
-
-fn assemble_public_routers() -> Result<(), CoreError> {
-    let _openai_router = assemble_openai_mock_loop(Arc::new(UnavailableServiceAuthentication))?;
-    let _native_text_router =
-        assemble_native_text_mock_loop(Arc::new(UnavailableServiceAuthentication))?;
-    Ok(())
 }
 
 fn register_diagnostics(
