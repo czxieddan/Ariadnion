@@ -50,6 +50,80 @@ use ariadnion_provider_mock::{
 };
 use ariadnion_provider_sdk::{ProviderModelId, ProviderPort};
 
+/// Selects the single public API route family assembled by the complete bundle.
+///
+/// `Native` retains Ariadnion-native request and response contracts.
+/// `Compatibility` retains the stable OpenAI-compatible contract declared by
+/// [`COMPLETE_COMPATIBILITY_PROTOCOL_FAMILIES`]. This type is intentionally
+/// copyable so a caller can select the fixed profile before assembly without
+/// mutable registry state, protocol sniffing, or runtime fallback.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CompletePublicApiProfile {
+    /// Assemble only Ariadnion-native public routes.
+    Native,
+    /// Assemble only the fixed OpenAI-compatible public routes.
+    Compatibility,
+}
+
+/// Lists the stable compatibility protocol families included by this bundle.
+///
+/// This slice is informational only. It is not a lookup registry, does not
+/// enable protocol discovery, and does not authorize routes beyond the selected
+/// [`CompletePublicApiProfile::Compatibility`] router.
+pub const COMPLETE_COMPATIBILITY_PROTOCOL_FAMILIES: &[&str] = &["openai"];
+
+/// Assembles exactly one verification-only mock public API profile.
+///
+/// The caller selects a static profile and supplies the authentication security
+/// boundary. Assembly returns that profile's router without merging route
+/// families, accepting runtime protocol selection, or starting a listener.
+/// The returned router is solely for controlled verification and must never be
+/// served by the P10 listener or used as a production public API.
+///
+/// The supplied authentication implementation remains responsible for
+/// fail-closed authorization and must not expose credentials through errors or
+/// logs. The caller must invoke the router from a compatible asynchronous runtime
+/// and propagate request cancellation; assembly itself performs no external I/O.
+/// The compatibility profile remains limited to the stable protocol families in
+/// [`COMPLETE_COMPATIBILITY_PROTOCOL_FAMILIES`].
+///
+/// # Errors
+///
+/// Returns a redacted internal error when the selected mock factory cannot build
+/// its fixed provider, model mapping, resolver, or request identity issuer.
+///
+/// # Examples
+///
+/// ```no_run
+/// use std::sync::Arc;
+///
+/// use ariadnion_api_http::ServiceAuthenticationPort;
+/// use ariadnion_bundle_complete::{
+///     assemble_mock_public_api, CompletePublicApiProfile,
+/// };
+/// use ariadnion_core::CoreError;
+///
+/// fn assemble_for_verification(
+///     authentication: Arc<dyn ServiceAuthenticationPort>,
+/// ) -> Result<(), CoreError> {
+///     let router = assemble_mock_public_api(
+///         CompletePublicApiProfile::Compatibility,
+///         authentication,
+///     )?;
+///     let _ = router;
+///     Ok(())
+/// }
+/// ```
+pub fn assemble_mock_public_api(
+    profile: CompletePublicApiProfile,
+    authentication: Arc<dyn ServiceAuthenticationPort>,
+) -> Result<PublicApiRouter, CoreError> {
+    match profile {
+        CompletePublicApiProfile::Native => assemble_native_text_mock_loop(authentication),
+        CompletePublicApiProfile::Compatibility => assemble_openai_mock_loop(authentication),
+    }
+}
+
 /// Assembles the complete bundle's bounded OpenAI-compatible mock loop.
 ///
 /// The caller supplies the authentication port so the same static closure can be
