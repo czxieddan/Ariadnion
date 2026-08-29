@@ -299,6 +299,14 @@ impl RnmdbFileCatalogRepository {
         Ok(())
     }
 
+    /// Returns the number of catalog mutation statements attempted by this repository.
+    #[cfg(feature = "test-hooks")]
+    #[doc(hidden)]
+    #[must_use]
+    pub fn database_mutation_attempt_count(&self) -> u64 {
+        self.secrets.database_probe.mutation_attempt_count()
+    }
+
     /// Creates one repository with an exact worker queue capacity for contracts.
     ///
     /// # Errors

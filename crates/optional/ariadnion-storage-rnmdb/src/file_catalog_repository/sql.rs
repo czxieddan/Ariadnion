@@ -37,9 +37,11 @@ use ariadnion_storage_domain::{StorageError, StorageErrorCode};
 use rnmdb_cli::{CommandOutput, LocalSession};
 use rnmdb_common::{ErrorKind, RnovError};
 use rnmdb_executor::vector::{ColumnSchema, Row, VectorBatch};
+#[cfg(feature = "test-hooks")]
+use rnmdb_sql::{ast::Statement, parser::parse_statement};
 use rnmdb_types::{SqlType, SqlValue};
 #[cfg(feature = "test-hooks")]
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use super::evidence::{COMMITTED_OUTCOME, DELETE_KIND, PUBLISH_KIND, decode_fixed_hex, encode_hex};
 use super::{FileCatalogCommitmentKeyVersion, FileCatalogCommitmentKeys};
@@ -54,6 +56,8 @@ const MAX_LIST_ROWS: usize = 1_001;
 pub(super) struct CatalogDatabaseBoundaryProbe {
     #[cfg(feature = "test-hooks")]
     cancel_after_next: AtomicBool,
+    #[cfg(feature = "test-hooks")]
+    mutation_attempts: AtomicU64,
 }
 
 impl CatalogDatabaseBoundaryProbe {
@@ -61,6 +65,8 @@ impl CatalogDatabaseBoundaryProbe {
         Self {
             #[cfg(feature = "test-hooks")]
             cancel_after_next: AtomicBool::new(false),
+            #[cfg(feature = "test-hooks")]
+            mutation_attempts: AtomicU64::new(0),
         }
     }
 
@@ -69,6 +75,24 @@ impl CatalogDatabaseBoundaryProbe {
         self.cancel_after_next
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .is_ok()
+    }
+
+    #[cfg(feature = "test-hooks")]
+    pub(super) fn mutation_attempt_count(&self) -> u64 {
+        self.mutation_attempts.load(Ordering::Relaxed)
+    }
+
+    #[cfg(feature = "test-hooks")]
+    fn record_mutation_attempt(&self, sql: &str) {
+        let is_mutation = parse_statement(sql).is_ok_and(|statement| {
+            matches!(
+                statement,
+                Statement::Insert { .. } | Statement::Update { .. } | Statement::Delete { .. }
+            )
+        });
+        if is_mutation {
+            self.mutation_attempts.fetch_add(1, Ordering::Relaxed);
+        }
     }
 
     fn after_boundary(&self, context: &RequestContext) -> Result<(), StorageError> {
@@ -105,6 +129,8 @@ impl<'a> CatalogDatabase<'a> {
         project: impl FnOnce(Result<CommandOutput, RnovError>) -> Result<T, StorageError>,
     ) -> Result<T, StorageError> {
         check_context(self.context)?;
+        #[cfg(feature = "test-hooks")]
+        self.probe.record_mutation_attempt(sql);
         let result = self.session.execute(sql);
         self.probe.after_boundary(self.context)?;
         project(result)
