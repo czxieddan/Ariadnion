@@ -28,13 +28,14 @@
 
 //! Native bounded streaming file-content retrieval.
 
-use std::future::{Future, poll_fn};
+use std::future::{Future, pending, poll_fn};
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use std::time::SystemTime;
 
-use ariadnion_api_domain::{ApiDomainError, FileDescriptor, FileReference};
+use ariadnion_api_domain::{ApiDomainError, ApiDomainErrorCode, FileDescriptor, FileReference};
 use ariadnion_api_files::{
     ApiFilesError, ApiFilesErrorCode, FileChunk, FileDownloadSink, FileServicePort,
 };
@@ -46,6 +47,7 @@ use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use futures_core::Stream;
 use tokio::sync::{OwnedSemaphorePermit, mpsc};
+use tokio::task::{AbortHandle, JoinHandle};
 
 use super::error::{ResponseFailure, domain_failure, failure, response_with_request_id};
 use super::{ApiHttpError, ApiHttpErrorCode, HttpApiState, HttpRequestIdentity, execution};
@@ -53,8 +55,12 @@ use super::{ApiHttpError, ApiHttpErrorCode, HttpApiState, HttpRequestIdentity, e
 const REFERENCE_HEX_BYTES: usize = FileReference::BYTE_LENGTH * 2;
 const CONTENT_PATH_SUFFIX: &str = "/content";
 const REQUEST_ID_HEADER: &str = "x-request-id";
+const RELEASE_REQUESTED: u8 = 0b01;
+const PRODUCER_FINISHED: u8 = 0b10;
+const RELEASE_READY: u8 = RELEASE_REQUESTED | PRODUCER_FINISHED;
 
 type ProducerFuture = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
+type ProducerTask = JoinHandle<()>;
 
 /// Handles one authenticated, backpressure-preserving file download.
 pub(super) async fn handle_content(
@@ -244,6 +250,7 @@ async fn build_content_response(prepared: PreparedContent) -> Result<Response, F
         context,
     } = prepared;
     let (sender, mut receiver) = mpsc::channel(1);
+    let lifetime_sender = sender.clone();
     let mut producer: ProducerFuture = Box::pin(run_download(
         service,
         reference,
@@ -253,9 +260,15 @@ async fn build_content_response(prepared: PreparedContent) -> Result<Response, F
     ));
     let first = receive_first_chunk(&context, &mut receiver, &mut producer, &lifetime).await?;
     validate_first_chunk(&first, &descriptor, &lifetime)?;
-    let body = DownloadBody::new(
-        first, receiver, producer, permit, lifetime, context, descriptor,
+    let execution = DownloadExecution::new(
+        receiver,
+        lifetime_sender,
+        producer,
+        permit,
+        lifetime,
+        context,
     );
+    let body = DownloadBody::new(first, execution, descriptor);
     let response_descriptor = body.descriptor.clone();
     content_response(&identity, &response_descriptor, body).map_err(FileFailure::Http)
 }
@@ -353,7 +366,7 @@ async fn run_download(
         Ok(Err(error)) => DownloadMessage::Error(error),
         Err(error) => DownloadMessage::Error(error.into()),
     };
-    let _ = sender.send(message).await;
+    let _ = execution::within_request_context(&context, sender.send(message)).await;
 }
 
 struct ChannelDownloadSink {
@@ -444,33 +457,17 @@ enum DownloadPollStep {
 
 struct DownloadBody {
     first: Option<Bytes>,
-    receiver: mpsc::Receiver<DownloadMessage>,
-    producer: Option<ProducerFuture>,
-    permit: Option<OwnedSemaphorePermit>,
-    lifetime: RequestLifetime,
-    context: RequestContext,
+    execution: DownloadExecution,
     descriptor: FileDescriptor,
     delivered: usize,
     done: bool,
 }
 
 impl DownloadBody {
-    fn new(
-        first: Bytes,
-        receiver: mpsc::Receiver<DownloadMessage>,
-        producer: ProducerFuture,
-        permit: OwnedSemaphorePermit,
-        lifetime: RequestLifetime,
-        context: RequestContext,
-        descriptor: FileDescriptor,
-    ) -> Self {
+    fn new(first: Bytes, execution: DownloadExecution, descriptor: FileDescriptor) -> Self {
         Self {
             first: Some(first),
-            receiver,
-            producer: Some(producer),
-            permit: Some(permit),
-            lifetime,
-            context,
+            execution,
             descriptor,
             delivered: 0,
             done: false,
@@ -482,9 +479,7 @@ impl DownloadBody {
             return;
         }
         self.done = true;
-        self.lifetime.cancel();
-        self.producer.take();
-        self.permit.take();
+        self.execution.stop();
     }
 
     fn process_chunk(&mut self, bytes: Bytes) -> Result<Bytes, ApiFilesError> {
@@ -495,8 +490,28 @@ impl DownloadBody {
     }
 
     fn check_and_process_chunk(&mut self, bytes: Bytes) -> Result<Bytes, ApiFilesError> {
-        self.context.check_active().map_err(ApiFilesError::from)?;
+        if let Some(error) = self.context_error() {
+            return Err(error);
+        }
         self.process_chunk(bytes)
+    }
+
+    fn context_error(&self) -> Option<ApiFilesError> {
+        if self.execution.context.cancellation().is_cancelled() {
+            return Some(ApiFilesError::new(ApiFilesErrorCode::Cancelled));
+        }
+        if self.execution.lease.deadline_expired() {
+            return Some(ApiFilesError::new(ApiFilesErrorCode::DeadlineExceeded));
+        }
+        self.execution
+            .context
+            .check_active()
+            .err()
+            .map(ApiFilesError::from)
+    }
+
+    fn contextual_error(&self, fallback: ApiFilesError) -> ApiFilesError {
+        self.context_error().unwrap_or(fallback)
     }
 
     fn process_message(
@@ -526,7 +541,7 @@ impl DownloadBody {
     ) -> Poll<Option<Result<Bytes, ApiFilesError>>> {
         let valid =
             descriptor == self.descriptor && self.delivered == self.descriptor.byte_length().get();
-        let context_error = self.context.check_active().err().map(ApiFilesError::from);
+        let context_error = self.context_error();
         self.finish();
         completion_poll(valid, context_error)
     }
@@ -535,6 +550,7 @@ impl DownloadBody {
         &mut self,
         error: ApiFilesError,
     ) -> Poll<Option<Result<Bytes, ApiFilesError>>> {
+        let error = self.contextual_error(error);
         self.finish();
         Poll::Ready(Some(Err(error)))
     }
@@ -553,7 +569,7 @@ impl DownloadBody {
     }
 
     fn poll_download_step(&mut self, task: &mut Context<'_>) -> DownloadPollStep {
-        match Pin::new(&mut self.receiver).poll_recv(task) {
+        match Pin::new(&mut self.execution.receiver).poll_recv(task) {
             Poll::Ready(message) => self.poll_receiver_message(message),
             Poll::Pending => self.poll_producer(task),
         }
@@ -567,10 +583,10 @@ impl DownloadBody {
     }
 
     fn poll_producer(&mut self, task: &mut Context<'_>) -> DownloadPollStep {
-        match self.producer.as_mut() {
+        match self.execution.producer.as_mut() {
             Some(producer) => {
-                if producer.as_mut().poll(task).is_ready() {
-                    self.producer.take();
+                if Pin::new(producer).poll(task).is_ready() {
+                    self.execution.producer.take();
                     DownloadPollStep::Continue
                 } else {
                     DownloadPollStep::Pending
@@ -581,14 +597,187 @@ impl DownloadBody {
     }
 
     fn receiver_closed(&mut self) -> Poll<Option<Result<Bytes, ApiFilesError>>> {
-        self.producer.take();
+        let error = self.contextual_error(ApiFilesError::new(ApiFilesErrorCode::Internal));
         self.finish();
-        Poll::Ready(Some(Err(ApiFilesError::new(ApiFilesErrorCode::Internal))))
+        Poll::Ready(Some(Err(error)))
     }
 
     fn producer_missing(&mut self) -> Poll<Option<Result<Bytes, ApiFilesError>>> {
+        let error = self.contextual_error(ApiFilesError::new(ApiFilesErrorCode::Internal));
         self.finish();
-        Poll::Ready(Some(Err(ApiFilesError::new(ApiFilesErrorCode::Internal))))
+        Poll::Ready(Some(Err(error)))
+    }
+}
+
+struct DownloadExecution {
+    receiver: mpsc::Receiver<DownloadMessage>,
+    producer: Option<ProducerTask>,
+    deadline_watch: Option<ProducerTask>,
+    lease: Arc<DownloadLease>,
+    lifetime: RequestLifetime,
+    context: RequestContext,
+}
+
+impl DownloadExecution {
+    fn new(
+        receiver: mpsc::Receiver<DownloadMessage>,
+        lifetime_sender: mpsc::Sender<DownloadMessage>,
+        producer: ProducerFuture,
+        permit: OwnedSemaphorePermit,
+        lifetime: RequestLifetime,
+        context: RequestContext,
+    ) -> Self {
+        let lease = Arc::new(DownloadLease::new(permit));
+        let producer = TrackedProducer::new(producer, Arc::clone(&lease));
+        let producer = tokio::spawn(producer);
+        let producer_abort = producer.abort_handle();
+        let deadline_watch = Some(tokio::spawn(watch_download_lifetime(
+            context.clone(),
+            Arc::clone(&lease),
+            producer_abort,
+            lifetime_sender,
+        )));
+        Self {
+            receiver,
+            producer: Some(producer),
+            deadline_watch,
+            lease,
+            lifetime,
+            context,
+        }
+    }
+
+    fn stop(&mut self) {
+        self.lifetime.cancel();
+        abort_task(&mut self.producer);
+        abort_task(&mut self.deadline_watch);
+        self.lease.request_release();
+    }
+}
+
+impl Drop for DownloadExecution {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+struct DownloadLease {
+    permit: Mutex<Option<OwnedSemaphorePermit>>,
+    release_state: AtomicU8,
+    deadline_expired: AtomicBool,
+}
+
+impl DownloadLease {
+    fn new(permit: OwnedSemaphorePermit) -> Self {
+        Self {
+            permit: Mutex::new(Some(permit)),
+            release_state: AtomicU8::new(0),
+            deadline_expired: AtomicBool::new(false),
+        }
+    }
+
+    fn mark_deadline_expired(&self) {
+        self.deadline_expired.store(true, Ordering::Release);
+    }
+
+    fn deadline_expired(&self) -> bool {
+        self.deadline_expired.load(Ordering::Acquire)
+    }
+
+    fn request_release(&self) {
+        self.record_release_transition(RELEASE_REQUESTED);
+    }
+
+    fn mark_producer_finished(&self) {
+        self.record_release_transition(PRODUCER_FINISHED);
+    }
+
+    fn record_release_transition(&self, transition: u8) {
+        let state = self.release_state.fetch_or(transition, Ordering::AcqRel) | transition;
+        if state & RELEASE_READY == RELEASE_READY {
+            self.release_permit();
+        }
+    }
+
+    fn release_permit(&self) {
+        let permit = {
+            let mut permit = match self.permit.lock() {
+                Ok(permit) => permit,
+                // Taking the permit remains safe after poison because no protected
+                // invariant depends on its prior value.
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            permit.take()
+        };
+        drop(permit);
+    }
+}
+
+struct TrackedProducer {
+    // Declaration order keeps provider state alive until teardown is acknowledged.
+    inner: ProducerFuture,
+    _completion: ProducerCompletionGuard,
+}
+
+impl TrackedProducer {
+    fn new(inner: ProducerFuture, lease: Arc<DownloadLease>) -> Self {
+        Self {
+            inner,
+            _completion: ProducerCompletionGuard { lease },
+        }
+    }
+}
+
+impl Future for TrackedProducer {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, task: &mut Context<'_>) -> Poll<Self::Output> {
+        self.inner.as_mut().poll(task)
+    }
+}
+
+struct ProducerCompletionGuard {
+    lease: Arc<DownloadLease>,
+}
+
+impl Drop for ProducerCompletionGuard {
+    fn drop(&mut self) {
+        self.lease.mark_producer_finished();
+    }
+}
+
+async fn watch_download_lifetime(
+    context: RequestContext,
+    lease: Arc<DownloadLease>,
+    producer: AbortHandle,
+    lifetime_sender: mpsc::Sender<DownloadMessage>,
+) {
+    let outcome = execution::within_request_context(&context, pending::<()>()).await;
+    let error = download_lifetime_error(outcome, &lease);
+    producer.abort();
+    // A full channel already contains a wakeable message; a closed channel has no body.
+    let _ = lifetime_sender.try_send(DownloadMessage::Error(error));
+    lease.request_release();
+}
+
+fn download_lifetime_error(
+    outcome: Result<(), ApiDomainError>,
+    lease: &DownloadLease,
+) -> ApiFilesError {
+    match outcome {
+        Ok(()) => ApiFilesError::new(ApiFilesErrorCode::Internal),
+        Err(error) => {
+            if error.code() == ApiDomainErrorCode::DeadlineExceeded {
+                lease.mark_deadline_expired();
+            }
+            error.into()
+        }
+    }
+}
+
+fn abort_task(task: &mut Option<ProducerTask>) {
+    if let Some(task) = task.take() {
+        task.abort();
     }
 }
 
