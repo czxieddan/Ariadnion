@@ -479,24 +479,15 @@ impl FileCatalogPort for RnmdbFileCatalogRepository {
     fn reconcile_delete<'a>(
         &'a self,
         request: &'a FileDeleteRequest,
-        expected_descriptor: &'a FileDescriptor,
         context: &'a RequestContext,
     ) -> BoxFileFuture<'a, Result<FileDeleteReconciliation, ApiFilesError>> {
         Box::pin(async move {
             require_authenticated(context)?;
             let owned = operation_context(context)?;
             let request = request.clone();
-            let expected = expected_descriptor.clone();
             self.execute(owned, move |session, secrets, worker_context| {
                 let owner = require_authenticated(worker_context)?;
-                reconcile_deleted_record(
-                    session,
-                    secrets,
-                    &owner,
-                    &request,
-                    &expected,
-                    worker_context,
-                )
+                reconcile_deleted_record(session, secrets, &owner, &request, worker_context)
             })
             .await
         })
@@ -855,7 +846,6 @@ fn reconcile_deleted_record(
     secrets: &CatalogSecrets,
     owner: &PrincipalContext,
     request: &FileDeleteRequest,
-    expected: &FileDescriptor,
     context: &RequestContext,
 ) -> Result<FileDeleteReconciliation, ApiFilesError> {
     let lookup = evidence::derive_lookup(
@@ -868,7 +858,7 @@ fn reconcile_deleted_record(
         .with_files_storage_session(context, owner.tenant_id(), |database| {
             let mut database =
                 sql::CatalogDatabase::new(database, context, &secrets.database_probe);
-            reconcile_delete_from_session(&mut database, secrets, owner, request, expected, &lookup)
+            reconcile_delete_from_session(&mut database, secrets, owner, request, &lookup)
         })
         .map_err(map_storage_error)
 }
@@ -878,14 +868,13 @@ fn reconcile_delete_from_session(
     secrets: &CatalogSecrets,
     owner: &PrincipalContext,
     request: &FileDeleteRequest,
-    expected: &FileDescriptor,
     lookup: &[u8; 32],
 ) -> Result<FileDeleteReconciliation, StorageError> {
     let Some(operation) = sql::load_operation(database, owner, evidence::DELETE_KIND, lookup)?
     else {
         return Ok(FileDeleteReconciliation::NotDeleted);
     };
-    reconcile_delete_operation(database, secrets, owner, request, expected, &operation)?;
+    reconcile_delete_operation(database, secrets, owner, request, &operation)?;
     Ok(FileDeleteReconciliation::Deleted)
 }
 
@@ -894,16 +883,27 @@ fn reconcile_delete_operation(
     secrets: &CatalogSecrets,
     owner: &PrincipalContext,
     request: &FileDeleteRequest,
-    expected: &FileDescriptor,
     operation: &sql::OperationEvidence,
 ) -> Result<(), StorageError> {
+    let descriptor = load_delete_reconciliation_descriptor(database, owner, request, operation)?;
     let key = evidence::commitment_key_for_version(&secrets.commitments, operation.key_version)?;
-    if !evidence::verify_delete_commitment(owner, request, expected, key, &operation.commitment)?
-        || &operation.reference != request.reference()
+    if !evidence::verify_delete_commitment(owner, request, &descriptor, key, &operation.commitment)?
     {
         return Err(integrity_failure());
     }
-    validate_replayed_descriptor(database, owner, &operation.reference, expected)
+    Ok(())
+}
+
+fn load_delete_reconciliation_descriptor(
+    database: &mut sql::CatalogDatabase<'_>,
+    owner: &PrincipalContext,
+    request: &FileDeleteRequest,
+    operation: &sql::OperationEvidence,
+) -> Result<FileDescriptor, StorageError> {
+    if &operation.reference != request.reference() {
+        return Err(integrity_failure());
+    }
+    sql::load_entry(database, owner, &operation.reference)?.ok_or_else(integrity_failure)
 }
 
 const fn not_found_storage() -> StorageError {

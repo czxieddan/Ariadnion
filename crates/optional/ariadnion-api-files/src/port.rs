@@ -442,8 +442,11 @@ pub trait FileCatalogPort: Send + Sync {
 
     /// Lazily resolves an indeterminate compare-and-delete operation.
     ///
-    /// The exact original request and expected descriptor are required; blind
-    /// replay or reconciliation with changed material is forbidden.
+    /// The exact original request is required. The implementation reconstructs
+    /// the immutable descriptor from durable catalog evidence before verifying
+    /// the original delete commitment. Reconciliation is read-only. When no
+    /// matching durable delete operation exists, it returns
+    /// [`FileDeleteReconciliation::NotDeleted`] without consulting entry state.
     ///
     /// # Errors
     ///
@@ -452,7 +455,6 @@ pub trait FileCatalogPort: Send + Sync {
     fn reconcile_delete<'a>(
         &'a self,
         request: &'a FileDeleteRequest,
-        expected_descriptor: &'a FileDescriptor,
         context: &'a RequestContext,
     ) -> BoxFileFuture<'a, Result<FileDeleteReconciliation, ApiFilesError>>;
 }
