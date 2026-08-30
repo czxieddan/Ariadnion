@@ -55,7 +55,8 @@ pub use ariadnion_api_domain::{
 pub use catalog::FileCatalogRecord;
 pub use port::{
     BoxFileFuture, FileAccessTicketIssuerPort, FileAccessTicketVerifierPort, FileCatalogPort,
-    FileDownloadSink, FileReferenceIssuerPort, FileServicePort, FileUploadSource,
+    FileCatalogServicePort, FileDownloadSink, FileReferenceIssuerPort, FileServicePort,
+    FileUploadSource,
 };
 
 /// Maximum number of bytes carried by one in-memory file chunk.

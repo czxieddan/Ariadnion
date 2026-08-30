@@ -31,7 +31,7 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use ariadnion_api_domain::{FileDescriptor, FileReference};
+use ariadnion_api_domain::{FileDescriptor, FileDigest, FileReference};
 use ariadnion_core::RequestContext;
 
 use crate::{
@@ -457,4 +457,41 @@ pub trait FileCatalogPort: Send + Sync {
         request: &'a FileDeleteRequest,
         context: &'a RequestContext,
     ) -> BoxFileFuture<'a, Result<FileDeleteReconciliation, ApiFilesError>>;
+}
+
+/// Resolves ordinary authenticated upload replays from catalog evidence.
+///
+/// This additive supertrait keeps [`FileCatalogPort`] stable for existing
+/// implementations while allowing application services to look up an ordinary
+/// idempotent upload replay. Every returned future is lazy and `Send`: creating
+/// it performs no authentication, lookup, or other work. On first poll, an
+/// implementation authenticates the supplied owner-scoped context and checks
+/// its cancellation and deadline state before reading authoritative evidence.
+/// Resolution is strictly read-only and must not publish, delete, issue a
+/// reference, or otherwise mutate catalog state.
+pub trait FileCatalogServicePort: FileCatalogPort {
+    /// Lazily resolves the exact original upload request and observed digest.
+    ///
+    /// An exact authenticated request and digest returns
+    /// [`FileUploadReconciliation::Committed`] with the original descriptor.
+    /// If no exact publish operation exists for that owner and lookup, it
+    /// returns [`FileUploadReconciliation::NotCommitted`]. Once a publish
+    /// operation is present, a missing immutable entry or any other required
+    /// evidence component is [`crate::ApiFilesErrorCode::IntegrityFailure`].
+    /// Reusing an idempotency key with changed request material or a changed
+    /// observed digest returns [`crate::ApiFilesErrorCode::Conflict`].
+    /// Malformed, duplicate, unsupported-key-version, or structurally divergent
+    /// durable evidence also returns [`crate::ApiFilesErrorCode::IntegrityFailure`].
+    ///
+    /// # Errors
+    ///
+    /// Returns stable redacted authentication, context, conflict, integrity,
+    /// or availability failures. The operation is authenticated, owner scoped,
+    /// and read-only.
+    fn resolve_upload_replay<'a>(
+        &'a self,
+        request: &'a FileUploadRequest,
+        observed_digest: &'a FileDigest,
+        context: &'a RequestContext,
+    ) -> BoxFileFuture<'a, Result<FileUploadReconciliation, ApiFilesError>>;
 }
