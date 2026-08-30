@@ -33,8 +33,9 @@ use std::sync::Arc;
 
 use ariadnion_api_files::{
     ApiFilesError, ApiFilesErrorCode, BoxFileFuture, FileCatalogPort, FileCatalogRecord,
-    FileDeleteReconciliation, FileDeleteRequest, FileDescriptor, FileListPage, FileListRequest,
-    FileReference, FileUploadReconciliation, FileUploadRequest,
+    FileCatalogServicePort, FileDeleteReconciliation, FileDeleteRequest, FileDescriptor,
+    FileDigest, FileListPage, FileListRequest, FileReference, FileUploadReconciliation,
+    FileUploadRequest, FileUploadSpecification, IdempotencyKey,
 };
 use ariadnion_core::{PrincipalContext, RequestContext};
 use ariadnion_storage_domain::{StorageError, StorageErrorCode};
@@ -494,6 +495,34 @@ impl FileCatalogPort for RnmdbFileCatalogRepository {
     }
 }
 
+impl FileCatalogServicePort for RnmdbFileCatalogRepository {
+    fn resolve_upload_replay<'a>(
+        &'a self,
+        request: &'a FileUploadRequest,
+        observed_digest: &'a FileDigest,
+        context: &'a RequestContext,
+    ) -> BoxFileFuture<'a, Result<FileUploadReconciliation, ApiFilesError>> {
+        Box::pin(async move {
+            require_authenticated(context)?;
+            let owned = operation_context(context)?;
+            let request = request.clone();
+            let observed_digest = *observed_digest;
+            self.execute(owned, move |session, secrets, worker_context| {
+                let owner = require_authenticated(worker_context)?;
+                resolve_upload_replay_record(
+                    session,
+                    secrets,
+                    &owner,
+                    &request,
+                    &observed_digest,
+                    worker_context,
+                )
+            })
+            .await
+        })
+    }
+}
+
 fn publish_record(
     session: &Arc<RnmdbSessionOwner>,
     secrets: &CatalogSecrets,
@@ -655,6 +684,110 @@ fn reconcile_publish_operation(
         return Err(integrity_failure());
     }
     Ok(descriptor)
+}
+
+fn resolve_upload_replay_record(
+    session: &Arc<RnmdbSessionOwner>,
+    secrets: &CatalogSecrets,
+    owner: &PrincipalContext,
+    request: &FileUploadRequest,
+    observed_digest: &FileDigest,
+    context: &RequestContext,
+) -> Result<FileUploadReconciliation, ApiFilesError> {
+    let lookup = evidence::derive_lookup(
+        &secrets.lookup,
+        owner,
+        evidence::PUBLISH_KIND,
+        request.idempotency_key().as_str(),
+    )?;
+    session
+        .with_files_storage_session(context, owner.tenant_id(), |database| {
+            let mut database =
+                sql::CatalogDatabase::new(database, context, &secrets.database_probe);
+            resolve_upload_replay_from_session(
+                &mut database,
+                secrets,
+                owner,
+                request,
+                observed_digest,
+                &lookup,
+            )
+        })
+        .map_err(map_storage_error)
+}
+
+fn resolve_upload_replay_from_session(
+    database: &mut sql::CatalogDatabase<'_>,
+    secrets: &CatalogSecrets,
+    owner: &PrincipalContext,
+    request: &FileUploadRequest,
+    observed_digest: &FileDigest,
+    lookup: &[u8; 32],
+) -> Result<FileUploadReconciliation, StorageError> {
+    let Some(operation) = sql::load_operation(database, owner, evidence::PUBLISH_KIND, lookup)?
+    else {
+        return Ok(FileUploadReconciliation::NotCommitted);
+    };
+    let descriptor =
+        sql::load_entry(database, owner, &operation.reference)?.ok_or_else(integrity_failure)?;
+    let committed_request =
+        verify_upload_replay_evidence(secrets, owner, request, &descriptor, &operation)?;
+    if request != &committed_request {
+        return Err(conflict());
+    }
+    if descriptor.digest() != observed_digest {
+        return Err(conflict());
+    }
+    Ok(FileUploadReconciliation::Committed(descriptor))
+}
+
+fn verify_upload_replay_evidence(
+    secrets: &CatalogSecrets,
+    owner: &PrincipalContext,
+    request: &FileUploadRequest,
+    descriptor: &FileDescriptor,
+    operation: &sql::OperationEvidence,
+) -> Result<FileUploadRequest, StorageError> {
+    let key = evidence::commitment_key_for_version(&secrets.commitments, operation.key_version)?;
+    let with_expected_digest =
+        replay_request_for_descriptor(descriptor, request.idempotency_key(), true);
+    if evidence::verify_publish_commitment(
+        owner,
+        &with_expected_digest,
+        descriptor,
+        key,
+        &operation.commitment,
+    )? {
+        return Ok(with_expected_digest);
+    }
+    let without_expected_digest =
+        replay_request_for_descriptor(descriptor, request.idempotency_key(), false);
+    if evidence::verify_publish_commitment(
+        owner,
+        &without_expected_digest,
+        descriptor,
+        key,
+        &operation.commitment,
+    )? {
+        return Ok(without_expected_digest);
+    }
+    Err(integrity_failure())
+}
+
+fn replay_request_for_descriptor(
+    descriptor: &FileDescriptor,
+    idempotency_key: &IdempotencyKey,
+    includes_expected_digest: bool,
+) -> FileUploadRequest {
+    FileUploadRequest::new(
+        FileUploadSpecification::new(
+            descriptor.display_name().clone(),
+            descriptor.media_type().clone(),
+            descriptor.byte_length(),
+            includes_expected_digest.then_some(*descriptor.digest()),
+        ),
+        idempotency_key.clone(),
+    )
 }
 
 fn metadata_record(
