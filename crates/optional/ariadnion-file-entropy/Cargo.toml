@@ -1,0 +1,62 @@
+# crates/optional/ariadnion-file-entropy/Cargo.toml - Rust package manifest for Ariadnion.
+#
+# Copyright (C) 2026 czxieddan
+#
+# This file is part of Ariadnion and is provided under version 1.0 of the
+# Aperip Heimdall Commons License (AHCL). The applicable version is also subject
+# to the AHCL provisions concerning Continuous AHCL Licensing Segments and
+# migration to later official versions.
+#
+# After having a reasonable opportunity to read AHCL, all applicable Additional
+# Restrictions, and all version notices, a person accepts the corresponding terms,
+# to the extent permitted by applicable law, by using, copying, modifying, building,
+# using this file as a dependency, deploying, distributing, or operating this file
+# over a network.
+#
+# Official AHCL English text and public notices: https://ahcl.aperip.com
+# Repository verbatim AHCL copy:                 AHCL/AHCL-1.0.md
+# Project canonical repository:                  https://github.com/czxieddan/Ariadnion
+# AHCL origin and project notice:                AHCL/AHCL-PROJECT-NOTICE.md
+# AHCL Version Adoption records:                 AHCL/AHCL-VERSION-ADOPTION.md
+# Complete Corresponding Source and history:     AHCL/AHCL-SOURCE.md
+# Dependencies, Referenced Materials, and licenses:
+#                                                   AHCL/AHCL-DEPENDENCIES.md
+# Additional Restrictions:                       Effective; one record applies:
+#                                                   AHCL/AHCL-RESTRICTIONS/ARIADNION-AR-2026-001.md (ARIADNION-AR-2026-001)
+#
+# SPDX-License-Identifier: LicenseRef-AHCL-1.0
+#
+[package]
+name = "ariadnion-file-entropy"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95.0"
+license = "LicenseRef-AHCL-1.0"
+publish = false
+
+[workspace]
+
+[features]
+default = []
+test-hooks = []
+
+[[test]]
+name = "operating_system_entropy"
+path = "tests/operating_system_entropy.rs"
+required-features = ["test-hooks"]
+
+[dependencies]
+ariadnion-api-files = { path = "../ariadnion-api-files" }
+ariadnion-core = { path = "../../ariadnion-core" }
+ariadnion-storage-asset = { path = "../ariadnion-storage-asset" }
+getrandom = "=0.4.3"
+zeroize = "=1.9.0"
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
