@@ -29,10 +29,13 @@
 //! RNMDB relational-storage module descriptor and lifecycle adapter.
 
 use std::collections::BTreeSet;
+#[cfg(feature = "test-hooks")]
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use ariadnion_api_admin::AdminExecutionPort;
+use ariadnion_api_files::FileCatalogServicePort;
 use ariadnion_core::{
     CORE_ABI_VERSION, CapabilityId, CapabilityProvider, CapabilityRequirement,
     CapabilityResolution, ConfigurationContract, CoreError, ErrorCode, ExecutionBudget,
@@ -51,11 +54,18 @@ use crate::{
     RnmdbSessionOwner, SecretLocatorKeyMaterial, SessionOpenOptions, UtcTimestampMicros,
 };
 
+mod file_catalog;
+
+use file_catalog::{FileCatalogCapability, file_catalog_provider};
+
 const MODULE_ID: &str = "org.ariadnion.storage.rnmdb";
 const RELATIONAL_CAPABILITY: &str = "org.ariadnion.storage.relational";
 const PAGE_KEY_CAPABILITY: &str = "org.ariadnion.secret.page-key";
 const SECRET_LOCATOR_KEY_CAPABILITY: &str = "org.ariadnion.secret.locator-column-key";
 const AUDIT_SUBJECT_KEY_CAPABILITY: &str = "org.ariadnion.secret.audit-subject-key";
+const FILE_CATALOG_LOOKUP_KEY_CAPABILITY: &str = "org.ariadnion.secret.file-catalog-lookup-key";
+const FILE_CATALOG_COMMITMENT_KEYS_CAPABILITY: &str =
+    "org.ariadnion.secret.file-catalog-commitment-keys";
 const CONFIGURATION_SCHEMA: &str = "org.ariadnion.storage.rnmdb.config";
 const MODULE_LICENSE: &str = "LicenseRef-AHCL-1.0";
 const EMPTY_CONFIGURATION_DIGEST: &str =
@@ -74,6 +84,107 @@ pub struct StorageRnmdbModule {
     descriptor: ModuleDescriptor,
     options: Mutex<Option<StorageRnmdbModuleOptions>>,
     admin_execution: AdminExecutionCapability,
+    file_catalog: FileCatalogCapability,
+    #[cfg(feature = "test-hooks")]
+    lifecycle_test_hooks: Arc<ModuleLifecycleTestHooks>,
+}
+
+/// Sanitized lifecycle observations for external module contract tests.
+#[cfg(feature = "test-hooks")]
+#[doc(hidden)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ModuleLifecycleTestSnapshot {
+    session_open_count: u64,
+    admin_session_id: u64,
+    catalog_session_id: u64,
+    catalog_invalidation_event: u64,
+    session_close_event: u64,
+}
+
+#[cfg(feature = "test-hooks")]
+impl ModuleLifecycleTestSnapshot {
+    /// Returns successful embedded-session opens observed by this factory.
+    #[must_use]
+    pub const fn session_open_count(self) -> u64 {
+        self.session_open_count
+    }
+
+    /// Returns whether both published capabilities used the only opened session.
+    #[must_use]
+    pub const fn admin_and_catalog_share_session(self) -> bool {
+        self.session_open_count == 1
+            && self.admin_session_id != 0
+            && self.admin_session_id == self.catalog_session_id
+    }
+
+    /// Returns whether catalog invalidation preceded the session close attempt.
+    #[must_use]
+    pub const fn catalog_invalidated_before_session_close(self) -> bool {
+        self.catalog_invalidation_event != 0
+            && self.session_close_event != 0
+            && self.catalog_invalidation_event < self.session_close_event
+    }
+}
+
+#[cfg(feature = "test-hooks")]
+struct ModuleLifecycleTestHooks {
+    next_event: AtomicU64,
+    session_open_count: AtomicU64,
+    admin_session_id: AtomicU64,
+    catalog_session_id: AtomicU64,
+    catalog_invalidation_event: AtomicU64,
+    session_close_event: AtomicU64,
+}
+
+#[cfg(feature = "test-hooks")]
+impl ModuleLifecycleTestHooks {
+    fn new() -> Self {
+        Self {
+            next_event: AtomicU64::new(1),
+            session_open_count: AtomicU64::new(0),
+            admin_session_id: AtomicU64::new(0),
+            catalog_session_id: AtomicU64::new(0),
+            catalog_invalidation_event: AtomicU64::new(0),
+            session_close_event: AtomicU64::new(0),
+        }
+    }
+
+    fn record_session_open(&self) -> u64 {
+        self.session_open_count.fetch_add(1, Ordering::AcqRel) + 1
+    }
+
+    fn record_admin_session(&self, session_id: u64) {
+        self.admin_session_id.store(session_id, Ordering::Release);
+    }
+
+    fn record_catalog_session(&self, session_id: u64) {
+        self.catalog_session_id.store(session_id, Ordering::Release);
+    }
+
+    fn record_catalog_invalidation(&self) {
+        self.record_event(&self.catalog_invalidation_event);
+    }
+
+    fn record_session_close(&self) {
+        self.record_event(&self.session_close_event);
+    }
+
+    fn record_event(&self, destination: &AtomicU64) {
+        destination.store(
+            self.next_event.fetch_add(1, Ordering::AcqRel),
+            Ordering::Release,
+        );
+    }
+
+    fn snapshot(&self) -> ModuleLifecycleTestSnapshot {
+        ModuleLifecycleTestSnapshot {
+            session_open_count: self.session_open_count.load(Ordering::Acquire),
+            admin_session_id: self.admin_session_id.load(Ordering::Acquire),
+            catalog_session_id: self.catalog_session_id.load(Ordering::Acquire),
+            catalog_invalidation_event: self.catalog_invalidation_event.load(Ordering::Acquire),
+            session_close_event: self.session_close_event.load(Ordering::Acquire),
+        }
+    }
 }
 
 /// Single-consumption secrets and paths needed to start RNMDB storage.
@@ -81,6 +192,8 @@ pub struct StorageRnmdbModuleOptions {
     session: SessionOpenOptions,
     secret_locator_key: SecretLocatorKeyMaterial,
     audit_subject_key: AuditSubjectKeyMaterial,
+    file_catalog_lookup_key: crate::FileCatalogLookupKeyMaterial,
+    file_catalog_commitment_keys: crate::FileCatalogCommitmentKeys,
 }
 
 impl StorageRnmdbModuleOptions {
@@ -90,11 +203,15 @@ impl StorageRnmdbModuleOptions {
         session: SessionOpenOptions,
         secret_locator_key: SecretLocatorKeyMaterial,
         audit_subject_key: AuditSubjectKeyMaterial,
+        file_catalog_lookup_key: crate::FileCatalogLookupKeyMaterial,
+        file_catalog_commitment_keys: crate::FileCatalogCommitmentKeys,
     ) -> Self {
         Self {
             session,
             secret_locator_key,
             audit_subject_key,
+            file_catalog_lookup_key,
+            file_catalog_commitment_keys,
         }
     }
 }
@@ -147,11 +264,41 @@ impl StorageRnmdbModule {
         self.admin_execution.resolve()
     }
 
+    /// Resolves the durable file catalog for the current live generation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ErrorCode::Unavailable`] before successful startup and after
+    /// shutdown invalidates the provider generation.
+    pub fn resolve_file_catalog(
+        &self,
+    ) -> Result<PortHandle<dyn FileCatalogServicePort>, CoreError> {
+        self.file_catalog.resolve()
+    }
+
+    /// Returns sanitized lifecycle evidence for external contract tests.
+    #[cfg(feature = "test-hooks")]
+    #[doc(hidden)]
+    #[must_use]
+    pub fn lifecycle_test_snapshot(&self) -> ModuleLifecycleTestSnapshot {
+        self.lifecycle_test_hooks.snapshot()
+    }
+
+    /// Arms one deterministic catalog publication failure for external contract tests.
+    #[cfg(feature = "test-hooks")]
+    #[doc(hidden)]
+    pub fn fail_next_file_catalog_publication_for_test(&self) -> Result<(), CoreError> {
+        self.file_catalog.fail_next_publication_for_test()
+    }
+
     fn with_options(options: Option<StorageRnmdbModuleOptions>) -> Result<Self, CoreError> {
         Ok(Self {
             descriptor: build_descriptor()?,
             options: Mutex::new(options),
             admin_execution: AdminExecutionCapability::new()?,
+            file_catalog: FileCatalogCapability::new()?,
+            #[cfg(feature = "test-hooks")]
+            lifecycle_test_hooks: Arc::new(ModuleLifecycleTestHooks::new()),
         })
     }
 }
@@ -176,14 +323,28 @@ impl ModuleFactory for StorageRnmdbModule {
         cancellation.check_active()?;
         validate_secret_resolution(&self.descriptor, context.capabilities())?;
         let options = take_options(&self.options)?;
-        let (session, audit_subject_key) = start_ready_storage(options, cancellation.clone())?;
-        self.admin_execution
-            .publish(session.clone(), audit_subject_key, cancellation.clone())?;
+        let ready = start_ready_storage(
+            options,
+            cancellation.clone(),
+            #[cfg(feature = "test-hooks")]
+            self.lifecycle_test_hooks.as_ref(),
+        )?;
+        let session = publish_storage_capabilities(
+            &self.admin_execution,
+            &self.file_catalog,
+            ready,
+            cancellation.clone(),
+            #[cfg(feature = "test-hooks")]
+            self.lifecycle_test_hooks.as_ref(),
+        )?;
         Ok(Box::new(StorageRnmdbHandle {
             module_id: self.descriptor.id().clone(),
             cancellation,
             session: Some(session),
             admin_execution: Some(self.admin_execution.clone()),
+            file_catalog: Some(self.file_catalog.clone()),
+            #[cfg(feature = "test-hooks")]
+            lifecycle_test_hooks: self.lifecycle_test_hooks.clone(),
         }))
     }
 }
@@ -193,6 +354,9 @@ struct StorageRnmdbHandle {
     cancellation: ariadnion_core::CancellationToken,
     session: Option<Arc<RnmdbSessionOwner>>,
     admin_execution: Option<AdminExecutionCapability>,
+    file_catalog: Option<FileCatalogCapability>,
+    #[cfg(feature = "test-hooks")]
+    lifecycle_test_hooks: Arc<ModuleLifecycleTestHooks>,
 }
 
 impl ModuleHandle for StorageRnmdbHandle {
@@ -218,10 +382,15 @@ impl ModuleHandle for StorageRnmdbHandle {
     }
 
     fn shutdown(&mut self, deadline: SystemTime) -> Result<ModuleShutdownReport, CoreError> {
+        invalidate_file_catalog(&mut self.file_catalog)?;
+        #[cfg(feature = "test-hooks")]
+        self.lifecycle_test_hooks.record_catalog_invalidation();
         invalidate_admin_execution(&mut self.admin_execution)?;
         let Some(session) = self.session.as_ref() else {
             return Ok(ModuleShutdownReport::new(0, 0, true));
         };
+        #[cfg(feature = "test-hooks")]
+        self.lifecycle_test_hooks.record_session_close();
         let rolled_back = session
             .shutdown_before(deadline)
             .map_err(map_storage_error)?;
@@ -258,6 +427,8 @@ fn descriptor_input() -> Result<ModuleDescriptorInput, CoreError> {
             "storage.rnmdb.page_key_ref".into(),
             "storage.rnmdb.secret_locator_key_ref".into(),
             "storage.rnmdb.audit_subject_key_ref".into(),
+            "storage.rnmdb.file_catalog_lookup_key_ref".into(),
+            "storage.rnmdb.file_catalog_commitment_keys_ref".into(),
         ],
         observability_namespace: "ariadnion.storage.rnmdb".into(),
         audit_namespace: "ariadnion.storage.rnmdb".into(),
@@ -268,6 +439,7 @@ fn descriptor_providers(module_id: &ModuleId) -> Result<Vec<CapabilityProvider>,
     Ok(vec![
         relational_provider(module_id)?,
         admin_execution_provider(module_id, CONTRACT_VERSION)?,
+        file_catalog_provider(module_id, CONTRACT_VERSION)?,
     ])
 }
 
@@ -276,6 +448,8 @@ fn descriptor_secret_requirements() -> Result<Vec<SecretCapabilityRequirement>, 
         page_key_requirement()?,
         secret_locator_key_requirement()?,
         audit_subject_key_requirement()?,
+        file_catalog_lookup_key_requirement()?,
+        file_catalog_commitment_keys_requirement()?,
     ])
 }
 
@@ -317,6 +491,20 @@ fn audit_subject_key_requirement() -> Result<SecretCapabilityRequirement, CoreEr
     ))
 }
 
+fn file_catalog_lookup_key_requirement() -> Result<SecretCapabilityRequirement, CoreError> {
+    secret_requirement(FILE_CATALOG_LOOKUP_KEY_CAPABILITY)
+}
+
+fn file_catalog_commitment_keys_requirement() -> Result<SecretCapabilityRequirement, CoreError> {
+    secret_requirement(FILE_CATALOG_COMMITMENT_KEYS_CAPABILITY)
+}
+
+fn secret_requirement(id: &str) -> Result<SecretCapabilityRequirement, CoreError> {
+    Ok(SecretCapabilityRequirement::new(
+        CapabilityRequirement::new(CapabilityId::parse(id)?, CONTRACT_VERSION, Some(1)),
+    ))
+}
+
 fn configuration_contract() -> Result<ConfigurationContract, CoreError> {
     ConfigurationContract::new(CONFIGURATION_SCHEMA, CONTRACT_VERSION, false)
 }
@@ -354,7 +542,7 @@ fn validate_secret_resolution(
     capabilities: &CapabilityResolution,
 ) -> Result<(), CoreError> {
     let requirements = descriptor.required_secret_capabilities();
-    if requirements.len() != 3 {
+    if requirements.len() != 5 {
         return Err(CoreError::from_code(ErrorCode::Internal)
             .with_internal_context("RNMDB secret requirements are incomplete"));
     }
@@ -521,19 +709,84 @@ fn invalidate_admin_execution(
     Ok(())
 }
 
+fn invalidate_file_catalog(
+    capability: &mut Option<FileCatalogCapability>,
+) -> Result<(), CoreError> {
+    let Some(active) = capability.as_ref() else {
+        return Ok(());
+    };
+    active.invalidate()?;
+    *capability = None;
+    Ok(())
+}
+
+struct ReadyStorage {
+    session: Arc<RnmdbSessionOwner>,
+    audit_subject_key: AuditSubjectKeyMaterial,
+    file_catalog_lookup_key: crate::FileCatalogLookupKeyMaterial,
+    file_catalog_commitment_keys: crate::FileCatalogCommitmentKeys,
+    #[cfg(feature = "test-hooks")]
+    session_id: u64,
+}
+
 fn start_ready_storage(
     options: StorageRnmdbModuleOptions,
     cancellation: ariadnion_core::CancellationToken,
-) -> Result<(Arc<RnmdbSessionOwner>, AuditSubjectKeyMaterial), CoreError> {
+    #[cfg(feature = "test-hooks")] lifecycle_test_hooks: &ModuleLifecycleTestHooks,
+) -> Result<ReadyStorage, CoreError> {
     let session = RnmdbSessionOwner::open(options.session)
         .map(Arc::new)
         .map_err(map_storage_error)?;
+    #[cfg(feature = "test-hooks")]
+    let session_id = lifecycle_test_hooks.record_session_open();
     let request = startup_request_context(cancellation)?;
     apply_startup_migrations(&session, &request)?;
     RnmdbColumnSecurity::new(session.clone())
         .configure_secret_locator(options.secret_locator_key, &request)
         .map_err(map_storage_error)?;
-    Ok((session, options.audit_subject_key))
+    Ok(ReadyStorage {
+        session,
+        audit_subject_key: options.audit_subject_key,
+        file_catalog_lookup_key: options.file_catalog_lookup_key,
+        file_catalog_commitment_keys: options.file_catalog_commitment_keys,
+        #[cfg(feature = "test-hooks")]
+        session_id,
+    })
+}
+
+fn publish_storage_capabilities(
+    admin_execution: &AdminExecutionCapability,
+    file_catalog: &FileCatalogCapability,
+    ready: ReadyStorage,
+    cancellation: ariadnion_core::CancellationToken,
+    #[cfg(feature = "test-hooks")] lifecycle_test_hooks: &ModuleLifecycleTestHooks,
+) -> Result<Arc<RnmdbSessionOwner>, CoreError> {
+    let catalog = FileCatalogCapability::build(
+        ready.session.clone(),
+        ready.file_catalog_lookup_key,
+        ready.file_catalog_commitment_keys,
+    )?;
+    #[cfg(feature = "test-hooks")]
+    lifecycle_test_hooks.record_catalog_session(ready.session_id);
+    admin_execution.publish(
+        ready.session.clone(),
+        ready.audit_subject_key,
+        cancellation.clone(),
+    )?;
+    #[cfg(feature = "test-hooks")]
+    lifecycle_test_hooks.record_admin_session(ready.session_id);
+    if let Err(error) = file_catalog.publish(catalog, cancellation) {
+        return rollback_admin_publication(admin_execution, error);
+    }
+    Ok(ready.session)
+}
+
+fn rollback_admin_publication(
+    admin_execution: &AdminExecutionCapability,
+    publication_error: CoreError,
+) -> Result<Arc<RnmdbSessionOwner>, CoreError> {
+    admin_execution.invalidate()?;
+    Err(publication_error)
 }
 
 fn startup_request_context(
