@@ -35,6 +35,8 @@
 # Test code is injected from a separate test workspace and is not tracked.
 crates/**/tests/
 crates/**/tests/**
+bundles/**/tests/
+bundles/**/tests/**
 
 # Local configuration and secrets
 .env
