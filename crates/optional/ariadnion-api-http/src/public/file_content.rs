@@ -497,17 +497,18 @@ impl DownloadBody {
     }
 
     fn context_error(&self) -> Option<ApiFilesError> {
-        if self.execution.context.cancellation().is_cancelled() {
-            return Some(ApiFilesError::new(ApiFilesErrorCode::Cancelled));
-        }
-        if self.execution.lease.deadline_expired() {
-            return Some(ApiFilesError::new(ApiFilesErrorCode::DeadlineExceeded));
-        }
-        self.execution
+        let deadline_expired = self.execution.lease.deadline_expired();
+        #[rustfmt::skip]
+        let activity = self.execution
             .context
-            .check_active()
-            .err()
-            .map(ApiFilesError::from)
+            .check_active();
+        match activity {
+            Ok(()) if deadline_expired => {
+                Some(ApiFilesError::new(ApiFilesErrorCode::DeadlineExceeded))
+            }
+            Ok(()) => None,
+            Err(error) => Some(error.into()),
+        }
     }
 
     fn contextual_error(&self, fallback: ApiFilesError) -> ApiFilesError {
