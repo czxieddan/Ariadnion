@@ -756,9 +756,9 @@ async fn watch_download_lifetime(
     let outcome = execution::within_request_context(&context, pending::<()>()).await;
     let error = download_lifetime_error(outcome, &lease);
     producer.abort();
+    lease.request_release();
     // A full channel already contains a wakeable message; a closed channel has no body.
     let _ = lifetime_sender.try_send(DownloadMessage::Error(error));
-    lease.request_release();
 }
 
 fn download_lifetime_error(
