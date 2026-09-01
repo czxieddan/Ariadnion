@@ -42,8 +42,32 @@ const WAIT_QUANTUM: Duration = Duration::from_millis(10);
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum TerminalState {
     Open,
+    PublishingEof,
     Eof,
     Aborted,
+}
+
+enum BlockingFinishStep {
+    Deliver(Waker),
+    Recheck,
+    Published,
+    Aborted(io::Error),
+}
+
+enum ReceivePollStep {
+    Ready(ReceiveReady),
+    RegisterWaker,
+}
+
+struct ReceiveReady {
+    result: Result<Option<PipeReceivedChunk>, ApiFilesError>,
+    notification: Option<Waker>,
+}
+
+struct ReceiverWakerInstallation {
+    step: ReceivePollStep,
+    discarded: Option<Waker>,
+    failed: bool,
 }
 
 struct PipeState {
@@ -51,6 +75,7 @@ struct PipeState {
     in_flight: Option<u64>,
     terminal: TerminalState,
     async_waker: Option<Waker>,
+    receiver_waker_updates: usize,
     io_fault_observed: bool,
 }
 
@@ -61,11 +86,15 @@ impl PipeState {
             in_flight: None,
             terminal: TerminalState::Open,
             async_waker: None,
+            receiver_waker_updates: 0,
             io_fault_observed: false,
         }
     }
 
     fn abort(&mut self, io_fault_observed: bool) -> Option<Waker> {
+        if self.terminal == TerminalState::Eof {
+            return None;
+        }
         self.terminal = TerminalState::Aborted;
         self.retained = None;
         self.in_flight = None;
@@ -238,7 +267,7 @@ impl PipeAsyncSender {
 
 impl Drop for PipeAsyncSender {
     fn drop(&mut self) {
-        abort_if_open(&self.shared);
+        abort_if_unpublished(&self.shared);
     }
 }
 
@@ -278,21 +307,16 @@ impl PipeAsyncReceiver {
             abort_shared(&self.shared, true);
             return Poll::Ready(Err(error.into()));
         }
-        let waker = match clone_waker(task.waker(), &self.shared) {
-            Ok(waker) => waker,
-            Err(error) => return Poll::Ready(Err(error)),
-        };
-        let (mut state, poisoned) = lock_state(&self.shared);
-        if poisoned {
-            return Poll::Ready(Err(internal_error()));
+        match begin_receive_poll(&self.shared) {
+            ReceivePollStep::Ready(ready) => finish_receive_ready(&self.shared, ready),
+            ReceivePollStep::RegisterWaker => register_receiver_waker(&self.shared, task.waker()),
         }
-        poll_received_state(&mut state, waker, &self.shared)
     }
 }
 
 impl Drop for PipeAsyncReceiver {
     fn drop(&mut self) {
-        abort_if_open(&self.shared);
+        abort_if_unpublished(&self.shared);
     }
 }
 
@@ -375,7 +399,7 @@ impl PipeReader {
 
 impl Drop for PipeReader {
     fn drop(&mut self) {
-        abort_if_open(&self.shared);
+        abort_if_unpublished(&self.shared);
     }
 }
 
@@ -402,15 +426,9 @@ impl PipeWriter {
         if poisoned {
             return Err(internal_io_error());
         }
-        match state.terminal {
-            TerminalState::Open => state.terminal = TerminalState::Eof,
-            TerminalState::Eof => return Ok(()),
-            TerminalState::Aborted => return Err(aborted_io_error(&state)),
-        }
-        let waker = state.async_waker.take();
+        let step = begin_blocking_finish(&mut state);
         drop(state);
-        self.shared.changed.notify_all();
-        wake_or_abort(&self.shared, waker).map_err(api_to_io)
+        drive_blocking_finish(&self.shared, &self.context, step)
     }
 
     fn write_chunk(&mut self, input: &[u8]) -> io::Result<()> {
@@ -423,9 +441,92 @@ impl PipeWriter {
     }
 }
 
+fn begin_blocking_finish(state: &mut PipeState) -> BlockingFinishStep {
+    match state.terminal {
+        TerminalState::Open => {
+            state.terminal = TerminalState::PublishingEof;
+            next_blocking_finish_step(state)
+        }
+        TerminalState::Eof => BlockingFinishStep::Published,
+        TerminalState::PublishingEof => BlockingFinishStep::Aborted(internal_io_error()),
+        TerminalState::Aborted => BlockingFinishStep::Aborted(aborted_io_error(state)),
+    }
+}
+
+fn next_blocking_finish_step(state: &mut PipeState) -> BlockingFinishStep {
+    match state.terminal {
+        TerminalState::PublishingEof => publishing_finish_step(state),
+        TerminalState::Eof => BlockingFinishStep::Published,
+        TerminalState::Aborted => BlockingFinishStep::Aborted(aborted_io_error(state)),
+        TerminalState::Open => BlockingFinishStep::Aborted(internal_io_error()),
+    }
+}
+
+fn publishing_finish_step(state: &mut PipeState) -> BlockingFinishStep {
+    if state.receiver_waker_updates != 0 {
+        return BlockingFinishStep::Recheck;
+    }
+    match state.async_waker.take() {
+        Some(waker) => BlockingFinishStep::Deliver(waker),
+        None => {
+            state.terminal = TerminalState::Eof;
+            BlockingFinishStep::Published
+        }
+    }
+}
+
+fn drive_blocking_finish(
+    shared: &Arc<PipeShared>,
+    context: &RequestContext,
+    mut step: BlockingFinishStep,
+) -> io::Result<()> {
+    loop {
+        step = match step {
+            BlockingFinishStep::Deliver(waker) => deliver_blocking_finish_waker(shared, waker),
+            BlockingFinishStep::Recheck => recheck_blocking_finish(shared, context),
+            BlockingFinishStep::Published => {
+                shared.changed.notify_all();
+                return Ok(());
+            }
+            BlockingFinishStep::Aborted(error) => return Err(error),
+        };
+    }
+}
+
+fn deliver_blocking_finish_waker(shared: &Arc<PipeShared>, waker: Waker) -> BlockingFinishStep {
+    if wake_caught(Some(waker)) {
+        BlockingFinishStep::Recheck
+    } else {
+        abort_shared(shared, false);
+        BlockingFinishStep::Aborted(internal_io_error())
+    }
+}
+
+fn recheck_blocking_finish(
+    shared: &Arc<PipeShared>,
+    context: &RequestContext,
+) -> BlockingFinishStep {
+    if let Err(error) = check_blocking_context(shared, context) {
+        return BlockingFinishStep::Aborted(error);
+    }
+    let (mut state, poisoned) = lock_state(shared);
+    let step = if poisoned {
+        BlockingFinishStep::Aborted(internal_io_error())
+    } else {
+        next_blocking_finish_step(&mut state)
+    };
+    match step {
+        BlockingFinishStep::Recheck => match wait_for_change(shared, state, context) {
+            Ok(()) => BlockingFinishStep::Recheck,
+            Err(error) => BlockingFinishStep::Aborted(error),
+        },
+        step => step,
+    }
+}
+
 impl Drop for PipeWriter {
     fn drop(&mut self) {
-        abort_if_open(&self.shared);
+        abort_if_unpublished(&self.shared);
     }
 }
 
@@ -477,6 +578,7 @@ fn empty_read_step(state: &PipeState) -> ReadStep {
     match state.terminal {
         TerminalState::Open => ReadStep::Wait,
         TerminalState::Eof => ReadStep::Eof,
+        TerminalState::PublishingEof => ReadStep::Aborted(internal_io_error()),
         TerminalState::Aborted => ReadStep::Aborted(aborted_io_error(state)),
     }
 }
@@ -505,7 +607,10 @@ fn poll_offered_state(
     if state.terminal == TerminalState::Aborted {
         return Poll::Ready(Err(state.aborted_error()));
     }
-    if state.terminal == TerminalState::Eof {
+    if matches!(
+        state.terminal,
+        TerminalState::PublishingEof | TerminalState::Eof
+    ) {
         return Poll::Ready(Err(internal_error()));
     }
     if retained.is_some() {
@@ -570,48 +675,235 @@ fn finished_terminal_poll(state: &PipeState) -> Option<Poll<Result<(), ApiFilesE
     match state.terminal {
         TerminalState::Open => None,
         TerminalState::Eof => Some(Poll::Ready(Ok(()))),
+        TerminalState::PublishingEof => Some(Poll::Ready(Err(internal_error()))),
         TerminalState::Aborted => Some(Poll::Ready(Err(state.aborted_error()))),
     }
 }
 
-fn poll_received_state(
-    state: &mut PipeState,
-    waker: Waker,
-    shared: &PipeShared,
-) -> Poll<Result<Option<PipeReceivedChunk>, ApiFilesError>> {
+fn begin_receive_poll(shared: &Arc<PipeShared>) -> ReceivePollStep {
+    let (mut state, poisoned) = lock_state(shared);
+    if poisoned {
+        return receive_error(internal_error(), None);
+    }
+    receive_poll_step(&mut state)
+}
+
+fn receive_poll_step(state: &mut PipeState) -> ReceivePollStep {
     if state.in_flight.is_some() {
-        state.async_waker = Some(waker);
-        return Poll::Pending;
+        return begin_receiver_waker_update(state);
     }
     if let Some((sequence, retained)) = state.retained.take() {
-        return receive_retained(state, sequence, retained, shared);
+        return ReceivePollStep::Ready(receive_retained(state, sequence, retained));
     }
+    terminal_receive_poll_step(state)
+}
+
+fn terminal_receive_poll_step(state: &mut PipeState) -> ReceivePollStep {
     match state.terminal {
-        TerminalState::Open => {
-            state.async_waker = Some(waker);
-            Poll::Pending
-        }
-        TerminalState::Eof => Poll::Ready(Ok(None)),
-        TerminalState::Aborted => Poll::Ready(Err(state.aborted_error())),
+        TerminalState::Open | TerminalState::PublishingEof => begin_receiver_waker_update(state),
+        TerminalState::Eof => ReceivePollStep::Ready(ReceiveReady {
+            result: Ok(None),
+            notification: None,
+        }),
+        TerminalState::Aborted => receive_error(state.aborted_error(), None),
     }
 }
 
-fn receive_retained(
-    state: &mut PipeState,
-    sequence: u64,
-    retained: Box<[u8]>,
-    shared: &PipeShared,
-) -> Poll<Result<Option<PipeReceivedChunk>, ApiFilesError>> {
+fn begin_receiver_waker_update(state: &mut PipeState) -> ReceivePollStep {
+    match state.receiver_waker_updates.checked_add(1) {
+        Some(next) => {
+            state.receiver_waker_updates = next;
+            ReceivePollStep::RegisterWaker
+        }
+        None => {
+            let notification = state.abort(false);
+            receive_error(internal_error(), notification)
+        }
+    }
+}
+
+fn receive_retained(state: &mut PipeState, sequence: u64, retained: Box<[u8]>) -> ReceiveReady {
     let chunk = match FileChunk::new(retained.into_vec()) {
         Ok(chunk) => chunk,
         Err(_) => {
-            state.abort(false);
-            shared.changed.notify_all();
-            return Poll::Ready(Err(internal_error()));
+            let notification = state.abort(false);
+            return ready_receive_error(internal_error(), notification);
         }
     };
     state.in_flight = Some(sequence);
-    Poll::Ready(Ok(Some(PipeReceivedChunk { sequence, chunk })))
+    ReceiveReady {
+        result: Ok(Some(PipeReceivedChunk { sequence, chunk })),
+        notification: None,
+    }
+}
+
+fn receive_error(error: ApiFilesError, notification: Option<Waker>) -> ReceivePollStep {
+    ReceivePollStep::Ready(ReceiveReady {
+        result: Err(error),
+        notification,
+    })
+}
+
+fn ready_receive_error(error: ApiFilesError, notification: Option<Waker>) -> ReceiveReady {
+    ReceiveReady {
+        result: Err(error),
+        notification,
+    }
+}
+
+fn finish_receive_ready(
+    shared: &Arc<PipeShared>,
+    ready: ReceiveReady,
+) -> Poll<Result<Option<PipeReceivedChunk>, ApiFilesError>> {
+    shared.changed.notify_all();
+    let _ = wake_caught(ready.notification);
+    Poll::Ready(ready.result)
+}
+
+fn register_receiver_waker(
+    shared: &Arc<PipeShared>,
+    waker: &Waker,
+) -> Poll<Result<Option<PipeReceivedChunk>, ApiFilesError>> {
+    let cloned = match clone_waker_caught(waker) {
+        Ok(cloned) => cloned,
+        Err(()) => return fail_receiver_waker_update(shared),
+    };
+    let installation = install_receiver_waker(shared, cloned);
+    resolve_receiver_waker_installation(shared, installation)
+}
+
+fn install_receiver_waker(shared: &Arc<PipeShared>, waker: Waker) -> ReceiverWakerInstallation {
+    let (mut state, poisoned) = lock_state(shared);
+    if poisoned {
+        return ReceiverWakerInstallation {
+            step: receive_error(internal_error(), None),
+            discarded: Some(waker),
+            failed: true,
+        };
+    }
+    install_receiver_waker_state(&mut state, waker)
+}
+
+fn install_receiver_waker_state(state: &mut PipeState, waker: Waker) -> ReceiverWakerInstallation {
+    if state.in_flight.is_some() {
+        return install_pending_receiver_waker(state, waker);
+    }
+    if let Some((sequence, retained)) = state.retained.take() {
+        let ready = receive_retained(state, sequence, retained);
+        return install_ready_receiver_waker(ready, waker);
+    }
+    install_terminal_receiver_waker(state, waker)
+}
+
+fn install_terminal_receiver_waker(
+    state: &mut PipeState,
+    waker: Waker,
+) -> ReceiverWakerInstallation {
+    match state.terminal {
+        TerminalState::Open | TerminalState::PublishingEof => {
+            install_pending_receiver_waker(state, waker)
+        }
+        TerminalState::Eof => install_ready_receiver_waker(
+            ReceiveReady {
+                result: Ok(None),
+                notification: None,
+            },
+            waker,
+        ),
+        TerminalState::Aborted => {
+            install_ready_receiver_waker(ready_receive_error(state.aborted_error(), None), waker)
+        }
+    }
+}
+
+fn install_pending_receiver_waker(
+    state: &mut PipeState,
+    waker: Waker,
+) -> ReceiverWakerInstallation {
+    ReceiverWakerInstallation {
+        step: ReceivePollStep::RegisterWaker,
+        discarded: state.async_waker.replace(waker),
+        failed: false,
+    }
+}
+
+fn install_ready_receiver_waker(ready: ReceiveReady, waker: Waker) -> ReceiverWakerInstallation {
+    ReceiverWakerInstallation {
+        step: ReceivePollStep::Ready(ready),
+        discarded: Some(waker),
+        failed: false,
+    }
+}
+
+fn resolve_receiver_waker_installation(
+    shared: &Arc<PipeShared>,
+    installation: ReceiverWakerInstallation,
+) -> Poll<Result<Option<PipeReceivedChunk>, ApiFilesError>> {
+    let ReceiverWakerInstallation {
+        mut step,
+        discarded,
+        failed: installation_failed,
+    } = installation;
+    let discarded_cleanly = drop_waker_caught(discarded);
+    let update_succeeded = !installation_failed && discarded_cleanly;
+    let (completion_notification, completion_failed) =
+        complete_receiver_waker_update(shared, update_succeeded);
+    let step_notification = take_receive_notification(&mut step);
+    let failed = installation_failed || !discarded_cleanly || completion_failed;
+    let _ = wake_caught(step_notification);
+    let _ = wake_caught(completion_notification);
+    if failed {
+        Poll::Ready(Err(internal_error()))
+    } else {
+        resolve_receive_poll_step(step)
+    }
+}
+
+fn fail_receiver_waker_update(
+    shared: &Arc<PipeShared>,
+) -> Poll<Result<Option<PipeReceivedChunk>, ApiFilesError>> {
+    let (notification, _) = complete_receiver_waker_update(shared, false);
+    let _ = wake_caught(notification);
+    Poll::Ready(Err(internal_error()))
+}
+
+fn complete_receiver_waker_update(
+    shared: &Arc<PipeShared>,
+    succeeded: bool,
+) -> (Option<Waker>, bool) {
+    let (mut state, poisoned) = lock_state(shared);
+    let decremented = decrement_receiver_waker_updates(&mut state);
+    let failed = !succeeded || poisoned || !decremented;
+    let notification = if failed { state.abort(false) } else { None };
+    drop(state);
+    shared.changed.notify_all();
+    (notification, failed)
+}
+
+fn decrement_receiver_waker_updates(state: &mut PipeState) -> bool {
+    match state.receiver_waker_updates.checked_sub(1) {
+        Some(remaining) => {
+            state.receiver_waker_updates = remaining;
+            true
+        }
+        None => false,
+    }
+}
+
+fn take_receive_notification(step: &mut ReceivePollStep) -> Option<Waker> {
+    match step {
+        ReceivePollStep::Ready(ready) => ready.notification.take(),
+        ReceivePollStep::RegisterWaker => None,
+    }
+}
+
+fn resolve_receive_poll_step(
+    step: ReceivePollStep,
+) -> Poll<Result<Option<PipeReceivedChunk>, ApiFilesError>> {
+    match step {
+        ReceivePollStep::Ready(ready) => Poll::Ready(ready.result),
+        ReceivePollStep::RegisterWaker => Poll::Pending,
+    }
 }
 
 fn retained_sequence(state: &PipeState) -> Option<u64> {
@@ -678,7 +970,9 @@ enum EmptyWaitState {
 fn empty_wait_state(state: &PipeState) -> EmptyWaitState {
     match state.terminal {
         TerminalState::Aborted => EmptyWaitState::Aborted(aborted_io_error(state)),
-        TerminalState::Eof => EmptyWaitState::Aborted(internal_io_error()),
+        TerminalState::PublishingEof | TerminalState::Eof => {
+            EmptyWaitState::Aborted(internal_io_error())
+        }
         TerminalState::Open if state.retained.is_none() && state.in_flight.is_none() => {
             EmptyWaitState::Ready
         }
@@ -789,13 +1083,21 @@ fn next_blocking_sequence(next: &mut u64, shared: &Arc<PipeShared>) -> io::Resul
 }
 
 fn clone_waker(waker: &Waker, shared: &Arc<PipeShared>) -> Result<Waker, ApiFilesError> {
-    match catch_unwind(AssertUnwindSafe(|| waker.clone())) {
+    match clone_waker_caught(waker) {
         Ok(cloned) => Ok(cloned),
-        Err(_) => {
+        Err(()) => {
             abort_shared(shared, false);
             Err(internal_error())
         }
     }
+}
+
+fn clone_waker_caught(waker: &Waker) -> Result<Waker, ()> {
+    catch_unwind(AssertUnwindSafe(|| waker.clone())).map_err(|_| ())
+}
+
+fn drop_waker_caught(waker: Option<Waker>) -> bool {
+    catch_unwind(AssertUnwindSafe(|| drop(waker))).is_ok()
 }
 
 fn wake_or_abort(shared: &Arc<PipeShared>, waker: Option<Waker>) -> Result<(), ApiFilesError> {
@@ -821,12 +1123,21 @@ fn abort_shared(shared: &Arc<PipeShared>, io_fault_observed: bool) {
     let _ = wake_caught(waker);
 }
 
-fn abort_if_open(shared: &Arc<PipeShared>) {
-    let (state, _) = lock_state(shared);
-    let open = state.terminal == TerminalState::Open;
+fn abort_if_unpublished(shared: &Arc<PipeShared>) {
+    let (mut state, _) = lock_state(shared);
+    let unpublished = matches!(
+        state.terminal,
+        TerminalState::Open | TerminalState::PublishingEof
+    );
+    let waker = if unpublished {
+        state.abort(false)
+    } else {
+        None
+    };
     drop(state);
-    if open {
-        abort_shared(shared, false);
+    if unpublished {
+        shared.changed.notify_all();
+        let _ = wake_caught(waker);
     }
 }
 
@@ -850,9 +1161,11 @@ fn relock_poisoned_state(shared: &PipeShared) -> (MutexGuard<'_, PipeState>, boo
         Ok(state) => (state, true),
         Err(poisoned) => {
             let mut state = poisoned.into_inner();
-            state.terminal = TerminalState::Aborted;
-            state.retained = None;
-            state.in_flight = None;
+            if state.terminal != TerminalState::Eof {
+                state.terminal = TerminalState::Aborted;
+                state.retained = None;
+                state.in_flight = None;
+            }
             (state, true)
         }
     }
