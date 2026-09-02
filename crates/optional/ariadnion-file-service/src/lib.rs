@@ -37,4 +37,7 @@
 #![deny(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 
 mod pipe;
+mod service;
 mod worker;
+
+pub use service::DurableFileService;
