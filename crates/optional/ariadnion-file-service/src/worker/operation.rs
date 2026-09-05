@@ -264,12 +264,14 @@ impl<T> JobFuture<T> {
             return;
         }
         if let Assignment::Reserved(reservation) = self.assignment {
-            let had_job = self.job.is_some();
-            let abandoned = self
-                .job
+            let mut job = self.job.take();
+            let abandoned = job
                 .as_mut()
                 .is_some_and(|job| try_abandon_job(job, &self.runtime.shared, reservation));
-            if !abandoned && had_job {
+            if !abandoned {
+                if let Some(job) = job {
+                    let _ = fail_and_drop_job(job, internal_error());
+                }
                 fail_worker(&self.runtime.shared);
             }
         }
