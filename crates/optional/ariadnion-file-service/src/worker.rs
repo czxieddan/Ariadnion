@@ -29,7 +29,7 @@
 use std::io::{Read, Write};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
-use std::thread::{self, JoinHandle};
+use std::thread::JoinHandle;
 
 use ariadnion_api_files::ApiFilesError;
 use ariadnion_core::{CancellationToken, RequestContext};
@@ -43,12 +43,21 @@ use crate::pipe::PipeWriter;
 mod operation {
     include!("worker/operation.rs");
 }
+mod cleanup {
+    include!("worker/cleanup.rs");
+}
 
+pub(crate) use cleanup::OperationGuard;
+use cleanup::{
+    QuarantineJob, abandon_retained_stage, contain_inflight_commit_stage,
+    contain_pre_call_commit_stage, contain_unresolved_stage, release_running_reservation,
+    retain_running_reservation,
+};
 use operation::{
-    JobCell, JobFuture, OperationContext, classify_commit_error, current_phase, fail_and_drop_job,
-    fail_worker, finish_worker_failure, internal_error, lock_recover, lock_worker, mark_failed,
-    project_pipe_error, project_storage_error, recover_wait, resource_error, take_worker_failure,
-    unavailable_error,
+    JobCell, JobFuture, OperationContext, assign_state, classify_commit_error, current_phase,
+    dispose_rejected_job, fail_and_drop_job, fail_worker, finish_worker_failure, internal_error,
+    lock_recover, lock_worker, mark_failed, project_pipe_error, project_storage_error,
+    recover_wait, spawn_worker, take_worker_failure, unavailable_error,
 };
 
 const WORKER_NAME: &str = "ariadnion-file-transfer";
@@ -91,6 +100,8 @@ struct WorkerState {
     reservation: Option<u64>,
     job: Option<Box<dyn WorkerJob>>,
     active_cancellation: Option<CancellationToken>,
+    // A failed lifecycle retains at most one opaque stage without claiming recovery.
+    unresolved_stage: Option<StagedAsset>,
 }
 
 #[derive(Default)]
@@ -119,6 +130,7 @@ impl WorkerState {
             reservation: None,
             job: None,
             active_cancellation: None,
+            unresolved_stage: None,
         }
     }
 }
@@ -179,10 +191,18 @@ impl TransferWorker {
         guard: OperationGuard,
         context: &RequestContext,
     ) -> JobFuture<CommitDisposition> {
-        let operation = OperationContext::child(context);
-        match guard.into_staged(&self.runtime.shared) {
-            Ok((reservation, staged)) => self.make_commit_job(reservation, staged, operation),
-            Err(error) => JobFuture::ready(self.runtime.clone(), operation, error),
+        match guard.into_staged_with_cleanup(&self.runtime.shared) {
+            Ok((reservation, staged, cleanup)) => self.make_commit_job(
+                reservation,
+                staged,
+                cleanup,
+                OperationContext::child(context),
+            ),
+            Err(error) => JobFuture::ready(
+                self.runtime.clone(),
+                OperationContext::child(context),
+                error,
+            ),
         }
     }
 
@@ -193,14 +213,15 @@ impl TransferWorker {
         reason: AssetQuarantineReason,
         context: &RequestContext,
     ) -> JobFuture<AssetQuarantineReceipt> {
-        let operation = OperationContext::child(context);
-        match guard.into_staged(&self.runtime.shared) {
-            Ok((reservation, staged)) => {
-                self.reserved_job(reservation, operation, move |assets, context| {
-                    assets.quarantine(&staged, reason, context)
-                })
+        match guard.into_staged_with_cleanup(&self.runtime.shared) {
+            Ok((reservation, staged, cleanup)) => {
+                let operation = OperationContext::owned(cleanup);
+                self.make_submitted_quarantine_job(reservation, staged, reason, operation)
             }
-            Err(error) => JobFuture::ready(self.runtime.clone(), operation, error),
+            Err(error) => {
+                let operation = OperationContext::child(context);
+                JobFuture::ready(self.runtime.clone(), operation, error)
+            }
         }
     }
 
@@ -317,10 +338,11 @@ impl TransferWorker {
             + 'static,
     {
         let operation_context = OperationContext::child(context);
-        match guard.into_staged(&self.runtime.shared) {
-            Ok((reservation, staged)) => self.make_reserved_verification_job(
+        match guard.into_staged_with_cleanup(&self.runtime.shared) {
+            Ok((reservation, staged, cleanup)) => self.make_reserved_verification_job(
                 reservation,
                 staged,
+                cleanup,
                 operation_context,
                 operation,
             ),
@@ -332,6 +354,7 @@ impl TransferWorker {
         &self,
         reservation: u64,
         staged: StagedAsset,
+        cleanup: RequestContext,
         operation_context: OperationContext,
         operation: F,
     ) -> JobFuture<ReservedVerification<T>>
@@ -347,6 +370,7 @@ impl TransferWorker {
             context: operation_context.context.clone(),
             operation: Some(operation),
             staged: Some(staged),
+            cleanup: Some(cleanup),
         };
         JobFuture::deferred(
             self.runtime.clone(),
@@ -361,15 +385,41 @@ impl TransferWorker {
         &self,
         reservation: u64,
         staged: StagedAsset,
+        cleanup: RequestContext,
         operation_context: OperationContext,
     ) -> JobFuture<CommitDisposition> {
         let cell = Arc::new(JobCell::new(self.runtime.shared.clone()));
+        cell.install_stage_cleanup(cleanup);
         let job = CommitJob {
             cell: cell.clone(),
             context: operation_context.context.clone(),
             staged: Some(staged),
         };
         JobFuture::deferred(
+            self.runtime.clone(),
+            cell,
+            Box::new(job),
+            Assignment::Reserved(reservation),
+            operation_context,
+        )
+    }
+
+    fn make_submitted_quarantine_job(
+        &self,
+        reservation: u64,
+        staged: StagedAsset,
+        reason: AssetQuarantineReason,
+        operation_context: OperationContext,
+    ) -> JobFuture<AssetQuarantineReceipt> {
+        let cell = Arc::new(JobCell::new(self.runtime.shared.clone()));
+        let job = QuarantineJob::new(
+            cell.clone(),
+            operation_context.context.clone(),
+            staged,
+            reason,
+            self.runtime.shared.clone(),
+        );
+        JobFuture::submit_now(
             self.runtime.clone(),
             cell,
             Box::new(job),
@@ -440,55 +490,6 @@ impl<T> ReservedVerification<T> {
     }
 }
 
-/// A staged asset bound to the worker reservation that created it.
-pub(crate) struct OperationGuard {
-    shared: Arc<WorkerShared>,
-    reservation: u64,
-    staged: Option<StagedAsset>,
-    armed: bool,
-}
-
-impl OperationGuard {
-    /// Returns verified staged metadata without exposing the opaque stage token.
-    pub(crate) fn descriptor(&self) -> Result<&AssetDescriptor, ApiFilesError> {
-        self.staged
-            .as_ref()
-            .map(StagedAsset::descriptor)
-            .ok_or_else(internal_error)
-    }
-
-    fn new(shared: Arc<WorkerShared>, reservation: u64, staged: StagedAsset) -> Self {
-        Self {
-            shared,
-            reservation,
-            staged: Some(staged),
-            armed: true,
-        }
-    }
-
-    fn into_staged(
-        mut self,
-        expected: &Arc<WorkerShared>,
-    ) -> Result<(u64, StagedAsset), ApiFilesError> {
-        if !Arc::ptr_eq(&self.shared, expected) {
-            return Err(internal_error());
-        }
-        let Some(staged) = self.staged.take() else {
-            return Err(internal_error());
-        };
-        self.armed = false;
-        Ok((self.reservation, staged))
-    }
-}
-
-impl Drop for OperationGuard {
-    fn drop(&mut self) {
-        if self.armed {
-            release_retained_reservation(&self.shared, self.reservation);
-        }
-    }
-}
-
 #[derive(Clone, Copy)]
 enum Assignment {
     Fresh,
@@ -506,6 +507,10 @@ trait WorkerJob: Send {
     fn fail(&mut self, error: ApiFilesError);
 
     fn cancellation(&self) -> CancellationToken;
+
+    fn abandon(&mut self, _shared: &Arc<WorkerShared>, _reservation: u64) -> bool {
+        false
+    }
 }
 
 struct TypedJob<T, F> {
@@ -563,6 +568,7 @@ struct ReservedJob<T, F> {
     context: RequestContext,
     operation: Option<F>,
     staged: Option<StagedAsset>,
+    cleanup: Option<RequestContext>,
 }
 
 enum CommitAttempt {
@@ -590,23 +596,48 @@ impl WorkerJob for CommitJob {
     }
 
     fn fail(&mut self, error: ApiFilesError) {
-        self.staged.take();
+        let crossed_boundary = self.cell.crossed_commit_boundary();
+        if crossed_boundary {
+            contain_inflight_commit_stage(&self.cell.worker, self.staged.take());
+        } else {
+            contain_pre_call_commit_stage(&self.cell.worker, self.staged.take());
+        }
+        self.cell.take_stage_cleanup();
         self.cell.complete(Err(error));
     }
 
     fn cancellation(&self) -> CancellationToken {
         self.context.cancellation()
     }
+
+    fn abandon(&mut self, shared: &Arc<WorkerShared>, reservation: u64) -> bool {
+        if self.cell.crossed_commit_boundary() {
+            return false;
+        }
+        let mut cleanup = self.cell.take_stage_cleanup();
+        abandon_retained_stage(shared, reservation, &mut self.staged, &mut cleanup)
+    }
 }
 
 impl CommitJob {
-    fn run(&self, assets: &dyn LocalVolumeAssetStoragePort) -> CommitAttempt {
+    fn run(&mut self, assets: &dyn LocalVolumeAssetStoragePort) -> CommitAttempt {
         if let Err(error) = self.context.check_active() {
             return CommitAttempt::Determinate(error.into());
         }
         let Some(staged) = self.staged.as_ref() else {
             return CommitAttempt::Unknown(internal_error());
         };
+        self.commit_ready_stage(assets, staged)
+    }
+
+    fn commit_ready_stage(
+        &self,
+        assets: &dyn LocalVolumeAssetStoragePort,
+        staged: &StagedAsset,
+    ) -> CommitAttempt {
+        if !self.cell.enter_commit_boundary() {
+            return CommitAttempt::Unknown(internal_error());
+        }
         match assets.commit(staged, &self.context) {
             Ok(receipt) => CommitAttempt::Committed(receipt),
             Err(error) => classify_commit_error(error),
@@ -635,6 +666,7 @@ impl CommitJob {
         disposition: CommitDisposition,
     ) {
         self.staged.take();
+        self.cell.take_stage_cleanup();
         let accepting = release_running_reservation(shared, reservation);
         self.cell.complete(if accepting {
             Ok(disposition)
@@ -653,17 +685,25 @@ impl CommitJob {
             self.publish_unknown(shared, internal_error());
             return;
         };
+        let Some(cleanup) = self.cell.take_stage_cleanup() else {
+            contain_unresolved_stage(shared, Some(staged));
+            self.publish_unknown(shared, internal_error());
+            return;
+        };
         if !retain_running_reservation(shared, reservation) {
+            contain_unresolved_stage(shared, Some(staged));
+            fail_worker(shared);
             self.cell.complete(Err(unavailable_error()));
             return;
         }
-        let guard = OperationGuard::new(shared.clone(), reservation, staged);
+        let guard = OperationGuard::from_retained(shared.clone(), reservation, staged, cleanup);
         self.cell
             .complete(Ok(CommitDisposition::Determinate { guard, error }));
     }
 
     fn publish_unknown(&mut self, shared: &Arc<WorkerShared>, error: ApiFilesError) {
-        self.staged.take();
+        contain_unresolved_stage(shared, self.staged.take());
+        self.cell.take_stage_cleanup();
         fail_worker(shared);
         self.cell.complete(Err(error));
     }
@@ -687,12 +727,17 @@ where
     }
 
     fn fail(&mut self, error: ApiFilesError) {
-        self.staged.take();
+        contain_unresolved_stage(&self.cell.worker, self.staged.take());
+        self.cleanup.take();
         self.cell.complete(Err(error));
     }
 
     fn cancellation(&self) -> CancellationToken {
         self.context.cancellation()
+    }
+
+    fn abandon(&mut self, shared: &Arc<WorkerShared>, reservation: u64) -> bool {
+        abandon_retained_stage(shared, reservation, &mut self.staged, &mut self.cleanup)
     }
 }
 
@@ -719,11 +764,19 @@ where
             self.cell.complete(Err(internal_error()));
             return;
         };
+        let Some(cleanup) = self.cleanup.take() else {
+            contain_unresolved_stage(shared, Some(staged));
+            fail_worker(shared);
+            self.cell.complete(Err(internal_error()));
+            return;
+        };
         if !retain_running_reservation(shared, reservation) {
+            contain_unresolved_stage(shared, Some(staged));
+            fail_worker(shared);
             self.cell.complete(Err(unavailable_error()));
             return;
         }
-        let guard = OperationGuard::new(shared.clone(), reservation, staged);
+        let guard = OperationGuard::from_retained(shared.clone(), reservation, staged, cleanup);
         self.cell
             .complete(Ok(ReservedVerification { guard, result }));
     }
@@ -781,9 +834,11 @@ impl StageJob {
 
     fn publish_stage(&self, shared: &Arc<WorkerShared>, reservation: u64, staged: StagedAsset) {
         if retain_running_reservation(shared, reservation) {
-            let guard = OperationGuard::new(shared.clone(), reservation, staged);
+            let guard = OperationGuard::new(shared.clone(), reservation, staged, &self.context);
             self.cell.complete(Ok(guard));
         } else {
+            contain_unresolved_stage(shared, Some(staged));
+            fail_worker(shared);
             self.cell.complete(Err(unavailable_error()));
         }
     }
@@ -797,7 +852,7 @@ impl WorkerRuntime {
             drop(handle);
             fail_worker(&self.shared);
             self.handle.clear_poison();
-            let _ = fail_and_drop_job(job, internal_error());
+            let _ = dispose_rejected_job(job, assignment, &self.shared, internal_error());
             return Err(internal_error());
         }
         let mut outcome = self.assign_locked(&mut handle, job, cancellation, assignment);
@@ -807,11 +862,9 @@ impl WorkerRuntime {
             Ok(()) => internal_error(),
             Err(error) => error,
         };
-        if outcome
-            .rejected
-            .take()
-            .is_some_and(|job| !fail_and_drop_job(job, rejection_error))
-        {
+        if outcome.rejected.take().is_some_and(|job| {
+            !dispose_rejected_job(job, assignment, &self.shared, rejection_error)
+        }) {
             fail_worker(&self.shared);
             return Err(internal_error());
         }
@@ -925,93 +978,6 @@ impl WorkerRuntime {
         complete_stop(&self.shared, prepared);
         drop(detached);
     }
-}
-
-fn assign_state(
-    state: &mut WorkerState,
-    job: Box<dyn WorkerJob>,
-    cancellation: CancellationToken,
-    assignment: Assignment,
-) -> Result<bool, (ApiFilesError, Box<dyn WorkerJob>)> {
-    match assignment {
-        Assignment::Fresh => assign_fresh(state, job, cancellation),
-        Assignment::Reserved(reservation) => assign_reserved(state, job, cancellation, reservation),
-    }
-}
-
-fn assign_fresh(
-    state: &mut WorkerState,
-    job: Box<dyn WorkerJob>,
-    cancellation: CancellationToken,
-) -> Result<bool, (ApiFilesError, Box<dyn WorkerJob>)> {
-    let starts_thread = match fresh_thread_requirement(state.phase) {
-        Ok(starts_thread) => starts_thread,
-        Err(error) => return Err((error, job)),
-    };
-    let reservation = match next_reservation(state) {
-        Ok(reservation) => reservation,
-        Err(error) => return Err((error, job)),
-    };
-    state.phase = WorkerPhase::Assigned;
-    state.reservation = Some(reservation);
-    state.active_cancellation = Some(cancellation);
-    state.job = Some(job);
-    Ok(starts_thread)
-}
-
-fn fresh_thread_requirement(phase: WorkerPhase) -> Result<bool, ApiFilesError> {
-    match phase {
-        WorkerPhase::Cold => Ok(true),
-        WorkerPhase::Idle => Ok(false),
-        WorkerPhase::Assigned | WorkerPhase::Running => Err(resource_error()),
-        WorkerPhase::Failed | WorkerPhase::Stopping | WorkerPhase::Stopped => {
-            Err(unavailable_error())
-        }
-    }
-}
-
-fn assign_reserved(
-    state: &mut WorkerState,
-    job: Box<dyn WorkerJob>,
-    cancellation: CancellationToken,
-    reservation: u64,
-) -> Result<bool, (ApiFilesError, Box<dyn WorkerJob>)> {
-    if state.phase == WorkerPhase::Assigned
-        && state.reservation == Some(reservation)
-        && state.job.is_none()
-    {
-        state.active_cancellation = Some(cancellation);
-        state.job = Some(job);
-        return Ok(false);
-    }
-    match state.phase {
-        WorkerPhase::Assigned | WorkerPhase::Running => Err((resource_error(), job)),
-        WorkerPhase::Failed | WorkerPhase::Stopping | WorkerPhase::Stopped => {
-            Err((unavailable_error(), job))
-        }
-        WorkerPhase::Cold | WorkerPhase::Idle => Err((internal_error(), job)),
-    }
-}
-
-fn next_reservation(state: &mut WorkerState) -> Result<u64, ApiFilesError> {
-    let reservation = state.next_reservation;
-    let Some(next) = reservation.checked_add(1) else {
-        mark_failed(state);
-        return Err(internal_error());
-    };
-    state.next_reservation = next;
-    Ok(reservation)
-}
-
-fn spawn_worker(handle: &mut Option<JoinHandle<()>>, runtime: &WorkerRuntime) -> Result<(), ()> {
-    let shared = runtime.shared.clone();
-    let assets = runtime.assets.clone();
-    let spawned = thread::Builder::new()
-        .name(WORKER_NAME.to_owned())
-        .spawn(move || worker_entry(shared, assets))
-        .map_err(|_| ())?;
-    *handle = Some(spawned);
-    Ok(())
 }
 
 fn worker_entry(shared: Arc<WorkerShared>, assets: Arc<dyn LocalVolumeAssetStoragePort>) {
@@ -1133,50 +1099,6 @@ fn stopping_action(state: &mut WorkerState) -> WorkerAction {
         Some(job) => WorkerAction::Fail(job, unavailable_error()),
         None => WorkerAction::Stop,
     }
-}
-
-fn retain_running_reservation(shared: &Arc<WorkerShared>, reservation: u64) -> bool {
-    let (mut state, poisoned) = lock_worker(shared);
-    if poisoned {
-        return false;
-    }
-    if state.phase != WorkerPhase::Running || state.reservation != Some(reservation) {
-        return false;
-    }
-    state.phase = WorkerPhase::Assigned;
-    state.active_cancellation = None;
-    true
-}
-
-fn release_running_reservation(shared: &Arc<WorkerShared>, reservation: u64) -> bool {
-    let (mut state, poisoned) = lock_worker(shared);
-    if poisoned || state.reservation != Some(reservation) {
-        return false;
-    }
-    state.reservation = None;
-    state.active_cancellation = None;
-    let accepting = state.phase == WorkerPhase::Running;
-    if accepting {
-        state.phase = WorkerPhase::Idle;
-    }
-    drop(state);
-    shared.changed.notify_all();
-    accepting
-}
-
-fn release_retained_reservation(shared: &Arc<WorkerShared>, reservation: u64) {
-    let (mut state, poisoned) = lock_worker(shared);
-    if !poisoned
-        && state.phase == WorkerPhase::Assigned
-        && state.reservation == Some(reservation)
-        && state.job.is_none()
-    {
-        state.phase = WorkerPhase::Idle;
-        state.reservation = None;
-        state.active_cancellation = None;
-    }
-    drop(state);
-    shared.changed.notify_all();
 }
 
 fn prepare_stop(shared: &WorkerShared) -> StopPreparation {

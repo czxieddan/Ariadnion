@@ -31,14 +31,15 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::pin::Pin;
 use std::sync::{Arc, LockResult, Mutex, MutexGuard};
 use std::task::{Context, Poll, Waker};
+use std::thread::{self, JoinHandle};
 
 use ariadnion_api_files::{ApiFilesError, ApiFilesErrorCode};
 use ariadnion_core::{CancellationToken, RequestContext};
 use ariadnion_storage_asset::{StorageError, StorageErrorCode};
 
 use super::{
-    Assignment, CommitAttempt, WorkerFailure, WorkerJob, WorkerPhase, WorkerRuntime, WorkerShared,
-    WorkerState, release_retained_reservation,
+    Assignment, CommitAttempt, WORKER_NAME, WorkerFailure, WorkerJob, WorkerPhase, WorkerRuntime,
+    WorkerShared, WorkerState, worker_entry,
 };
 
 /// One child request context owned by a submitted worker operation.
@@ -59,6 +60,15 @@ impl OperationContext {
             parent.deadline(),
             cancellation.clone(),
         );
+        Self {
+            context,
+            cancellation,
+        }
+    }
+
+    /// Owns an already-detached context without inheriting a caller deadline.
+    pub(super) fn owned(context: RequestContext) -> Self {
+        let cancellation = context.cancellation().clone();
         Self {
             context,
             cancellation,
@@ -146,12 +156,11 @@ pub(crate) struct JobFuture<T> {
     preflight: Preflight,
     submitted: bool,
     finished: bool,
+    // Detached observers must not cancel work that was synchronously handed off.
+    cancel_on_drop: bool,
 }
 
-impl<T> JobFuture<T>
-where
-    T: Send + 'static,
-{
+impl<T> JobFuture<T> {
     /// Creates a future that rejects inactive requests before worker admission.
     pub(super) fn new(
         runtime: Arc<WorkerRuntime>,
@@ -169,6 +178,7 @@ where
             preflight: Preflight::RequireActive,
             submitted: false,
             finished: false,
+            cancel_on_drop: true,
         }
     }
 
@@ -189,7 +199,34 @@ where
             preflight: Preflight::Deferred,
             submitted: false,
             finished: false,
+            cancel_on_drop: true,
         }
+    }
+
+    /// Submits a job immediately and returns an observer that cannot cancel it on drop.
+    pub(super) fn submit_now(
+        runtime: Arc<WorkerRuntime>,
+        cell: Arc<JobCell<T>>,
+        job: Box<dyn WorkerJob>,
+        assignment: Assignment,
+        operation: OperationContext,
+    ) -> Self {
+        let mut future = Self {
+            runtime,
+            cell,
+            job: Some(job),
+            assignment,
+            operation,
+            preflight: Preflight::Deferred,
+            submitted: false,
+            finished: false,
+            cancel_on_drop: false,
+        };
+        if let Err(error) = future.submit() {
+            future.retire_unsubmitted_reservation();
+            future.cell.complete(Err(error));
+        }
+        future
     }
 
     /// Creates an already-completed outer failure without worker admission.
@@ -209,6 +246,7 @@ where
             preflight: Preflight::RequireActive,
             submitted: true,
             finished: false,
+            cancel_on_drop: true,
         }
     }
 
@@ -221,13 +259,21 @@ where
         Ok(())
     }
 
-    fn release_unsubmitted_reservation(&mut self) {
+    fn retire_unsubmitted_reservation(&mut self) {
         if self.submitted {
             return;
         }
         if let Assignment::Reserved(reservation) = self.assignment {
-            release_retained_reservation(&self.runtime.shared, reservation);
+            let had_job = self.job.is_some();
+            let abandoned = self
+                .job
+                .as_mut()
+                .is_some_and(|job| try_abandon_job(job, &self.runtime.shared, reservation));
+            if !abandoned && had_job {
+                fail_worker(&self.runtime.shared);
+            }
         }
+        self.submitted = true;
     }
 
     fn prepare_poll(&mut self, waker: &Waker) -> Result<(), ApiFilesError> {
@@ -257,7 +303,7 @@ where
     }
 
     fn resolve_poll_error(&mut self, error: ApiFilesError) -> Poll<Result<T, ApiFilesError>> {
-        self.release_unsubmitted_reservation();
+        self.retire_unsubmitted_reservation();
         self.finished = true;
         Poll::Ready(Err(error))
     }
@@ -283,19 +329,10 @@ where
 
 impl<T> Drop for JobFuture<T> {
     fn drop(&mut self) {
-        self.operation.cancellation.cancel();
-        self.release_reservation_on_drop();
-    }
-}
-
-impl<T> JobFuture<T> {
-    fn release_reservation_on_drop(&self) {
-        if self.submitted {
-            return;
+        if self.cancel_on_drop {
+            self.operation.cancellation.cancel();
         }
-        if let Assignment::Reserved(reservation) = self.assignment {
-            release_retained_reservation(&self.runtime.shared, reservation);
-        }
+        self.retire_unsubmitted_reservation();
     }
 }
 
@@ -310,6 +347,8 @@ pub(super) struct JobCell<T> {
 struct CellState<T> {
     result: Option<Result<T, ApiFilesError>>,
     waker: Option<Waker>,
+    stage_cleanup: Option<RequestContext>,
+    commit_boundary: bool,
     completing: bool,
     failed: bool,
 }
@@ -332,11 +371,54 @@ impl<T> JobCell<T> {
             state: Mutex::new(CellState {
                 result: None,
                 waker: None,
+                stage_cleanup: None,
+                commit_boundary: false,
                 completing: false,
                 failed: false,
             }),
             worker,
         }
+    }
+
+    /// Records detached cleanup provenance before a retained stage is submitted.
+    pub(super) fn install_stage_cleanup(&self, context: RequestContext) {
+        let (mut state, poisoned) = lock_cell(&self.state);
+        if poisoned || state.stage_cleanup.is_some() {
+            state.failed = true;
+            drop(state);
+            fail_worker(&self.worker);
+            return;
+        }
+        state.stage_cleanup = Some(context);
+    }
+
+    /// Moves the detached cleanup context out of the job without retaining the cell lock.
+    pub(super) fn take_stage_cleanup(&self) -> Option<RequestContext> {
+        let (mut state, poisoned) = lock_cell(&self.state);
+        if poisoned || state.failed {
+            state.failed = true;
+            return None;
+        }
+        state.stage_cleanup.take()
+    }
+
+    /// Marks that storage commit was entered and may have crossed a durable boundary.
+    pub(super) fn enter_commit_boundary(&self) -> bool {
+        let (mut state, poisoned) = lock_cell(&self.state);
+        if poisoned {
+            state.failed = true;
+            drop(state);
+            fail_worker(&self.worker);
+            return false;
+        }
+        state.commit_boundary = true;
+        true
+    }
+
+    /// Returns whether a commit job may have crossed the durable storage boundary.
+    pub(super) fn crossed_commit_boundary(&self) -> bool {
+        let (state, poisoned) = lock_cell(&self.state);
+        poisoned || state.commit_boundary
     }
 
     /// Registers a replacement waker without allowing clone or drop panics to escape.
@@ -537,6 +619,127 @@ pub(super) fn fail_and_drop_job(mut job: Box<dyn WorkerJob>, error: ApiFilesErro
     failure_contained && drop_contained
 }
 
+/// Attempts a one-shot retained-stage handoff while containing job-specific panics.
+pub(super) fn try_abandon_job(
+    job: &mut Box<dyn WorkerJob>,
+    shared: &Arc<WorkerShared>,
+    reservation: u64,
+) -> bool {
+    match catch_unwind(AssertUnwindSafe(|| job.abandon(shared, reservation))) {
+        Ok(abandoned) => abandoned,
+        Err(_) => {
+            fail_worker(shared);
+            false
+        }
+    }
+}
+
+/// Disposes a rejected reserved job without reopening its retained reservation.
+pub(super) fn dispose_rejected_job(
+    mut job: Box<dyn WorkerJob>,
+    assignment: Assignment,
+    shared: &Arc<WorkerShared>,
+    error: ApiFilesError,
+) -> bool {
+    if let Assignment::Reserved(reservation) = assignment
+        && !try_abandon_job(&mut job, shared, reservation)
+    {
+        fail_worker(shared);
+    }
+    fail_and_drop_job(job, error)
+}
+
+/// Installs a job only when the slot and reservation permit its exact assignment.
+pub(super) fn assign_state(
+    state: &mut WorkerState,
+    job: Box<dyn WorkerJob>,
+    cancellation: CancellationToken,
+    assignment: Assignment,
+) -> Result<bool, (ApiFilesError, Box<dyn WorkerJob>)> {
+    match assignment {
+        Assignment::Fresh => assign_fresh(state, job, cancellation),
+        Assignment::Reserved(reservation) => assign_reserved(state, job, cancellation, reservation),
+    }
+}
+
+fn assign_fresh(
+    state: &mut WorkerState,
+    job: Box<dyn WorkerJob>,
+    cancellation: CancellationToken,
+) -> Result<bool, (ApiFilesError, Box<dyn WorkerJob>)> {
+    let starts_thread = match fresh_thread_requirement(state.phase) {
+        Ok(starts_thread) => starts_thread,
+        Err(error) => return Err((error, job)),
+    };
+    let reservation = match next_reservation(state) {
+        Ok(reservation) => reservation,
+        Err(error) => return Err((error, job)),
+    };
+    state.phase = WorkerPhase::Assigned;
+    state.reservation = Some(reservation);
+    state.active_cancellation = Some(cancellation);
+    state.job = Some(job);
+    Ok(starts_thread)
+}
+
+fn fresh_thread_requirement(phase: WorkerPhase) -> Result<bool, ApiFilesError> {
+    match phase {
+        WorkerPhase::Cold => Ok(true),
+        WorkerPhase::Idle => Ok(false),
+        WorkerPhase::Assigned | WorkerPhase::Running => Err(resource_error()),
+        WorkerPhase::Failed | WorkerPhase::Stopping | WorkerPhase::Stopped => {
+            Err(unavailable_error())
+        }
+    }
+}
+
+fn assign_reserved(
+    state: &mut WorkerState,
+    job: Box<dyn WorkerJob>,
+    cancellation: CancellationToken,
+    reservation: u64,
+) -> Result<bool, (ApiFilesError, Box<dyn WorkerJob>)> {
+    if state.phase == WorkerPhase::Assigned
+        && state.reservation == Some(reservation)
+        && state.job.is_none()
+    {
+        state.active_cancellation = Some(cancellation);
+        state.job = Some(job);
+        return Ok(false);
+    }
+    let error = match state.phase {
+        WorkerPhase::Assigned | WorkerPhase::Running => resource_error(),
+        WorkerPhase::Failed | WorkerPhase::Stopping | WorkerPhase::Stopped => unavailable_error(),
+        WorkerPhase::Cold | WorkerPhase::Idle => internal_error(),
+    };
+    Err((error, job))
+}
+
+fn next_reservation(state: &mut WorkerState) -> Result<u64, ApiFilesError> {
+    let reservation = state.next_reservation;
+    let Some(next) = reservation.checked_add(1) else {
+        mark_failed(state);
+        return Err(internal_error());
+    };
+    state.next_reservation = next;
+    Ok(reservation)
+}
+
+/// Starts the permanent worker thread after state contains its first assigned job.
+pub(super) fn spawn_worker(
+    handle: &mut Option<JoinHandle<()>>,
+    runtime: &WorkerRuntime,
+) -> Result<(), ()> {
+    let shared = runtime.shared.clone();
+    let assets = runtime.assets.clone();
+    let spawned = thread::Builder::new()
+        .name(WORKER_NAME.to_owned())
+        .spawn(move || worker_entry(shared, assets))
+        .map_err(|_| ())?;
+    *handle = Some(spawned);
+    Ok(())
+}
+
 fn drop_caught<T>(value: T) -> Result<(), ()> {
     catch_unwind(AssertUnwindSafe(|| drop(value))).map_err(|_| ())
 }
@@ -558,13 +761,13 @@ pub(super) fn take_worker_failure(state: &mut WorkerState) -> WorkerFailure {
 }
 
 pub(super) fn finish_worker_failure(shared: &WorkerShared, failure: WorkerFailure) {
+    if let Some(job) = failure.pending {
+        let _ = fail_and_drop_job(job, internal_error());
+    }
     if let Some(cancellation) = failure.cancellation {
         cancellation.cancel();
     }
     shared.changed.notify_all();
-    if let Some(job) = failure.pending {
-        let _ = fail_and_drop_job(job, internal_error());
-    }
 }
 
 pub(super) fn mark_failed(state: &mut WorkerState) {
