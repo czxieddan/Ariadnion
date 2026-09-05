@@ -67,6 +67,17 @@ enum StageFeedError {
     Sender(ApiFilesError),
 }
 
+enum StageTransition {
+    Worker(Result<OperationGuard, ApiFilesError>),
+    EarlySuccess(OperationGuard),
+    Feed(Result<StageFeedStep, StageFeedError>),
+}
+
+enum StageAdvance {
+    Continue,
+    Terminal(Box<Result<OperationGuard, ApiFilesError>>),
+}
+
 impl DurableFileService {
     /// Lazily stages, verifies, commits, and publishes one upload.
     ///
@@ -251,13 +262,103 @@ where
     F: Future<Output = Result<OperationGuard, ApiFilesError>>,
 {
     loop {
-        match feed_one(sender, source, context).await {
-            Ok(StageFeedStep::Continue) => {}
-            Ok(StageFeedStep::Complete) => return stage_future.await,
-            Err(error) => {
-                return resolve_feed_failure(service, stage_future, abort, context, error).await;
-            }
+        match advance_stage(service, sender, stage_future, &abort, source, context).await {
+            StageAdvance::Continue => {}
+            StageAdvance::Terminal(result) => return *result,
         }
+    }
+}
+
+async fn advance_stage<F>(
+    service: &DurableFileService,
+    sender: &mut PipeAsyncSender,
+    stage_future: &mut Pin<Box<F>>,
+    abort: &PipeAbortHandle,
+    source: &mut dyn FileUploadSource,
+    context: &RequestContext,
+) -> StageAdvance
+where
+    F: Future<Output = Result<OperationGuard, ApiFilesError>>,
+{
+    match poll_stage_and_feed(sender, stage_future, source, context).await {
+        StageTransition::Worker(result) => StageAdvance::Terminal(Box::new(result)),
+        StageTransition::EarlySuccess(guard) => StageAdvance::Terminal(Box::new(
+            quarantine_primary(
+                &service.worker,
+                guard,
+                AssetQuarantineReason::Abandoned,
+                context,
+                Err(ApiFilesError::new(ApiFilesErrorCode::Internal)),
+            )
+            .await,
+        )),
+        StageTransition::Feed(Ok(StageFeedStep::Continue)) => StageAdvance::Continue,
+        StageTransition::Feed(Ok(StageFeedStep::Complete)) => {
+            StageAdvance::Terminal(Box::new(stage_future.await))
+        }
+        StageTransition::Feed(Err(error)) => StageAdvance::Terminal(Box::new(
+            resolve_feed_failure(service, stage_future, abort, context, error).await,
+        )),
+    }
+}
+
+async fn poll_stage_and_feed<F>(
+    sender: &mut PipeAsyncSender,
+    stage_future: &mut Pin<Box<F>>,
+    source: &mut dyn FileUploadSource,
+    context: &RequestContext,
+) -> StageTransition
+where
+    F: Future<Output = Result<OperationGuard, ApiFilesError>>,
+{
+    let mut feed = Box::pin(feed_one(sender, source, context));
+    poll_fn(|task| match feed.as_mut().poll(task) {
+        Poll::Ready(result @ Err(_)) => Poll::Ready(StageTransition::Feed(result)),
+        Poll::Ready(Ok(StageFeedStep::Complete)) => {
+            Poll::Ready(StageTransition::Feed(Ok(StageFeedStep::Complete)))
+        }
+        Poll::Ready(Ok(StageFeedStep::Continue)) => {
+            poll_worker_after_feed_progress(stage_future, task)
+        }
+        Poll::Pending => poll_worker_after_pending_feed(stage_future, task),
+    })
+    .await
+}
+
+fn poll_worker_after_feed_progress<F>(
+    stage_future: &mut Pin<Box<F>>,
+    task: &mut std::task::Context<'_>,
+) -> Poll<StageTransition>
+where
+    F: Future<Output = Result<OperationGuard, ApiFilesError>>,
+{
+    match poll_worker_transition(stage_future, task) {
+        Poll::Ready(transition) => Poll::Ready(transition),
+        Poll::Pending => Poll::Ready(StageTransition::Feed(Ok(StageFeedStep::Continue))),
+    }
+}
+
+fn poll_worker_after_pending_feed<F>(
+    stage_future: &mut Pin<Box<F>>,
+    task: &mut std::task::Context<'_>,
+) -> Poll<StageTransition>
+where
+    F: Future<Output = Result<OperationGuard, ApiFilesError>>,
+{
+    poll_worker_transition(stage_future, task)
+}
+
+fn poll_worker_transition<F>(
+    stage_future: &mut Pin<Box<F>>,
+    task: &mut std::task::Context<'_>,
+) -> Poll<StageTransition>
+where
+    F: Future<Output = Result<OperationGuard, ApiFilesError>>,
+{
+    match stage_future.as_mut().poll(task) {
+        Poll::Ready(Ok(guard)) => Poll::Ready(StageTransition::EarlySuccess(guard)),
+        Poll::Ready(Err(error)) => Poll::Ready(StageTransition::Worker(Err(error))),
+        Poll::Pending => Poll::Pending,
     }
 }
 
@@ -284,7 +385,7 @@ async fn feed_one(
 async fn resolve_feed_failure<F>(
     service: &DurableFileService,
     stage_future: &mut Pin<Box<F>>,
-    abort: PipeAbortHandle,
+    abort: &PipeAbortHandle,
     context: &RequestContext,
     failure: StageFeedError,
 ) -> Result<OperationGuard, ApiFilesError>
@@ -304,7 +405,7 @@ where
 async fn sender_failure<F>(
     service: &DurableFileService,
     stage_future: &mut Pin<Box<F>>,
-    abort: PipeAbortHandle,
+    abort: &PipeAbortHandle,
     context: &RequestContext,
     error: ApiFilesError,
 ) -> Result<OperationGuard, ApiFilesError>
@@ -314,8 +415,8 @@ where
     if abort.io_fault_observed() {
         return selected_stage_failure(service, stage_future, abort, context, error).await;
     }
-    match stage_future.await {
-        Ok(guard) => {
+    match poll_stage_once(stage_future).await {
+        Some(Ok(guard)) => {
             quarantine_primary(
                 &service.worker,
                 guard,
@@ -325,14 +426,15 @@ where
             )
             .await
         }
-        Err(worker_error) => Err(worker_error),
+        Some(Err(worker_error)) => Err(worker_error),
+        None => selected_stage_failure(service, stage_future, abort, context, error).await,
     }
 }
 
 async fn selected_stage_failure<F>(
     service: &DurableFileService,
     stage_future: &mut Pin<Box<F>>,
-    abort: PipeAbortHandle,
+    abort: &PipeAbortHandle,
     context: &RequestContext,
     error: ApiFilesError,
 ) -> Result<OperationGuard, ApiFilesError>
@@ -734,18 +836,16 @@ async fn poll_admission<T, F>(future: &mut Pin<Box<F>>) -> Option<Result<T, ApiF
 where
     F: Future<Output = Result<T, ApiFilesError>>,
 {
-    let mut first_poll = true;
-    let mut ready = None;
-    poll_fn(|context| {
-        if !first_poll {
-            return Poll::Ready(());
-        }
-        first_poll = false;
-        if let Poll::Ready(result) = future.as_mut().poll(context) {
-            ready = Some(result);
-        }
-        Poll::Ready(())
+    poll_stage_once(future).await
+}
+
+async fn poll_stage_once<T, F>(future: &mut Pin<Box<F>>) -> Option<Result<T, ApiFilesError>>
+where
+    F: Future<Output = Result<T, ApiFilesError>>,
+{
+    poll_fn(|context| match future.as_mut().poll(context) {
+        Poll::Ready(result) => Poll::Ready(Some(result)),
+        Poll::Pending => Poll::Ready(None),
     })
-    .await;
-    ready
+    .await
 }
