@@ -75,9 +75,9 @@ use error::{
 pub use execution::PresentedBearer;
 pub use identity::MonotonicRequestIdentityIssuer;
 pub use protocol::{
-    HttpProtocolAdapter, HttpProtocolProjection, ProtocolBufferedResponse, ProtocolExecutionState,
-    ProtocolFailure, ProtocolRequest, ProtocolRequestBody, ProtocolStreamResponse,
-    protocol_post_route,
+    HttpGetProtocolAdapter, HttpProtocolAdapter, HttpProtocolProjection, ProtocolBufferedResponse,
+    ProtocolExecutionState, ProtocolFailure, ProtocolGetExecutionState, ProtocolRequest,
+    ProtocolRequestBody, ProtocolStreamResponse, protocol_get_route, protocol_post_route,
 };
 
 /// Maximum encoded request body admitted or protocol response body buffered.
