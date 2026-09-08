@@ -123,8 +123,10 @@ impl<'de> Visitor<'de> for RequestVisitor {
 struct RequestValues<'a> {
     model: Option<Cow<'a, str>>,
     messages: Option<RawMessages<'a>>,
-    stream: Option<Option<bool>>,
+    stream: Option<bool>,
+    stream_seen: bool,
     stream_options: Option<RawStreamOptions>,
+    stream_options_seen: bool,
 }
 
 impl<'de> RequestValues<'de> {
@@ -163,8 +165,10 @@ impl<'de> RequestValues<'de> {
     where
         A: MapAccess<'de>,
     {
-        reject_duplicate(self.stream.is_some(), "stream")?;
-        self.stream = Some(map.next_value()?);
+        reject_duplicate(self.stream_seen, "stream")?;
+        let stream = map.next_value()?;
+        self.stream = Some(stream);
+        self.stream_seen = true;
         Ok(())
     }
 
@@ -172,8 +176,10 @@ impl<'de> RequestValues<'de> {
     where
         A: MapAccess<'de>,
     {
-        reject_duplicate(self.stream_options.is_some(), "stream_options")?;
-        self.stream_options = Some(map.next_value()?);
+        reject_duplicate(self.stream_options_seen, "stream_options")?;
+        let stream_options = map.next_value()?;
+        self.stream_options = Some(stream_options);
+        self.stream_options_seen = true;
         Ok(())
     }
 
@@ -184,7 +190,7 @@ impl<'de> RequestValues<'de> {
         Ok(RawRequest {
             model: self.model.ok_or_else(|| E::missing_field("model"))?,
             messages: self.messages.ok_or_else(|| E::missing_field("messages"))?,
-            stream: self.stream.flatten().unwrap_or(false),
+            stream: self.stream.unwrap_or(false),
             stream_options: self.stream_options,
         })
     }
@@ -291,6 +297,7 @@ impl<'de> MessageValues<'de> {
 #[derive(Default)]
 struct StreamOptionValues {
     include_usage: Option<bool>,
+    include_usage_seen: bool,
 }
 
 impl StreamOptionValues {
@@ -299,9 +306,20 @@ impl StreamOptionValues {
         A: MapAccess<'de>,
     {
         match field {
-            "include_usage" => read_once(&mut self.include_usage, "include_usage", map),
+            "include_usage" => self.read_include_usage(map),
             _ => Err(A::Error::unknown_field(field, STREAM_OPTION_FIELDS)),
         }
+    }
+
+    fn read_include_usage<'de, A>(&mut self, map: &mut A) -> Result<(), A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        reject_duplicate(self.include_usage_seen, "include_usage")?;
+        let include_usage = map.next_value()?;
+        self.include_usage = Some(include_usage);
+        self.include_usage_seen = true;
+        Ok(())
     }
 
     const fn finish(self) -> RawStreamOptions {

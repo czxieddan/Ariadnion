@@ -188,9 +188,8 @@ const fn failure_profile(failure: ProtocolFailure) -> ErrorProfile {
 
 const fn http_failure_profile(code: ApiHttpErrorCode) -> ErrorProfile {
     match code {
-        ApiHttpErrorCode::InvalidRequest
-        | ApiHttpErrorCode::NotFound
-        | ApiHttpErrorCode::MethodNotAllowed => INVALID_REQUEST,
+        ApiHttpErrorCode::InvalidRequest | ApiHttpErrorCode::MethodNotAllowed => INVALID_REQUEST,
+        ApiHttpErrorCode::NotFound => NOT_FOUND,
         ApiHttpErrorCode::Unauthenticated => AUTHENTICATION_FAILED,
         ApiHttpErrorCode::Forbidden => PERMISSION_DENIED,
         ApiHttpErrorCode::PayloadTooLarge => REQUEST_TOO_LARGE,
@@ -294,6 +293,12 @@ const INVALID_REQUEST: ErrorProfile = ErrorProfile {
     message: "The request is invalid.",
     error_type: "invalid_request_error",
     code: "invalid_request",
+};
+const NOT_FOUND: ErrorProfile = ErrorProfile {
+    status: StatusCode::NOT_FOUND,
+    message: "The requested resource was not found.",
+    error_type: "invalid_request_error",
+    code: "not_found",
 };
 const AUTHENTICATION_FAILED: ErrorProfile = ErrorProfile {
     status: StatusCode::UNAUTHORIZED,
