@@ -32,6 +32,7 @@
 #![deny(missing_docs)]
 
 mod audio;
+mod batch;
 mod chat;
 mod embedding;
 mod error;
@@ -46,6 +47,15 @@ pub use audio::{
     AudioChannelCount, AudioMediaType, AudioOutputSpecification, AudioSampleRate, AudioText,
     AudioVoiceSelector, GeneratedAudio, MAX_AUDIO_DURATION_MILLIS, MAX_AUDIO_TEXT_BYTES,
     MAX_AUDIO_VOICE_SELECTOR_BYTES, MAX_GENERATED_AUDIO_BYTES,
+};
+pub use batch::{
+    ApiBatchError, ApiBatchErrorCode, BatchCancelRequest, BatchCompletionWindow,
+    BatchCreateRequest, BatchCustomId, BatchEndpoint, BatchInputFile, BatchListLimit,
+    BatchListRequest, BatchOperation, BatchOperationEvidence, BatchOperationId, BatchOperationPort,
+    BatchPage, BatchRequestCounts, BatchRequestLine, BatchStatus, BatchTimestampTransitions,
+    BatchTimestamps, BatchValidationError, BoxBatchFuture, DEFAULT_BATCH_LIST_LIMIT,
+    MAX_BATCH_CUSTOM_ID_BYTES, MAX_BATCH_ERROR_ITEMS, MAX_BATCH_INPUT_BYTES, MAX_BATCH_LIST_LIMIT,
+    MAX_BATCH_OPERATION_ID_BYTES, MAX_BATCH_REQUESTS,
 };
 pub use chat::{
     ChatMessage, ChatMessageContent, ChatMessages, ChatRole, MAX_CHAT_MESSAGE_CONTENT_BYTES,
