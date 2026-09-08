@@ -38,7 +38,7 @@ use ariadnion_api_domain::{
 use ariadnion_core::{EventSubscriber, RequestContext};
 use axum::body::Bytes;
 use axum::http::{HeaderMap, StatusCode, header};
-use axum::routing::{MethodRouter, post};
+use axum::routing::{MethodRouter, get, post};
 
 use super::{
     ApiHttpError, ApiHttpErrorCode, BoxHttpBodyStream, HttpApiState, HttpRequestIdentity,
@@ -427,6 +427,57 @@ pub trait HttpProtocolAdapter: Send + Sync {
     ) -> Result<ProtocolBufferedResponse, ProtocolFailure>;
 }
 
+/// Decodes and projects one authenticated bodyless protocol GET route.
+///
+/// The common HTTP execution layer owns identity issuance, admission, header
+/// validation, Bearer authentication, cancellation, and deadline checks. The
+/// protocol owner validates its route query and produces the finite success or
+/// failure bytes. No service dispatch occurs for a GET adapter.
+///
+/// Every callback is a strictly CPU-bounded projection over borrowed request
+/// metadata and an immutable in-memory composition snapshot already retained by
+/// the adapter. Implementations must not perform I/O, wait for a lock or task,
+/// start work, spawn execution, mutate shared state, consult providers or
+/// storage, or expose a side effect. Any allocation must remain within the
+/// adapter's documented fixed limits and the common response budgets. Common
+/// execution checks cancellation and deadline state around successful
+/// projection; these bounded callbacks must return promptly enough for those
+/// checks to remain authoritative.
+pub trait HttpGetProtocolAdapter: Send + Sync {
+    /// Validates a route query before authentication or protocol projection.
+    ///
+    /// `None` represents a request without a query string. The adapter must
+    /// reject unsupported or malformed query material with a stable redacted
+    /// failure and must not retain the borrowed string. Validation is pure and
+    /// must not allocate from, normalize, resolve, or act on the query.
+    fn validate_target(&self, query: Option<&str>) -> Result<(), ProtocolFailure>;
+
+    /// Projects one authenticated GET response into finite protocol bytes.
+    ///
+    /// The context is active when this method starts and must be checked again
+    /// before returning success. Implementations must not expose principal,
+    /// credential, provider, or internal storage details in response bytes.
+    /// Projection may inspect only immutable in-memory profile data; it must not
+    /// initiate provider, storage, routing, authentication, or clock work.
+    fn project_get(
+        &self,
+        identity: &HttpRequestIdentity,
+        context: &RequestContext,
+    ) -> Result<ProtocolBufferedResponse, ProtocolFailure>;
+
+    /// Projects a common ingress or protocol failure into finite protocol bytes.
+    ///
+    /// Authentication failures are marked by common execution so it can add a
+    /// Bearer challenge without exposing authentication material to the adapter.
+    /// Failure projection is deterministic and side-effect-free and must not
+    /// retry, resolve, log, meter, or otherwise externalize the rejected request.
+    fn project_failure(
+        &self,
+        identity: &HttpRequestIdentity,
+        failure: ProtocolFailure,
+    ) -> Result<ProtocolBufferedResponse, ProtocolFailure>;
+}
+
 /// Cloneable shared execution state for one externally owned protocol route.
 #[derive(Clone)]
 pub struct ProtocolExecutionState {
@@ -460,6 +511,38 @@ impl ProtocolExecutionState {
 /// this crate does not register, branch on, or retain protocol names or paths.
 pub fn protocol_post_route() -> MethodRouter<ProtocolExecutionState> {
     post(execution::handle_protocol)
+}
+
+/// Shared state for one independently mounted bodyless protocol GET route.
+#[derive(Clone)]
+pub struct ProtocolGetExecutionState {
+    http: HttpApiState,
+    protocol: Arc<dyn HttpGetProtocolAdapter>,
+}
+
+impl ProtocolGetExecutionState {
+    /// Binds one GET protocol adapter to shared authenticated HTTP state.
+    #[must_use]
+    pub const fn new(http: HttpApiState, protocol: Arc<dyn HttpGetProtocolAdapter>) -> Self {
+        Self { http, protocol }
+    }
+
+    pub(super) const fn http(&self) -> &HttpApiState {
+        &self.http
+    }
+
+    pub(super) fn protocol(&self) -> &dyn HttpGetProtocolAdapter {
+        self.protocol.as_ref()
+    }
+}
+
+/// Returns a strongly typed GET method route for protocol-owner mounting.
+///
+/// The calling protocol crate supplies the path through Axum
+/// [`axum::Router::route`]. This crate does not register or retain protocol
+/// names or route paths.
+pub fn protocol_get_route() -> MethodRouter<ProtocolGetExecutionState> {
+    get(execution::handle_get)
 }
 
 fn validate_request_mode(

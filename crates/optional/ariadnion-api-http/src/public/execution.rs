@@ -39,7 +39,7 @@ use ariadnion_api_dispatch::ServiceDispatchOutcome;
 use ariadnion_api_domain::{ApiDomainError, ApiDomainErrorCode, ResponseMode};
 use ariadnion_core::{CancellationToken, PrincipalContext, RequestContext, RequestId};
 use ariadnion_principal_binding::AuthenticatedPrincipalEvidence;
-use axum::body::{Body, to_bytes};
+use axum::body::{Body, HttpBody, to_bytes};
 use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, Request, StatusCode, header};
 use axum::response::{IntoResponse, Response};
@@ -48,7 +48,9 @@ use tokio::sync::OwnedSemaphorePermit;
 use zeroize::Zeroize;
 
 use super::error::{invalid_request, response_with_request_id, unauthenticated};
-use super::protocol::validate_response_header_budget;
+use super::protocol::{
+    HttpGetProtocolAdapter, ProtocolGetExecutionState, validate_response_header_budget,
+};
 use super::{
     ApiHttpError, ApiHttpErrorCode, BoxHttpBodyStream, HttpApiState, HttpProtocolAdapter,
     HttpProtocolProjection, HttpRequestIdentity, MAX_PRESENTED_BEARER_BYTES, MAX_PUBLIC_BODY_BYTES,
@@ -112,6 +114,194 @@ pub(super) async fn handle_protocol(
     request: Request<Body>,
 ) -> Response {
     handle_request(state.http(), state.protocol(), request).await
+}
+
+pub(super) async fn handle_get(
+    State(state): State<ProtocolGetExecutionState>,
+    request: Request<Body>,
+) -> Response {
+    handle_get_request(state.http(), state.protocol(), request).await
+}
+
+async fn handle_get_request(
+    state: &HttpApiState,
+    protocol: &dyn HttpGetProtocolAdapter,
+    request: Request<Body>,
+) -> Response {
+    match try_handle_get(state, protocol, request).await {
+        Ok(response) => response,
+        Err(failure) => project_get_failure(protocol, failure),
+    }
+}
+
+async fn try_handle_get(
+    state: &HttpApiState,
+    protocol: &dyn HttpGetProtocolAdapter,
+    request: Request<Body>,
+) -> Result<Response, ExecutionFailure> {
+    let generated = state
+        .identity
+        .issue()
+        .map_err(|error| ExecutionFailure::http(state.identity.fallback_identity(), error))?;
+    let permit = match state.admission.clone().try_acquire_owned() {
+        Ok(permit) => permit,
+        Err(_) => {
+            return Err(ExecutionFailure::http(
+                generated,
+                ApiHttpError::new(ApiHttpErrorCode::ResourceExhausted),
+            ));
+        }
+    };
+    execute_get_request(state, protocol, generated, request, permit).await
+}
+
+async fn execute_get_request(
+    state: &HttpApiState,
+    protocol: &dyn HttpGetProtocolAdapter,
+    generated: HttpRequestIdentity,
+    request: Request<Body>,
+    permit: OwnedSemaphorePermit,
+) -> Result<Response, ExecutionFailure> {
+    let admission = admit_get_request(state, protocol, generated, request)?;
+    let authenticated = authenticate_get_request(state, admission).await?;
+    project_get_response(protocol, authenticated, permit)
+}
+
+fn admit_get_request(
+    state: &HttpApiState,
+    protocol: &dyn HttpGetProtocolAdapter,
+    generated: HttpRequestIdentity,
+    request: Request<Body>,
+) -> Result<GetRequestAdmission, ExecutionFailure> {
+    let (parts, body) = request.into_parts();
+    let (identity, deadline) = admit_get_headers(generated, &parts.headers)?;
+    let cancellation = RequestCancellation::new(&state.shutdown);
+    let anonymous = anonymous_context(&identity, deadline, cancellation.token());
+    check_active(&anonymous).map_err(|error| ExecutionFailure::domain(identity.clone(), error))?;
+    validate_bodyless_request(&identity, &parts.headers, &body)?;
+    protocol
+        .validate_target(parts.uri.query())
+        .map_err(|failure| ExecutionFailure::new(identity.clone(), failure))?;
+    drop(body);
+    let authorization = parse_authorization(&parts.headers)
+        .map_err(|error| ExecutionFailure::authentication(identity.clone(), error))?;
+    Ok(GetRequestAdmission {
+        identity,
+        deadline,
+        cancellation,
+        anonymous,
+        authorization,
+    })
+}
+
+fn admit_get_headers(
+    generated: HttpRequestIdentity,
+    headers: &HeaderMap,
+) -> Result<(HttpRequestIdentity, SystemTime), ExecutionFailure> {
+    validate_header_budget(headers)
+        .map_err(|error| ExecutionFailure::http(generated.clone(), error))?;
+    let identity = resolve_identity(generated, headers)?;
+    let deadline = parse_deadline(headers, SystemTime::now())
+        .map_err(|error| ExecutionFailure::http(identity.clone(), error))?;
+    Ok((identity, deadline))
+}
+
+fn validate_bodyless_request(
+    identity: &HttpRequestIdentity,
+    headers: &HeaderMap,
+    body: &Body,
+) -> Result<(), ExecutionFailure> {
+    reject_get_transfer_encoding(identity, headers)?;
+    validate_get_content_length(identity, headers)?;
+    if !body.is_end_stream() {
+        return Err(ExecutionFailure::http(identity.clone(), invalid_request()));
+    }
+    Ok(())
+}
+
+fn reject_get_transfer_encoding(
+    identity: &HttpRequestIdentity,
+    headers: &HeaderMap,
+) -> Result<(), ExecutionFailure> {
+    if headers.contains_key(header::TRANSFER_ENCODING) {
+        return Err(ExecutionFailure::http(identity.clone(), invalid_request()));
+    }
+    Ok(())
+}
+
+fn validate_get_content_length(
+    identity: &HttpRequestIdentity,
+    headers: &HeaderMap,
+) -> Result<(), ExecutionFailure> {
+    let value = one_header(headers, header::CONTENT_LENGTH.as_str(), false)
+        .map_err(|error| ExecutionFailure::http(identity.clone(), error))?
+        .map(parse_get_content_length)
+        .transpose()
+        .map_err(|error| ExecutionFailure::http(identity.clone(), error))?;
+    if value.is_some_and(|length| length != 0) {
+        return Err(ExecutionFailure::http(identity.clone(), invalid_request()));
+    }
+    Ok(())
+}
+
+fn parse_get_content_length(value: &HeaderValue) -> Result<u64, ApiHttpError> {
+    let bytes = value.as_bytes();
+    if bytes.is_empty() || bytes.iter().any(|byte| !byte.is_ascii_digit()) {
+        return Err(invalid_request());
+    }
+    value
+        .to_str()
+        .ok()
+        .and_then(|text| text.parse::<u64>().ok())
+        .ok_or_else(invalid_request)
+}
+
+async fn authenticate_get_request(
+    state: &HttpApiState,
+    admission: GetRequestAdmission,
+) -> Result<AuthenticatedGetRequest, ExecutionFailure> {
+    let evidence = authenticate(
+        state,
+        &admission.authorization,
+        &admission.anonymous,
+        admission.deadline,
+    )
+    .await
+    .map_err(|failure| failure.with_identity(admission.identity.clone()))?;
+    let context = authenticated_context(
+        &admission.identity,
+        admission.deadline,
+        admission.cancellation.token(),
+        &evidence,
+    );
+    check_active(&context)
+        .map_err(|error| ExecutionFailure::domain(admission.identity.clone(), error))?;
+    Ok(AuthenticatedGetRequest {
+        identity: admission.identity,
+        cancellation: admission.cancellation,
+        context,
+    })
+}
+
+fn project_get_response(
+    protocol: &dyn HttpGetProtocolAdapter,
+    request: AuthenticatedGetRequest,
+    _permit: OwnedSemaphorePermit,
+) -> Result<Response, ExecutionFailure> {
+    let AuthenticatedGetRequest {
+        identity,
+        mut cancellation,
+        context,
+    } = request;
+    check_active(&context).map_err(|error| ExecutionFailure::domain(identity.clone(), error))?;
+    let projected = protocol
+        .project_get(&identity, &context)
+        .map_err(|failure| ExecutionFailure::new(identity.clone(), failure))?;
+    check_active(&context).map_err(|error| ExecutionFailure::domain(identity.clone(), error))?;
+    let response = project_buffered_response(&identity, projected, false)
+        .map_err(|failure| ExecutionFailure::new(identity.clone(), failure))?;
+    cancellation.disarm();
+    Ok(response)
 }
 
 pub(super) async fn handle_request(
@@ -349,6 +539,21 @@ fn project_stream_response(
 }
 
 fn project_failure(protocol: &dyn HttpProtocolAdapter, execution: ExecutionFailure) -> Response {
+    let challenge = execution.bearer_challenge;
+    match protocol.project_failure(&execution.identity, execution.failure) {
+        Ok(projected) => match project_buffered_response(&execution.identity, projected, challenge)
+        {
+            Ok(response) => response,
+            Err(_) => project_internal_fallback(&execution.identity),
+        },
+        Err(_) => project_internal_fallback(&execution.identity),
+    }
+}
+
+fn project_get_failure(
+    protocol: &dyn HttpGetProtocolAdapter,
+    execution: ExecutionFailure,
+) -> Response {
     let challenge = execution.bearer_challenge;
     match protocol.project_failure(&execution.identity, execution.failure) {
         Ok(projected) => match project_buffered_response(&execution.identity, projected, challenge)
@@ -636,6 +841,20 @@ struct RequestAdmission {
     anonymous: RequestContext,
     request: ProtocolRequest,
     authorization: PresentedBearer,
+}
+
+struct GetRequestAdmission {
+    identity: HttpRequestIdentity,
+    deadline: SystemTime,
+    cancellation: RequestCancellation,
+    anonymous: RequestContext,
+    authorization: PresentedBearer,
+}
+
+struct AuthenticatedGetRequest {
+    identity: HttpRequestIdentity,
+    cancellation: RequestCancellation,
+    context: RequestContext,
 }
 
 struct AuthenticatedRequest {
