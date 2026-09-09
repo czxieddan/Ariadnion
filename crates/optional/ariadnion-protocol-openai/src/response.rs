@@ -105,12 +105,13 @@ pub(crate) fn project_failure(
     _identity: &HttpRequestIdentity,
     failure: ProtocolFailure,
 ) -> Result<ProtocolBufferedResponse, ProtocolFailure> {
+    let parameter = failure.public_parameter();
     let profile = failure_profile(failure);
     let body = ErrorEnvelope {
         error: ErrorBody {
             message: profile.message,
             error_type: profile.error_type,
-            parameter: None,
+            parameter,
             code: profile.code,
         },
     };
