@@ -38,6 +38,7 @@ mod embedding;
 mod error;
 mod file;
 mod image;
+mod realtime;
 mod request;
 mod response;
 mod stream;
@@ -76,6 +77,18 @@ pub use image::{
     GeneratedImage, GeneratedImages, ImageCount, ImageDimensions, ImageMediaType, ImagePrompt,
     MAX_GENERATED_IMAGE_BYTES, MAX_GENERATED_IMAGES, MAX_GENERATED_IMAGES_BYTES, MAX_IMAGE_EDGE,
     MAX_IMAGE_PIXELS, MAX_IMAGE_PROMPT_BYTES,
+};
+pub use realtime::{
+    BoxRealtimeFuture, MAX_REALTIME_ACCEPTED_TEXT_BYTES, MAX_REALTIME_CLIENT_EVENT_ID_BYTES,
+    MAX_REALTIME_CONTENT_PARTS, MAX_REALTIME_CONVERSATION_ITEMS, MAX_REALTIME_FRAME_BYTES,
+    MAX_REALTIME_INBOUND_QUEUE_EVENTS, MAX_REALTIME_OUTBOUND_QUEUE_EVENTS,
+    MAX_REALTIME_RUNTIME_ID_BYTES, MAX_REALTIME_SESSION_SECONDS, RealtimeClientEvent,
+    RealtimeClientEventId, RealtimeConversationItem, RealtimeInboundEvent, RealtimeInputContent,
+    RealtimeInputText, RealtimeOutboundEvent, RealtimeResponseCancel, RealtimeResponseCreate,
+    RealtimeResponseFinishReason, RealtimeResponseId, RealtimeServerEvent,
+    RealtimeSessionCloseReason, RealtimeSessionDescriptor, RealtimeSessionId,
+    RealtimeSessionLifetime, RealtimeSessionOpenRequest, RealtimeSessionPort, RealtimeSessionState,
+    RealtimeSessionUpdate, RealtimeTextFrame,
 };
 pub use request::{
     AudioServiceRequest, ChatServiceRequest, EmbeddingServiceRequest, IdempotencyKey,
