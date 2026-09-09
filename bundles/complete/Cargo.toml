@@ -38,12 +38,14 @@ publish = false
 
 [dependencies]
 ariadnion-api-domain = { path = "../../crates/optional/ariadnion-api-domain" }
+ariadnion-api-files = { path = "../../crates/optional/ariadnion-api-files" }
 ariadnion-api-http = { path = "../../crates/optional/ariadnion-api-http" }
 ariadnion-api-stream = { path = "../../crates/optional/ariadnion-api-stream" }
 ariadnion-cli-user = { path = "../../crates/optional/ariadnion-cli-user" }
 ariadnion-core = { path = "../../crates/ariadnion-core" }
 ariadnion-compose = { path = "../../crates/optional/ariadnion-compose" }
 ariadnion-diagnostics = { path = "../../crates/optional/ariadnion-diagnostics" }
+ariadnion-file-service = { path = "../../crates/optional/ariadnion-file-service" }
 ariadnion-job-runner = { path = "../../crates/optional/ariadnion-job-runner" }
 ariadnion-protocol-openai = { path = "../../crates/optional/ariadnion-protocol-openai" }
 ariadnion-provider-dispatch = { path = "../../crates/optional/ariadnion-provider-dispatch" }

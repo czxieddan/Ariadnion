@@ -33,14 +33,19 @@
 
 use std::sync::Arc;
 
-use ariadnion_api_domain::ModelSelector;
+use ariadnion_api_domain::{AudioOutputSpecification, ModelSelector};
+use ariadnion_api_files::{FileCatalogServicePort, FileReferenceIssuerPort, FileServicePort};
 use ariadnion_api_http::{
-    HttpApiState, MonotonicRequestIdentityIssuer, PublicApiRouter, ServiceAuthenticationPort,
-    public_router,
+    HttpApiState, MonotonicRequestIdentityIssuer, PublicApiRouter, RequestIdentityPort,
+    ServiceAuthenticationPort, ServiceDispatchPort, ServiceStreamBridgePort, public_router,
 };
 use ariadnion_api_stream::SseBridge;
 use ariadnion_core::{CancellationToken, CoreError, ErrorCode};
-use ariadnion_protocol_openai::{OpenAiChatCompletionsRouter, openai_chat_completions_router};
+use ariadnion_file_service::DurableFileService;
+use ariadnion_protocol_openai::{
+    OpenAiChatCompletionsRouter, OpenAiModelCatalog, OpenAiRouteManifest, OpenAiTimestampPort,
+    openai_chat_completions_router,
+};
 use ariadnion_provider_dispatch::{
     MonotonicAttemptIdIssuer, ProviderDispatcher, StaticProviderModelResolver,
 };
@@ -49,6 +54,7 @@ use ariadnion_provider_mock::{
     MOCK_PROVIDER_IMAGE_MODEL_ID, MOCK_PROVIDER_MODEL_ID, MOCK_PROVIDER_TEXT_MODEL_ID,
 };
 use ariadnion_provider_sdk::{ProviderModelId, ProviderPort};
+use ariadnion_storage_asset::LocalVolumeAssetStoragePort;
 
 /// Selects the single public API route family assembled by the complete bundle.
 ///
@@ -71,6 +77,162 @@ pub enum CompletePublicApiProfile {
 /// enable protocol discovery, and does not authorize routes beyond the selected
 /// [`CompletePublicApiProfile::Compatibility`] router.
 pub const COMPLETE_COMPATIBILITY_PROTOCOL_FAMILIES: &[&str] = &["openai"];
+
+/// Carries already constructed capabilities into the complete production router.
+///
+/// The bundle owns only this typed assembly boundary. It does not parse
+/// configuration, open storage sessions, resolve secrets, construct paths, bind a
+/// listener, or start an executor. Optional capabilities remain absent unless the
+/// caller explicitly installs them, so downstream routes fail closed when a
+/// capability is unavailable.
+pub struct PublicApiInputs {
+    identity: Arc<dyn RequestIdentityPort>,
+    authentication: Arc<dyn ServiceAuthenticationPort>,
+    dispatch: Arc<dyn ServiceDispatchPort>,
+    shutdown: CancellationToken,
+    stream_bridge: Option<Arc<dyn ServiceStreamBridgePort>>,
+    file_service: Option<Arc<dyn FileServicePort>>,
+    openai_models: Option<Arc<OpenAiModelCatalog>>,
+    openai_speech_output: Option<AudioOutputSpecification>,
+    openai_timestamp: Option<Arc<dyn OpenAiTimestampPort>>,
+}
+
+impl PublicApiInputs {
+    /// Creates production assembly inputs from the required HTTP capabilities.
+    ///
+    /// The supplied shutdown token is shared by every request admitted through the
+    /// assembled router. No I/O or capability lookup occurs during construction.
+    #[must_use]
+    pub fn new(
+        identity: Arc<dyn RequestIdentityPort>,
+        authentication: Arc<dyn ServiceAuthenticationPort>,
+        dispatch: Arc<dyn ServiceDispatchPort>,
+        shutdown: CancellationToken,
+    ) -> Self {
+        Self {
+            identity,
+            authentication,
+            dispatch,
+            shutdown,
+            stream_bridge: None,
+            file_service: None,
+            openai_models: None,
+            openai_speech_output: None,
+            openai_timestamp: None,
+        }
+    }
+
+    /// Installs the optional native streaming bridge for this assembly.
+    #[must_use]
+    pub fn with_stream_bridge(mut self, bridge: Arc<dyn ServiceStreamBridgePort>) -> Self {
+        self.stream_bridge = Some(bridge);
+        self
+    }
+
+    /// Installs the optional authenticated durable-file service for this assembly.
+    #[must_use]
+    pub fn with_file_service(mut self, service: Arc<dyn FileServicePort>) -> Self {
+        self.file_service = Some(service);
+        self
+    }
+
+    /// Installs the immutable model catalog for the OpenAI compatibility profile.
+    #[must_use]
+    pub fn with_openai_models(mut self, catalog: Arc<OpenAiModelCatalog>) -> Self {
+        self.openai_models = Some(catalog);
+        self
+    }
+
+    /// Installs the explicit raw-WAV output capability for OpenAI Speech.
+    #[must_use]
+    pub const fn with_openai_speech_output(mut self, output: AudioOutputSpecification) -> Self {
+        self.openai_speech_output = Some(output);
+        self
+    }
+
+    /// Installs the authoritative UTC timestamp source for OpenAI time-bearing routes.
+    #[must_use]
+    pub fn with_openai_timestamp(mut self, timestamp: Arc<dyn OpenAiTimestampPort>) -> Self {
+        self.openai_timestamp = Some(timestamp);
+        self
+    }
+}
+
+/// Constructs the durable file service from a live typed catalog capability.
+///
+/// The catalog handle is validated for cancellation and generation freshness before
+/// the service retains its catalog view. The issuer and asset storage ports are
+/// already constructed by the runtime owner; this function never opens paths,
+/// sessions, keys, configuration, or listeners. The concrete owner is returned so
+/// the runtime can call [`DurableFileService::shutdown`] and join its worker before
+/// invalidating storage capabilities. Callers may coerce the returned `Arc` to an
+/// `Arc<dyn FileServicePort>` for [`PublicApiInputs::with_file_service`].
+///
+/// # Errors
+///
+/// Returns the catalog handle's stable cancellation or unavailable error when the
+/// handle is inactive or stale. No service is returned in that case.
+pub fn assemble_durable_file_service(
+    catalog: ariadnion_core::PortHandle<dyn FileCatalogServicePort>,
+    issuer: Arc<dyn FileReferenceIssuerPort>,
+    assets: Arc<dyn LocalVolumeAssetStoragePort>,
+) -> Result<Arc<DurableFileService>, CoreError> {
+    let catalog = catalog.service()?;
+    Ok(Arc::new(DurableFileService::new(catalog, issuer, assets)))
+}
+
+/// Assembles exactly one dependency-injected complete public API profile.
+///
+/// `Native` receives Ariadnion-native routes, while `Compatibility` receives only
+/// the fixed OpenAI-compatible routes described by
+/// [`COMPLETE_COMPATIBILITY_PROTOCOL_FAMILIES`]. The same fully configured HTTP
+/// state is passed to the selected router; profiles are never merged, selected by
+/// request content, or served by this function. Listener ownership and process
+/// shutdown remain outside the bundle in P10.
+///
+/// Missing optional stream or file capabilities remain absent and therefore fail
+/// closed at their existing HTTP boundaries. Once the typed inputs exist, assembly
+/// performs no fallible external work and returns the selected router directly.
+#[must_use = "retain the assembled router for the runtime owner"]
+pub fn assemble_public_api(
+    profile: CompletePublicApiProfile,
+    inputs: PublicApiInputs,
+) -> PublicApiRouter {
+    let PublicApiInputs {
+        identity,
+        authentication,
+        dispatch,
+        shutdown,
+        stream_bridge,
+        file_service,
+        openai_models,
+        openai_speech_output,
+        openai_timestamp,
+    } = inputs;
+    let mut state = HttpApiState::new(identity, authentication, dispatch, shutdown);
+    if let Some(bridge) = stream_bridge {
+        state = state.with_stream_bridge(bridge);
+    }
+    if let Some(service) = file_service {
+        state = state.with_file_service(service);
+    }
+    match profile {
+        CompletePublicApiProfile::Native => public_router(state),
+        CompletePublicApiProfile::Compatibility => {
+            let mut manifest = OpenAiRouteManifest::new();
+            if let Some(catalog) = openai_models {
+                manifest = manifest.with_models(catalog);
+            }
+            if let Some(output) = openai_speech_output {
+                manifest = manifest.with_speech_output(output);
+            }
+            if let Some(timestamp) = openai_timestamp {
+                manifest = manifest.with_timestamp(timestamp);
+            }
+            manifest.mount(state)
+        }
+    }
+}
 
 /// Assembles exactly one verification-only mock public API profile.
 ///
