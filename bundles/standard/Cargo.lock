@@ -187,12 +187,14 @@ name = "ariadnion-bundle-standard"
 version = "0.1.0"
 dependencies = [
  "ariadnion-api-domain",
+ "ariadnion-api-files",
  "ariadnion-api-http",
  "ariadnion-api-stream",
  "ariadnion-cli-user",
  "ariadnion-compose",
  "ariadnion-core",
  "ariadnion-diagnostics",
+ "ariadnion-file-service",
  "ariadnion-job-runner",
  "ariadnion-protocol-openai",
  "ariadnion-provider-dispatch",
@@ -241,6 +243,15 @@ name = "ariadnion-diagnostics"
 version = "0.1.0"
 dependencies = [
  "ariadnion-core",
+]
+
+[[package]]
+name = "ariadnion-file-service"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-api-files",
+ "ariadnion-core",
+ "ariadnion-storage-asset",
 ]
 
 [[package]]
