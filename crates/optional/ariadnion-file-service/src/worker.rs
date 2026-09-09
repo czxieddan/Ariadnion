@@ -26,7 +26,7 @@
 //
 // SPDX-License-Identifier: LicenseRef-AHCL-1.0
 
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::JoinHandle;
@@ -157,6 +157,10 @@ impl TransferWorker {
     }
 
     /// Returns the current lifecycle phase without exposing retained job data.
+    ///
+    /// The ignored external worker contracts call this accessor after injecting
+    /// the worker module, while ordinary library targets have no such caller.
+    #[allow(dead_code)]
     pub(crate) fn phase(&self) -> WorkerPhase {
         current_phase(&self.runtime.shared)
     }
@@ -261,6 +265,7 @@ impl TransferWorker {
     }
 
     /// Streams committed bytes while returning the retained staging guard.
+    #[allow(dead_code)]
     pub(crate) fn submit_reserved_read(
         &self,
         guard: OperationGuard,
@@ -277,14 +282,24 @@ impl TransferWorker {
     pub(crate) fn submit_streaming_read(
         &self,
         key: AssetKey,
-        mut destination: PipeWriter,
+        destination: PipeWriter,
         context: &RequestContext,
     ) -> JobFuture<AssetDescriptor> {
-        self.fresh_job(context, move |assets, context| {
-            let descriptor = assets.read_into(&key, &mut destination, context)?;
-            destination.finish().map_err(project_pipe_error)?;
-            Ok(descriptor)
-        })
+        let operation = OperationContext::child(context);
+        let cell = Arc::new(JobCell::new(self.runtime.shared.clone()));
+        let job = StreamingReadJob {
+            cell: cell.clone(),
+            context: operation.context.clone(),
+            key,
+            destination: Some(destination),
+        };
+        JobFuture::new(
+            self.runtime.clone(),
+            cell,
+            Box::new(job),
+            Assignment::Fresh,
+            operation,
+        )
     }
 
     /// Stops admission, cancels active blocking work, and joins the worker thread.
@@ -302,25 +317,6 @@ impl TransferWorker {
         self.make_job(
             Assignment::Fresh,
             OperationContext::child(context),
-            operation,
-        )
-    }
-
-    fn reserved_job<T, F>(
-        &self,
-        reservation: u64,
-        operation_context: OperationContext,
-        operation: F,
-    ) -> JobFuture<T>
-    where
-        T: Send + 'static,
-        F: FnOnce(&dyn LocalVolumeAssetStoragePort, &RequestContext) -> Result<T, StorageError>
-            + Send
-            + 'static,
-    {
-        self.make_job(
-            Assignment::Reserved(reservation),
-            operation_context,
             operation,
         )
     }
@@ -517,6 +513,83 @@ struct TypedJob<T, F> {
     cell: Arc<JobCell<T>>,
     context: RequestContext,
     operation: Option<F>,
+}
+
+struct StreamingReadJob {
+    cell: Arc<JobCell<AssetDescriptor>>,
+    context: RequestContext,
+    key: AssetKey,
+    destination: Option<PipeWriter>,
+}
+
+struct StreamingDestination<'a> {
+    writer: &'a mut PipeWriter,
+}
+
+impl Write for StreamingDestination<'_> {
+    fn write(&mut self, input: &[u8]) -> io::Result<usize> {
+        self.writer.write(input).map_err(terminal_stream_error)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.writer.flush().map_err(terminal_stream_error)
+    }
+}
+
+fn terminal_stream_error(error: io::Error) -> io::Error {
+    if error.kind() == io::ErrorKind::Interrupted {
+        io::Error::from(io::ErrorKind::BrokenPipe)
+    } else {
+        error
+    }
+}
+
+impl WorkerJob for StreamingReadJob {
+    fn execute(
+        &mut self,
+        assets: &dyn LocalVolumeAssetStoragePort,
+        shared: &Arc<WorkerShared>,
+        reservation: u64,
+    ) {
+        let result = self.run(assets);
+        let accepting = release_running_reservation(shared, reservation);
+        self.cell.complete(if accepting {
+            result
+        } else {
+            Err(unavailable_error())
+        });
+    }
+
+    fn fail(&mut self, error: ApiFilesError) {
+        self.cell.complete(Err(error));
+    }
+
+    fn cancellation(&self) -> CancellationToken {
+        self.context.cancellation()
+    }
+}
+
+impl StreamingReadJob {
+    fn run(
+        &mut self,
+        assets: &dyn LocalVolumeAssetStoragePort,
+    ) -> Result<AssetDescriptor, ApiFilesError> {
+        self.context.check_active().map_err(ApiFilesError::from)?;
+        let Some(destination) = self.destination.as_mut() else {
+            return Err(internal_error());
+        };
+        let mut streaming_destination = StreamingDestination {
+            writer: destination,
+        };
+        let descriptor = assets
+            .read_into(&self.key, &mut streaming_destination, &self.context)
+            .map_err(project_storage_error)?;
+        destination
+            .finish()
+            .map_err(project_pipe_error)
+            .map_err(project_storage_error)?;
+        Ok(descriptor)
+    }
 }
 
 impl<T, F> WorkerJob for TypedJob<T, F>

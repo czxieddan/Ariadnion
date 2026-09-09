@@ -30,14 +30,16 @@ use std::sync::Arc;
 
 use ariadnion_api_files::{
     ApiFilesError, ApiFilesErrorCode, BoxFileFuture, FileCatalogServicePort,
-    FileDeleteReconciliation, FileDeleteRequest, FileDescriptor, FileListPage, FileListRequest,
-    FileReference, FileReferenceIssuerPort,
+    FileDeleteReconciliation, FileDeleteRequest, FileDescriptor, FileDownloadSink, FileListPage,
+    FileListRequest, FileReference, FileReferenceIssuerPort, FileServicePort,
+    FileUploadReconciliation, FileUploadRequest, FileUploadSource,
 };
 use ariadnion_core::{PrincipalContext, RequestContext};
 use ariadnion_storage_asset::LocalVolumeAssetStoragePort;
 
 use crate::worker::TransferWorker;
 
+mod content;
 mod upload;
 
 /// Coordinates authenticated metadata and durable content operations.
@@ -167,4 +169,64 @@ fn require_authenticated_active(
     };
     context.check_active()?;
     Ok(principal)
+}
+
+impl FileServicePort for DurableFileService {
+    fn upload<'a>(
+        &'a self,
+        request: FileUploadRequest,
+        source: &'a mut dyn FileUploadSource,
+        context: &'a RequestContext,
+    ) -> BoxFileFuture<'a, Result<FileDescriptor, ApiFilesError>> {
+        DurableFileService::upload(self, request, source, context)
+    }
+
+    fn reconcile_upload<'a>(
+        &'a self,
+        request: &'a FileUploadRequest,
+        context: &'a RequestContext,
+    ) -> BoxFileFuture<'a, Result<FileUploadReconciliation, ApiFilesError>> {
+        DurableFileService::reconcile_upload(self, request, context)
+    }
+
+    fn metadata<'a>(
+        &'a self,
+        reference: &'a FileReference,
+        context: &'a RequestContext,
+    ) -> BoxFileFuture<'a, Result<FileDescriptor, ApiFilesError>> {
+        DurableFileService::metadata(self, reference, context)
+    }
+
+    fn list<'a>(
+        &'a self,
+        request: FileListRequest,
+        context: &'a RequestContext,
+    ) -> BoxFileFuture<'a, Result<FileListPage, ApiFilesError>> {
+        DurableFileService::list(self, request, context)
+    }
+
+    fn content<'a>(
+        &'a self,
+        reference: &'a FileReference,
+        sink: &'a mut dyn FileDownloadSink,
+        context: &'a RequestContext,
+    ) -> BoxFileFuture<'a, Result<FileDescriptor, ApiFilesError>> {
+        DurableFileService::content(self, reference, sink, context)
+    }
+
+    fn delete<'a>(
+        &'a self,
+        request: FileDeleteRequest,
+        context: &'a RequestContext,
+    ) -> BoxFileFuture<'a, Result<(), ApiFilesError>> {
+        DurableFileService::delete(self, request, context)
+    }
+
+    fn reconcile_delete<'a>(
+        &'a self,
+        request: &'a FileDeleteRequest,
+        context: &'a RequestContext,
+    ) -> BoxFileFuture<'a, Result<FileDeleteReconciliation, ApiFilesError>> {
+        DurableFileService::reconcile_delete(self, request, context)
+    }
 }
