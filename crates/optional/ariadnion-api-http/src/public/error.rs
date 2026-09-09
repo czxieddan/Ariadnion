@@ -125,13 +125,19 @@ const fn service_http_code(code: ApiHttpErrorCode) -> &'static str {
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct ApiHttpError {
     code: ApiHttpErrorCode,
+    protocol_error: Option<ProtocolErrorKind>,
+    public_parameter: Option<&'static str>,
 }
 
 impl ApiHttpError {
     /// Creates a redacted error from its stable code.
     #[must_use]
     pub const fn new(code: ApiHttpErrorCode) -> Self {
-        Self { code }
+        Self {
+            code,
+            protocol_error: None,
+            public_parameter: None,
+        }
     }
 
     /// Returns the stable transport error code.
@@ -139,6 +145,39 @@ impl ApiHttpError {
     pub const fn code(self) -> ApiHttpErrorCode {
         self.code
     }
+
+    pub(crate) fn protocol_parameter(
+        kind: ProtocolErrorKind,
+        parameter: Option<&'static str>,
+    ) -> Self {
+        Self {
+            code: ApiHttpErrorCode::InvalidRequest,
+            protocol_error: Some(kind),
+            public_parameter: parameter.filter(public_parameter_is_safe),
+        }
+    }
+
+    pub(crate) const fn protocol_error_kind(self) -> Option<ProtocolErrorKind> {
+        self.protocol_error
+    }
+
+    pub(crate) const fn public_parameter(self) -> Option<&'static str> {
+        self.public_parameter
+    }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(crate) enum ProtocolErrorKind {
+    InvalidParameter,
+    UnsupportedParameter,
+}
+
+fn public_parameter_is_safe(value: &&'static str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
 }
 
 impl Debug for ApiHttpError {

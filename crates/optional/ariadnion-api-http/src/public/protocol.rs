@@ -40,6 +40,7 @@ use axum::body::Bytes;
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::routing::{MethodRouter, get, post};
 
+use super::error::ProtocolErrorKind;
 use super::{
     ApiHttpError, ApiHttpErrorCode, BoxHttpBodyStream, HttpApiState, HttpRequestIdentity,
     MAX_PUBLIC_BODY_BYTES, MAX_PUBLIC_HEADER_BYTES, MAX_PUBLIC_HEADERS, execution,
@@ -167,6 +168,51 @@ pub enum ProtocolFailure {
 }
 
 impl ProtocolFailure {
+    /// Creates a redacted protocol failure for one unsupported public parameter.
+    #[must_use]
+    pub fn unsupported_parameter(parameter: Option<&'static str>) -> Self {
+        Self::Http(ApiHttpError::protocol_parameter(
+            ProtocolErrorKind::UnsupportedParameter,
+            parameter,
+        ))
+    }
+
+    /// Creates a redacted protocol failure for one invalid public parameter.
+    #[must_use]
+    pub fn invalid_parameter(parameter: Option<&'static str>) -> Self {
+        Self::Http(ApiHttpError::protocol_parameter(
+            ProtocolErrorKind::InvalidParameter,
+            parameter,
+        ))
+    }
+
+    /// Reports whether this failure identifies an unsupported public parameter.
+    #[must_use]
+    pub fn is_unsupported_parameter(self) -> bool {
+        matches!(
+            self.protocol_error_kind(),
+            Some(ProtocolErrorKind::UnsupportedParameter)
+        )
+    }
+
+    /// Reports whether this failure identifies an invalid public parameter.
+    #[must_use]
+    pub fn is_invalid_parameter(self) -> bool {
+        matches!(
+            self.protocol_error_kind(),
+            Some(ProtocolErrorKind::InvalidParameter)
+        )
+    }
+
+    /// Returns the checked public field token associated with this failure.
+    #[must_use]
+    pub const fn public_parameter(self) -> Option<&'static str> {
+        match self {
+            Self::Http(error) => error.public_parameter(),
+            Self::Domain(_) => None,
+        }
+    }
+
     /// Returns the stable HTTP code when this is an HTTP-ingress failure.
     #[must_use]
     pub const fn http_code(self) -> Option<ApiHttpErrorCode> {
@@ -182,6 +228,13 @@ impl ProtocolFailure {
         match self {
             Self::Domain(error) => Some(error.code()),
             Self::Http(_) => None,
+        }
+    }
+
+    fn protocol_error_kind(self) -> Option<ProtocolErrorKind> {
+        match self {
+            Self::Http(error) => error.protocol_error_kind(),
+            Self::Domain(_) => None,
         }
     }
 }
@@ -375,6 +428,34 @@ pub trait HttpProtocolProjection: Send + Sync {
         let projected = self.project_complete(identity, response);
         context.check_active().map_err(ApiDomainError::from)?;
         projected
+    }
+
+    /// Reports whether a complete service response must retain HTTP body lifetime.
+    ///
+    /// Complete domain results usually project to a finite buffered response.
+    /// Protocols returning a bounded binary body may opt into this path to emit
+    /// one non-buffering response stream. Common execution then retains admission
+    /// and request cancellation until EOF, stream error, or body drop.
+    fn supports_complete_streaming(&self) -> bool {
+        false
+    }
+
+    /// Projects a complete service result to a non-buffering response stream.
+    ///
+    /// This is called only when [`Self::supports_complete_streaming`] returned
+    /// `true`. The stream must observe `context`, bound every emitted fragment,
+    /// and avoid materializing a second complete encoded response buffer.
+    ///
+    /// # Errors
+    ///
+    /// Returns a redacted failure before response headers are committed.
+    fn project_complete_stream(
+        &self,
+        _identity: &HttpRequestIdentity,
+        _response: ServiceResponse,
+        _context: &RequestContext,
+    ) -> Result<ProtocolStreamResponse, ProtocolFailure> {
+        Err(internal_failure())
     }
 
     /// Projects a matching service subscriber into an exact streaming response.
