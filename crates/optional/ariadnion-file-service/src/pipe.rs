@@ -163,6 +163,10 @@ pub(crate) struct PipeReceivedChunk {
 }
 
 /// A redacted state view used by internal diagnostics and bounded-memory contracts.
+///
+/// The ignored external pipe contracts inject this module directly, so the
+/// library target cannot observe their accessor calls.
+#[allow(dead_code)]
 pub(crate) struct PipeSnapshot {
     retained_length: Option<usize>,
     retained_capacity: Option<usize>,
@@ -350,6 +354,7 @@ impl PipeAbortHandle {
     }
 
     /// Returns retained-memory measurements without exposing byte contents.
+    #[allow(dead_code)]
     pub(crate) fn snapshot(&self) -> PipeSnapshot {
         let (state, _) = lock_state(&self.shared);
         let retained_length = state.retained.as_ref().map(|(_, bytes)| bytes.len());
@@ -360,6 +365,7 @@ impl PipeAbortHandle {
     }
 }
 
+#[allow(dead_code)]
 impl PipeSnapshot {
     /// Returns the retained chunk length when a chunk is offered.
     pub(crate) const fn retained_length(&self) -> Option<usize> {
