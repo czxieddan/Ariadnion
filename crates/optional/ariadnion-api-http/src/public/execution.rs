@@ -470,7 +470,7 @@ fn project_dispatch_outcome(
 ) -> Result<Response, ExecutionFailure> {
     match (request.response_mode, outcome) {
         (ResponseMode::Complete, ServiceDispatchOutcome::Complete(response)) => {
-            complete_dispatch_response(request, response, permit)
+            project_complete_dispatch_response(request, response, permit)
         }
         (ResponseMode::Stream, ServiceDispatchOutcome::Stream(subscriber)) => {
             stream_dispatch_response(request, subscriber, permit)
@@ -480,6 +480,18 @@ fn project_dispatch_outcome(
             Err(internal_execution_failure(request.identity))
         }
         _ => Err(internal_execution_failure(request.identity)),
+    }
+}
+
+fn project_complete_dispatch_response(
+    request: DispatchedRequest,
+    response: ariadnion_api_domain::ServiceResponse,
+    permit: OwnedSemaphorePermit,
+) -> Result<Response, ExecutionFailure> {
+    if request.projection.supports_complete_streaming() {
+        complete_stream_dispatch_response(request, response, permit)
+    } else {
+        complete_dispatch_response(request, response, permit)
     }
 }
 
@@ -496,6 +508,25 @@ fn complete_dispatch_response(
         .map_err(|failure| ExecutionFailure::new(request.identity.clone(), failure))?;
     request.cancellation.disarm();
     Ok(response)
+}
+
+fn complete_stream_dispatch_response(
+    request: DispatchedRequest,
+    response: ariadnion_api_domain::ServiceResponse,
+    permit: OwnedSemaphorePermit,
+) -> Result<Response, ExecutionFailure> {
+    let projected = request
+        .projection
+        .project_complete_stream(&request.identity, response, &request.context)
+        .map_err(|failure| ExecutionFailure::new(request.identity.clone(), failure))?;
+    let projected = finalize_stream_projection(&request.identity, projected)
+        .map_err(|failure| ExecutionFailure::new(request.identity.clone(), failure))?;
+    Ok(project_stream_response(
+        request,
+        projected,
+        CancellationToken::new(),
+        permit,
+    ))
 }
 
 fn stream_dispatch_response(
