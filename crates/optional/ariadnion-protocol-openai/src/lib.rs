@@ -145,14 +145,30 @@ pub const OPENAI_CHAT_COMPLETIONS_PATH: &str = "/v1/chat/completions";
 pub type OpenAiChatCompletionsRouter = Router;
 
 /// Strict decoder and projector for the supported OpenAI chat request subset.
-#[derive(Clone, Copy, Default)]
-pub struct OpenAiProtocol;
+#[derive(Clone)]
+pub struct OpenAiProtocol {
+    clock: Arc<dyn OpenAiTimestampPort>,
+}
 
 impl OpenAiProtocol {
-    /// Creates a stateless OpenAI protocol adapter.
+    /// Creates a chat adapter backed by the system UTC clock.
     #[must_use]
-    pub const fn new() -> Self {
-        Self
+    pub fn new() -> Self {
+        Self {
+            clock: Arc::new(SystemOpenAiTimestamp),
+        }
+    }
+
+    /// Creates a chat adapter with an authoritative timestamp port.
+    #[must_use]
+    pub fn with_clock(clock: Arc<dyn OpenAiTimestampPort>) -> Self {
+        Self { clock }
+    }
+}
+
+impl Default for OpenAiProtocol {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -165,8 +181,13 @@ impl Debug for OpenAiProtocol {
 impl HttpProtocolAdapter for OpenAiProtocol {
     fn decode(&self, body: ProtocolRequestBody) -> Result<ProtocolRequest, ProtocolFailure> {
         let decoded = request::decode(body.bytes())?;
+        let created = self.clock.unix_seconds()?;
         let response_mode = decoded.request.response_mode();
-        let projection = Arc::new(OpenAiProjection::new(decoded.model, decoded.include_usage));
+        let projection = Arc::new(OpenAiProjection::new(
+            decoded.model,
+            decoded.include_usage,
+            created,
+        ));
         ProtocolRequest::new(
             ServiceRequest::Chat(decoded.request),
             response_mode,
@@ -247,6 +268,18 @@ impl HttpProtocolAdapter for OpenAiResponsesProtocol {
 /// protocol-owned bounded SSE projection over the same authenticated lifecycle.
 pub fn openai_chat_completions_router(http: HttpApiState) -> OpenAiChatCompletionsRouter {
     let protocol: Arc<dyn HttpProtocolAdapter> = Arc::new(OpenAiProtocol::new());
+    let state = ProtocolExecutionState::new(http, protocol);
+    Router::new()
+        .route(OPENAI_CHAT_COMPLETIONS_PATH, protocol_post_route())
+        .with_state(state)
+}
+
+/// Mounts the chat completions route with an explicit timestamp port.
+pub fn openai_chat_completions_router_with_clock(
+    http: HttpApiState,
+    clock: Arc<dyn OpenAiTimestampPort>,
+) -> OpenAiChatCompletionsRouter {
+    let protocol: Arc<dyn HttpProtocolAdapter> = Arc::new(OpenAiProtocol::with_clock(clock));
     let state = ProtocolExecutionState::new(http, protocol);
     Router::new()
         .route(OPENAI_CHAT_COMPLETIONS_PATH, protocol_post_route())

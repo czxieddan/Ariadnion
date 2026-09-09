@@ -49,7 +49,6 @@ use serde::Serialize;
 use tokio::runtime::Handle;
 use tokio::task::JoinHandle;
 
-const CREATED_EPOCH_SECONDS: u64 = 0;
 const EVENT_RECEIVE_POLL: Duration = Duration::from_millis(25);
 const MAX_OPENAI_SSE_FRAME_BYTES: usize = 256 * 1024;
 const DATA_PREFIX: &[u8] = b"data: ";
@@ -62,6 +61,7 @@ pub(crate) fn project_stream(
     identity: &HttpRequestIdentity,
     model: &str,
     include_usage: bool,
+    created: u64,
     subscriber: EventSubscriber<ServiceStreamEvent>,
     context: &RequestContext,
 ) -> Result<ProtocolStreamResponse, ProtocolFailure> {
@@ -75,7 +75,7 @@ pub(crate) fn project_stream(
         HeaderValue::from_static("text/event-stream"),
     );
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
-    let stream = OpenAiSseStream::new(identity, model, include_usage, subscriber, context);
+    let stream = OpenAiSseStream::new(identity, model, include_usage, created, subscriber, context);
     ProtocolStreamResponse::new(StatusCode::OK, headers, Box::pin(stream))
 }
 
@@ -104,6 +104,7 @@ struct OpenAiSseStream {
     id: Box<str>,
     model: Box<str>,
     include_usage: bool,
+    created: u64,
     last_sequence: Option<u64>,
     state: StreamState,
 }
@@ -113,6 +114,7 @@ impl OpenAiSseStream {
         identity: &HttpRequestIdentity,
         model: &str,
         include_usage: bool,
+        created: u64,
         subscriber: EventSubscriber<ServiceStreamEvent>,
         context: &RequestContext,
     ) -> Self {
@@ -125,6 +127,7 @@ impl OpenAiSseStream {
             id: format!("chatcmpl-{}", identity.request_id().as_str()).into(),
             model: model.into(),
             include_usage,
+            created,
             last_sequence: None,
             state: StreamState::AwaitingStart,
         }
@@ -300,7 +303,7 @@ impl OpenAiSseStream {
         let body = ChunkBody {
             id: &self.id,
             object: "chat.completion.chunk",
-            created: CREATED_EPOCH_SECONDS,
+            created: self.created,
             model: &self.model,
             choices: &choices,
             usage: regular_usage_field(self.include_usage),
@@ -313,7 +316,7 @@ impl OpenAiSseStream {
         let body = ChunkBody {
             id: &self.id,
             object: "chat.completion.chunk",
-            created: CREATED_EPOCH_SECONDS,
+            created: self.created,
             model: &self.model,
             choices: &choices,
             usage: Some(Some(UsageBody::from(usage))),

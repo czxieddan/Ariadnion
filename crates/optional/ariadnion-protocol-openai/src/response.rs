@@ -43,18 +43,18 @@ use axum::body::Bytes;
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use serde::Serialize;
 
-const CREATED_EPOCH_SECONDS: u64 = 0;
-
 pub(crate) struct OpenAiProjection {
     model: Box<str>,
     include_usage: bool,
+    created: u64,
 }
 
 impl OpenAiProjection {
-    pub(crate) const fn new(model: Box<str>, include_usage: bool) -> Self {
+    pub(crate) const fn new(model: Box<str>, include_usage: bool, created: u64) -> Self {
         Self {
             model,
             include_usage,
+            created,
         }
     }
 }
@@ -82,7 +82,7 @@ impl HttpProtocolProjection for OpenAiProjection {
             return Err(internal_failure());
         };
         validate_response(&response)?;
-        complete_response(identity, &self.model, &response)
+        complete_response(identity, &self.model, &response, self.created)
     }
 
     fn project_stream(
@@ -95,6 +95,7 @@ impl HttpProtocolProjection for OpenAiProjection {
             identity,
             &self.model,
             self.include_usage,
+            self.created,
             subscriber,
             context,
         )
@@ -122,13 +123,14 @@ fn complete_response(
     identity: &HttpRequestIdentity,
     model: &str,
     response: &ChatServiceResponse,
+    created: u64,
 ) -> Result<ProtocolBufferedResponse, ProtocolFailure> {
     let usage = response.usage();
     let finish_reason = finish_reason(response.finish_reason())?;
     let body = CompletionBody {
         id: format!("chatcmpl-{}", identity.request_id().as_str()),
         object: "chat.completion",
-        created: CREATED_EPOCH_SECONDS,
+        created,
         model,
         choices: [CompletionChoice {
             index: 0,
