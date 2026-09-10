@@ -36,8 +36,9 @@ use axum::Router;
 
 use crate::{
     OpenAiModelCatalog, OpenAiTimestampPort, SystemOpenAiTimestamp, openai_chat_completions_router,
-    openai_completions_router_with_clock, openai_embeddings_router, openai_models_router,
-    openai_responses_router_with_clock, openai_speech_router,
+    openai_chat_completions_router_with_clock, openai_completions_router_with_clock,
+    openai_embeddings_router, openai_models_router, openai_responses_router_with_clock,
+    openai_speech_router,
 };
 
 /// Explicit optional capabilities used while composing the OpenAI route family.
@@ -93,8 +94,13 @@ impl OpenAiRouteManifest {
     /// configuration lookup, protocol negotiation, or listener setup.
     #[must_use = "retain the composed OpenAI router for the public listener owner"]
     pub fn mount(&self, http: HttpApiState) -> Router {
-        let mut router = openai_chat_completions_router(http.clone())
-            .merge(openai_embeddings_router(http.clone()));
+        let mut router = match &self.timestamp {
+            Some(timestamp) => {
+                openai_chat_completions_router_with_clock(http.clone(), Arc::clone(timestamp))
+            }
+            None => openai_chat_completions_router(http.clone()),
+        }
+        .merge(openai_embeddings_router(http.clone()));
         if let Some(timestamp) = &self.timestamp {
             router = router
                 .merge(openai_completions_router_with_clock(
