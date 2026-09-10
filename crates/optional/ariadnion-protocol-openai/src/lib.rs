@@ -33,6 +33,7 @@
 
 pub mod completions;
 pub mod embeddings;
+pub mod images;
 pub mod models;
 pub mod realtime;
 mod request;
@@ -64,6 +65,10 @@ pub use completions::{
 pub use embeddings::{
     OPENAI_EMBEDDINGS_PATH, OpenAiEmbeddingsProtocol, OpenAiEmbeddingsRouter,
     openai_embeddings_router,
+};
+pub use images::{
+    OPENAI_IMAGES_GENERATIONS_PATH, OpenAiImagesProtocol, OpenAiImagesRouter, openai_images_router,
+    openai_images_router_with_clock,
 };
 pub use models::{
     MAX_MODEL_OWNER_BYTES, MAX_OPENAI_MODELS, OPENAI_MODELS_PATH, OpenAiModelCatalog,

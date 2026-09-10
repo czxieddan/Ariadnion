@@ -37,15 +37,15 @@ use axum::Router;
 use crate::{
     OpenAiModelCatalog, OpenAiTimestampPort, SystemOpenAiTimestamp, openai_chat_completions_router,
     openai_chat_completions_router_with_clock, openai_completions_router_with_clock,
-    openai_embeddings_router, openai_models_router, openai_responses_router_with_clock,
-    openai_speech_router,
+    openai_embeddings_router, openai_images_router, openai_images_router_with_clock,
+    openai_models_router, openai_responses_router_with_clock, openai_speech_router,
 };
 
 /// Explicit optional capabilities used while composing the OpenAI route family.
 ///
-/// Chat Completions and Embeddings are always mounted by [`Self::mount`]. Legacy
-/// Completions and Responses require the same explicit timestamp capability and
-/// are omitted when it is absent. Models and Speech are mounted only when their
+/// Chat Completions, Embeddings, and Images are always mounted by [`Self::mount`].
+/// Legacy Completions and Responses require the same explicit timestamp capability
+/// and are omitted when it is absent. Models and Speech are mounted only when their
 /// typed composition capabilities are supplied.
 #[derive(Clone)]
 pub struct OpenAiRouteManifest {
@@ -101,6 +101,13 @@ impl OpenAiRouteManifest {
             None => openai_chat_completions_router(http.clone()),
         }
         .merge(openai_embeddings_router(http.clone()));
+        router = match &self.timestamp {
+            Some(timestamp) => router.merge(openai_images_router_with_clock(
+                http.clone(),
+                Arc::clone(timestamp),
+            )),
+            None => router.merge(openai_images_router(http.clone())),
+        };
         if let Some(timestamp) = &self.timestamp {
             router = router
                 .merge(openai_completions_router_with_clock(
