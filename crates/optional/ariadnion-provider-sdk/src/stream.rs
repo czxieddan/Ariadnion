@@ -32,7 +32,10 @@ use std::fmt::{self, Debug, Display, Formatter};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
-use ariadnion_api_domain::{FinishReason, ServiceContractVersion, TextDelta, TokenUsage};
+use ariadnion_api_domain::{
+    AudioChunk, AudioOutputSpecification, FinishReason, ServiceContractVersion, TextDelta,
+    TokenUsage,
+};
 use ariadnion_core::{
     CancellationToken, EventEnvelope, EventPublisher, EventSubscriber, PublishError,
     ReceiveOutcome, bounded_event_channel,
@@ -73,6 +76,17 @@ pub enum ProviderStreamEvent {
         /// Checked token usage for the completed chat result.
         usage: TokenUsage,
     },
+    /// Announces an encoded audio stream and its physical output layout.
+    AudioStarted {
+        /// Service contract version used by this stream.
+        version: ServiceContractVersion,
+        /// Provider-neutral encoded output requirements.
+        output_specification: AudioOutputSpecification,
+    },
+    /// Carries one bounded encoded audio increment.
+    AudioChunk(AudioChunk),
+    /// Reports normal terminal completion for an audio stream.
+    AudioCompleted,
     /// Reports one classified terminal provider failure.
     ///
     /// Adapters provide unbound failure facts. The publisher binds current
@@ -188,6 +202,7 @@ enum StreamPhase {
     AwaitingStart,
     TextActive,
     ChatActive,
+    AudioActive,
     Terminal,
 }
 
@@ -323,7 +338,7 @@ fn validate_event(
     if event.sequence() == 0 || !valid_transition(state.phase, event.payload()) {
         return Err(ProviderStreamPublishError::InvalidTransition(event.clone()));
     }
-    let next_events = checked_event_count(state, limits)
+    let next_events = checked_event_count(state, event.payload(), limits)
         .ok_or_else(|| ProviderStreamPublishError::ResourceLimit(event.clone()))?;
     let next_bytes = checked_stream_bytes(state, event.payload(), limits)
         .ok_or_else(|| ProviderStreamPublishError::ResourceLimit(event.clone()))?;
@@ -339,7 +354,9 @@ const fn valid_transition(phase: StreamPhase, event: &ProviderStreamEvent) -> bo
         (phase, event),
         (
             StreamPhase::AwaitingStart,
-            ProviderStreamEvent::Started { .. } | ProviderStreamEvent::ChatStarted { .. }
+            ProviderStreamEvent::Started { .. }
+                | ProviderStreamEvent::ChatStarted { .. }
+                | ProviderStreamEvent::AudioStarted { .. }
         ) | (
             StreamPhase::TextActive,
             ProviderStreamEvent::TextDelta(_)
@@ -349,6 +366,11 @@ const fn valid_transition(phase: StreamPhase, event: &ProviderStreamEvent) -> bo
             StreamPhase::ChatActive,
             ProviderStreamEvent::ChatDelta(_)
                 | ProviderStreamEvent::ChatCompleted { .. }
+                | ProviderStreamEvent::Failed(_),
+        ) | (
+            StreamPhase::AudioActive,
+            ProviderStreamEvent::AudioChunk(_)
+                | ProviderStreamEvent::AudioCompleted
                 | ProviderStreamEvent::Failed(_),
         )
     )
@@ -362,17 +384,37 @@ const fn next_phase(event: &ProviderStreamEvent) -> StreamPhase {
         ProviderStreamEvent::ChatStarted { .. } | ProviderStreamEvent::ChatDelta(_) => {
             StreamPhase::ChatActive
         }
+        ProviderStreamEvent::AudioStarted { .. } | ProviderStreamEvent::AudioChunk(_) => {
+            StreamPhase::AudioActive
+        }
         ProviderStreamEvent::Completed { .. }
         | ProviderStreamEvent::ChatCompleted { .. }
+        | ProviderStreamEvent::AudioCompleted
         | ProviderStreamEvent::Failed(_) => StreamPhase::Terminal,
     }
 }
 
-fn checked_event_count(state: &StreamState, limits: ProviderLimits) -> Option<usize> {
+fn checked_event_count(
+    state: &StreamState,
+    event: &ProviderStreamEvent,
+    limits: ProviderLimits,
+) -> Option<usize> {
+    let reserved_terminal = usize::from(!is_terminal_event(event));
+    let available = limits.max_stream_events().checked_sub(reserved_terminal)?;
     state
         .published_events
         .checked_add(1)
-        .filter(|count| *count <= limits.max_stream_events())
+        .filter(|count| *count <= available)
+}
+
+const fn is_terminal_event(event: &ProviderStreamEvent) -> bool {
+    matches!(
+        event,
+        ProviderStreamEvent::Completed { .. }
+            | ProviderStreamEvent::ChatCompleted { .. }
+            | ProviderStreamEvent::AudioCompleted
+            | ProviderStreamEvent::Failed(_)
+    )
 }
 
 fn checked_stream_bytes(
@@ -395,6 +437,7 @@ fn event_bytes(event: &ProviderStreamEvent) -> usize {
         ProviderStreamEvent::TextDelta(delta) | ProviderStreamEvent::ChatDelta(delta) => {
             delta.as_str().len()
         }
+        ProviderStreamEvent::AudioChunk(chunk) => chunk.encoded_bytes(),
         _ => 0,
     }
 }

@@ -40,6 +40,7 @@ pub const MAX_PROVIDER_DELTA_BYTES: usize = 65_536;
 pub const MAX_PROVIDER_STREAM_BYTES: usize = 16_777_216;
 /// The hard upper bound for provider stream events in one attempt.
 pub const MAX_PROVIDER_STREAM_EVENTS: usize = 262_144;
+const MIN_PROVIDER_STREAM_EVENTS: usize = 2;
 
 /// Stable construction failures for provider contracts.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -120,6 +121,8 @@ pub enum ProviderCapability {
     Batch = 10,
     /// Image generation is available.
     ImageGeneration = 11,
+    /// Incremental encoded audio output is available.
+    AudioStreaming = 12,
 }
 
 impl ProviderCapability {
@@ -128,7 +131,7 @@ impl ProviderCapability {
     }
 }
 
-const PROVIDER_CAPABILITY_ORDER: [ProviderCapability; 12] = [
+const PROVIDER_CAPABILITY_ORDER: [ProviderCapability; 13] = [
     ProviderCapability::TextGeneration,
     ProviderCapability::TextStreaming,
     ProviderCapability::ToolCalls,
@@ -136,6 +139,7 @@ const PROVIDER_CAPABILITY_ORDER: [ProviderCapability; 12] = [
     ProviderCapability::VisionInput,
     ProviderCapability::AudioInput,
     ProviderCapability::AudioOutput,
+    ProviderCapability::AudioStreaming,
     ProviderCapability::Embeddings,
     ProviderCapability::ImageGeneration,
     ProviderCapability::Files,
@@ -321,7 +325,7 @@ const fn validate_hard_limits(
     if max_request_bytes > MAX_PROVIDER_REQUEST_BYTES
         || max_delta_bytes > MAX_PROVIDER_DELTA_BYTES
         || max_stream_bytes > MAX_PROVIDER_STREAM_BYTES
-        || max_stream_events == 0
+        || max_stream_events < MIN_PROVIDER_STREAM_EVENTS
         || max_stream_events > MAX_PROVIDER_STREAM_EVENTS
     {
         return Err(ProviderContractError::new(
@@ -412,9 +416,24 @@ fn validate_capabilities(capabilities: ProviderCapabilities) -> Result<(), Provi
             ProviderContractErrorCode::InvalidArgument,
         ));
     }
-    if capabilities.contains(ProviderCapability::TextStreaming)
-        && !capabilities.contains(ProviderCapability::TextGeneration)
-    {
+    validate_capability_dependency(
+        capabilities,
+        ProviderCapability::TextStreaming,
+        ProviderCapability::TextGeneration,
+    )?;
+    validate_capability_dependency(
+        capabilities,
+        ProviderCapability::AudioStreaming,
+        ProviderCapability::AudioOutput,
+    )
+}
+
+fn validate_capability_dependency(
+    capabilities: ProviderCapabilities,
+    capability: ProviderCapability,
+    required: ProviderCapability,
+) -> Result<(), ProviderContractError> {
+    if capabilities.contains(capability) && !capabilities.contains(required) {
         return Err(ProviderContractError::new(
             ProviderContractErrorCode::CapabilityConflict,
         ));
