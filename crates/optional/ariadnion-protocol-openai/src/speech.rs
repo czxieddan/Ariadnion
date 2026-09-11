@@ -33,25 +33,33 @@
 
 use std::borrow::Cow;
 use std::fmt::{self, Debug, Formatter};
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
+use std::time::Duration;
 
 use ariadnion_api_domain::{
     ApiDomainError, ApiDomainErrorCode, AudioMediaType, AudioOutputSpecification,
-    AudioServiceRequest, AudioServiceResponse, AudioText, AudioVoiceSelector, IdempotencyKey,
-    ModelSelector, ResponseMode, ServiceContractVersion, ServiceRequest, ServiceResponse,
-    ServiceStreamEvent,
+    AudioServiceRequest, AudioServiceResponse, AudioStreamEvent, AudioText, AudioVoiceSelector,
+    IdempotencyKey, ModelSelector, ResponseMode, ServiceContractVersion, ServiceRequest,
+    ServiceResponse, ServiceStreamEvent,
 };
 use ariadnion_api_http::{
     ApiHttpError, ApiHttpErrorCode, HttpApiState, HttpProtocolAdapter, HttpProtocolProjection,
     HttpRequestIdentity, ProtocolBufferedResponse, ProtocolExecutionState, ProtocolFailure,
     ProtocolRequest, ProtocolRequestBody, ProtocolStreamResponse, protocol_post_route,
 };
-use ariadnion_core::{EventSubscriber, RequestContext};
+use ariadnion_core::{
+    CancellationToken, EventEnvelope, EventSubscriber, ReceiveOutcome, RequestContext,
+};
 use axum::Router;
 use axum::body::Bytes;
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
+use futures_core::Stream;
 use serde::Serialize;
 use serde::de::{self, Deserialize, Deserializer, Error as _, MapAccess, Visitor};
+use tokio::runtime::Handle;
+use tokio::task::JoinHandle;
 
 const REQUEST_FIELDS: &[&str] = &[
     "model",
@@ -63,6 +71,7 @@ const REQUEST_FIELDS: &[&str] = &[
 const IDEMPOTENCY_HEADER: &str = "idempotency-key";
 const MAX_SPEECH_INPUT_SCALARS: usize = 4_096;
 const AUDIO_COPY_CHUNK_BYTES: usize = 65_536;
+const EVENT_RECEIVE_POLL: Duration = Duration::from_millis(25);
 
 /// Public route owned by the OpenAI Speech adapter.
 pub const OPENAI_SPEECH_PATH: &str = "/v1/audio/speech";
@@ -100,7 +109,7 @@ impl HttpProtocolAdapter for OpenAiSpeechProtocol {
         let request = decode_request(body.bytes(), idempotency, self.output)?;
         ProtocolRequest::new(
             ServiceRequest::Audio(request),
-            ResponseMode::Complete,
+            ResponseMode::Stream,
             Arc::new(OpenAiSpeechProjection {
                 output: self.output,
             }),
@@ -156,12 +165,13 @@ impl RawRequest<'_> {
         output: AudioOutputSpecification,
     ) -> Result<AudioServiceRequest, ApiDomainError> {
         validate_input_scalars(&self.input)?;
-        Ok(AudioServiceRequest::new(
+        Ok(AudioServiceRequest::with_response_mode(
             ServiceContractVersion::V1,
             ModelSelector::new(&self.model)?,
             AudioText::new(&self.input)?,
             AudioVoiceSelector::new(&self.voice)?,
             output,
+            ResponseMode::Stream,
             idempotency,
         ))
     }
@@ -312,7 +322,7 @@ impl Debug for OpenAiSpeechProjection {
 
 impl HttpProtocolProjection for OpenAiSpeechProjection {
     fn supports_streaming(&self) -> bool {
-        false
+        true
     }
 
     fn project_complete(
@@ -335,11 +345,277 @@ impl HttpProtocolProjection for OpenAiSpeechProjection {
     fn project_stream(
         &self,
         _identity: &HttpRequestIdentity,
-        _subscriber: EventSubscriber<ServiceStreamEvent>,
-        _context: &RequestContext,
+        subscriber: EventSubscriber<ServiceStreamEvent>,
+        context: &RequestContext,
     ) -> Result<ProtocolStreamResponse, ProtocolFailure> {
-        Err(internal_failure())
+        project_audio_stream(subscriber, context, self.output)
     }
+}
+
+fn project_audio_stream(
+    subscriber: EventSubscriber<ServiceStreamEvent>,
+    context: &RequestContext,
+    output: AudioOutputSpecification,
+) -> Result<ProtocolStreamResponse, ProtocolFailure> {
+    context.check_active().map_err(ApiDomainError::from)?;
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(AudioMediaType::WavPcm16.as_str()),
+    );
+    let stream = AudioBodyStream::new(subscriber, context, output);
+    ProtocolStreamResponse::new(StatusCode::OK, headers, Box::pin(stream))
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum AudioStreamState {
+    AwaitingStart,
+    Open,
+    Closed,
+}
+
+enum AudioReceiveResult {
+    Event(EventEnvelope<ServiceStreamEvent>),
+    Closed,
+    Cancelled,
+    Inactive,
+}
+
+type AudioReceiveTask = JoinHandle<(EventSubscriber<ServiceStreamEvent>, AudioReceiveResult)>;
+
+struct AudioBodyStream {
+    subscriber: Option<EventSubscriber<ServiceStreamEvent>>,
+    receive: Option<AudioReceiveTask>,
+    cancellation: CancellationToken,
+    context: RequestContext,
+    output: AudioOutputSpecification,
+    input_sequence: Option<u64>,
+    state: AudioStreamState,
+}
+
+impl AudioBodyStream {
+    fn new(
+        subscriber: EventSubscriber<ServiceStreamEvent>,
+        context: &RequestContext,
+        output: AudioOutputSpecification,
+    ) -> Self {
+        let cancellation = subscriber.cancellation();
+        Self {
+            subscriber: Some(subscriber),
+            receive: None,
+            cancellation,
+            context: context.clone(),
+            output,
+            input_sequence: None,
+            state: AudioStreamState::AwaitingStart,
+        }
+    }
+
+    fn ensure_receive(&mut self) -> Result<(), ApiHttpError> {
+        if self.receive.is_some() {
+            return Ok(());
+        }
+        let handle = Handle::try_current().map_err(|_| stream_internal_error())?;
+        let subscriber = self.subscriber.take().ok_or_else(stream_internal_error)?;
+        let context = self.context.clone();
+        self.receive =
+            Some(handle.spawn_blocking(move || receive_audio_event(subscriber, &context)));
+        Ok(())
+    }
+
+    fn poll_receive(
+        &mut self,
+        task_context: &mut Context<'_>,
+    ) -> Poll<Option<Result<Bytes, ApiHttpError>>> {
+        let Some(mut receive) = self.receive.take() else {
+            return self.fail(stream_internal_error());
+        };
+        match Pin::new(&mut receive).poll(task_context) {
+            Poll::Pending => {
+                self.receive = Some(receive);
+                Poll::Pending
+            }
+            Poll::Ready(Ok((subscriber, result))) => {
+                self.subscriber = Some(subscriber);
+                self.handle_receive(result, task_context)
+            }
+            Poll::Ready(Err(_)) => self.fail(stream_internal_error()),
+        }
+    }
+
+    fn handle_receive(
+        &mut self,
+        result: AudioReceiveResult,
+        task_context: &mut Context<'_>,
+    ) -> Poll<Option<Result<Bytes, ApiHttpError>>> {
+        match result {
+            AudioReceiveResult::Event(event) => self.handle_event(event, task_context),
+            AudioReceiveResult::Cancelled | AudioReceiveResult::Inactive => self.finish(),
+            AudioReceiveResult::Closed => self.fail(stream_internal_error()),
+        }
+    }
+
+    fn handle_event(
+        &mut self,
+        envelope: EventEnvelope<ServiceStreamEvent>,
+        task_context: &mut Context<'_>,
+    ) -> Poll<Option<Result<Bytes, ApiHttpError>>> {
+        if !valid_audio_sequence(self.input_sequence, envelope.sequence()) {
+            return self.fail(stream_internal_error());
+        }
+        self.input_sequence = Some(envelope.sequence());
+        let ServiceStreamEvent::Audio(event) = envelope.into_payload() else {
+            return self.fail(stream_internal_error());
+        };
+        self.handle_audio_event(event, task_context)
+    }
+
+    fn handle_audio_event(
+        &mut self,
+        event: AudioStreamEvent,
+        task_context: &mut Context<'_>,
+    ) -> Poll<Option<Result<Bytes, ApiHttpError>>> {
+        match (self.state, event) {
+            (
+                AudioStreamState::AwaitingStart,
+                AudioStreamEvent::Started {
+                    version,
+                    output_specification,
+                },
+            ) => self.handle_start(version, output_specification, task_context),
+            (AudioStreamState::Open, AudioStreamEvent::Chunk(chunk)) => {
+                Poll::Ready(Some(Ok(Bytes::copy_from_slice(chunk.as_bytes()))))
+            }
+            (AudioStreamState::Open, AudioStreamEvent::Completed) => self.finish(),
+            (_, AudioStreamEvent::Failed(error)) => self.handle_failure(error),
+            _ => self.fail(stream_internal_error()),
+        }
+    }
+
+    fn handle_start(
+        &mut self,
+        version: ServiceContractVersion,
+        output: AudioOutputSpecification,
+        task_context: &mut Context<'_>,
+    ) -> Poll<Option<Result<Bytes, ApiHttpError>>> {
+        if version != ServiceContractVersion::V1 || output != self.output {
+            return self.fail(stream_internal_error());
+        }
+        self.state = AudioStreamState::Open;
+        self.poll_active(task_context)
+    }
+
+    fn handle_failure(
+        &mut self,
+        error: ApiDomainError,
+    ) -> Poll<Option<Result<Bytes, ApiHttpError>>> {
+        if error.code() == ApiDomainErrorCode::Cancelled {
+            self.finish()
+        } else {
+            self.fail(project_stream_domain_error(error))
+        }
+    }
+
+    fn poll_active(
+        &mut self,
+        task_context: &mut Context<'_>,
+    ) -> Poll<Option<Result<Bytes, ApiHttpError>>> {
+        if let Err(error) = self.ensure_receive() {
+            return self.fail(error);
+        }
+        self.poll_receive(task_context)
+    }
+
+    fn fail(&mut self, error: ApiHttpError) -> Poll<Option<Result<Bytes, ApiHttpError>>> {
+        self.close();
+        Poll::Ready(Some(Err(error)))
+    }
+
+    fn finish(&mut self) -> Poll<Option<Result<Bytes, ApiHttpError>>> {
+        self.close();
+        Poll::Ready(None)
+    }
+
+    fn close(&mut self) {
+        self.subscriber.take();
+        self.receive.take();
+        self.cancellation.cancel();
+        self.state = AudioStreamState::Closed;
+    }
+}
+
+impl Stream for AudioBodyStream {
+    type Item = Result<Bytes, ApiHttpError>;
+
+    fn poll_next(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let stream = self.as_mut().get_mut();
+        if stream.state == AudioStreamState::Closed {
+            return Poll::Ready(None);
+        }
+        if stream.context.is_inactive() {
+            return stream.finish();
+        }
+        stream.poll_active(context)
+    }
+}
+
+impl Drop for AudioBodyStream {
+    fn drop(&mut self) {
+        self.cancellation.cancel();
+    }
+}
+
+fn receive_audio_event(
+    subscriber: EventSubscriber<ServiceStreamEvent>,
+    context: &RequestContext,
+) -> (EventSubscriber<ServiceStreamEvent>, AudioReceiveResult) {
+    loop {
+        if let Some(result) = inactive_audio_receive_result(context) {
+            return (subscriber, result);
+        }
+        let outcome = subscriber.receive_timeout(EVENT_RECEIVE_POLL);
+        if let Some(result) = completed_audio_receive_result(outcome) {
+            return (subscriber, result);
+        }
+    }
+}
+
+fn inactive_audio_receive_result(context: &RequestContext) -> Option<AudioReceiveResult> {
+    if context.is_inactive() {
+        Some(AudioReceiveResult::Inactive)
+    } else {
+        None
+    }
+}
+
+fn completed_audio_receive_result(
+    outcome: ReceiveOutcome<ServiceStreamEvent>,
+) -> Option<AudioReceiveResult> {
+    match outcome {
+        ReceiveOutcome::Event(event) => Some(AudioReceiveResult::Event(event)),
+        ReceiveOutcome::TimedOut => None,
+        ReceiveOutcome::Closed => Some(AudioReceiveResult::Closed),
+        ReceiveOutcome::Cancelled => Some(AudioReceiveResult::Cancelled),
+    }
+}
+
+fn valid_audio_sequence(previous: Option<u64>, candidate: u64) -> bool {
+    candidate > 0 && previous.is_none_or(|sequence| candidate > sequence)
+}
+
+const fn project_stream_domain_error(error: ApiDomainError) -> ApiHttpError {
+    let code = match error.code() {
+        ApiDomainErrorCode::Cancelled => ApiHttpErrorCode::Cancelled,
+        ApiDomainErrorCode::DeadlineExceeded => ApiHttpErrorCode::DeadlineExceeded,
+        ApiDomainErrorCode::Unavailable => ApiHttpErrorCode::Unavailable,
+        ApiDomainErrorCode::ResourceExhausted => ApiHttpErrorCode::ResourceExhausted,
+        _ => ApiHttpErrorCode::Internal,
+    };
+    ApiHttpError::new(code)
+}
+
+const fn stream_internal_error() -> ApiHttpError {
+    ApiHttpError::new(ApiHttpErrorCode::Internal)
 }
 
 fn project_audio(
