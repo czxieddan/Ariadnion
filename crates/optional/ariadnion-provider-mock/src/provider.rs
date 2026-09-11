@@ -49,7 +49,7 @@ use ariadnion_provider_sdk::{
     bounded_provider_stream,
 };
 
-use crate::audio::plan_audio;
+use crate::audio::{AudioStreamPlan, for_each_audio_chunk, plan_audio, plan_audio_stream};
 use crate::chunk::for_each_delta;
 use crate::image::plan_image;
 
@@ -119,7 +119,8 @@ impl DeterministicMockProvider {
             .with(ProviderCapability::TextStreaming)
             .with(ProviderCapability::Embeddings)
             .with(ProviderCapability::ImageGeneration)
-            .with(ProviderCapability::AudioOutput);
+            .with(ProviderCapability::AudioOutput)
+            .with(ProviderCapability::AudioStreaming);
         let limits = ProviderLimits::new(
             MAX_MOCK_REQUEST_BYTES,
             MAX_MOCK_STREAM_DELTA_BYTES,
@@ -181,7 +182,7 @@ struct StreamJob {
     publisher: ProviderStreamPublisher,
     context: StreamExecutionContext,
     sequence: u64,
-    plan: GenerationPlan,
+    plan: StreamPlan,
 }
 
 impl StreamJob {
@@ -282,6 +283,12 @@ enum AttemptPlan {
         plan: GenerationPlan,
     },
     Complete(ServiceResponse),
+    AudioStream(AudioStreamPlan),
+}
+
+enum StreamPlan {
+    Generation(GenerationPlan),
+    Audio(AudioStreamPlan),
 }
 
 enum ProviderModelKind {
@@ -331,6 +338,18 @@ impl GenerationPlan {
     }
 }
 
+impl StreamPlan {
+    const fn started_event(&self) -> ProviderStreamEvent {
+        match self {
+            Self::Generation(plan) => plan.started_event(),
+            Self::Audio(plan) => ProviderStreamEvent::AudioStarted {
+                version: plan.version(),
+                output_specification: plan.specification(),
+            },
+        }
+    }
+}
+
 struct OutputPlan {
     version: ServiceContractVersion,
     content: Box<str>,
@@ -373,11 +392,22 @@ fn plan_attempt(attempt: &ProviderAttempt) -> Result<AttemptPlan, ProviderFailur
             .map(ServiceResponse::Image)
             .map(AttemptPlan::Complete),
         (ProviderModelKind::Audio, ServiceRequest::Audio(request)) => {
-            plan_audio(request, attempt.context())
-                .map(ServiceResponse::Audio)
-                .map(AttemptPlan::Complete)
+            plan_audio_attempt(request, attempt.context())
         }
         _ => Err(failure(ProviderFailureClass::InvalidRequest)),
+    }
+}
+
+fn plan_audio_attempt(
+    request: &ariadnion_api_domain::AudioServiceRequest,
+    context: &RequestContext,
+) -> Result<AttemptPlan, ProviderFailure> {
+    match request.response_mode() {
+        ResponseMode::Complete => plan_audio(request, context)
+            .map(ServiceResponse::Audio)
+            .map(AttemptPlan::Complete),
+        ResponseMode::Stream => plan_audio_stream(request).map(AttemptPlan::AudioStream),
+        _ => Err(invalid_request()),
     }
 }
 
@@ -406,6 +436,9 @@ fn outcome_for_plan(
             mark_response_started(&attempt.evidence())?;
             Ok(complete_response(response))
         }
+        AttemptPlan::AudioStream(plan) => {
+            stream_outcome(attempt, limits, stream_executor, StreamPlan::Audio(plan))
+        }
     }
 }
 
@@ -418,7 +451,12 @@ fn outcome_for_mode(
 ) -> Result<ProviderRawOutcome, ProviderFailure> {
     match (mode, plan) {
         (ResponseMode::Complete, plan) => complete_outcome(attempt.evidence(), plan),
-        (ResponseMode::Stream, plan) => stream_outcome(attempt, limits, stream_executor, plan),
+        (ResponseMode::Stream, plan) => stream_outcome(
+            attempt,
+            limits,
+            stream_executor,
+            StreamPlan::Generation(plan),
+        ),
         _ => Err(failure(ProviderFailureClass::InvalidRequest)),
     }
 }
@@ -576,7 +614,7 @@ fn stream_outcome(
     attempt: ProviderAttempt,
     limits: ProviderLimits,
     stream_executor: &StreamExecutor,
-    plan: GenerationPlan,
+    plan: StreamPlan,
 ) -> Result<ProviderRawOutcome, ProviderFailure> {
     let config = ProviderStreamConfig::new(MOCK_STREAM_CHANNEL_CAPACITY, limits)
         .map_err(|_| response_limit())?;
@@ -600,12 +638,26 @@ fn run_stream(
     publisher: ProviderStreamPublisher,
     context: StreamExecutionContext,
     mut sequence: u64,
-    plan: GenerationPlan,
+    plan: StreamPlan,
 ) {
-    if let Err(error) = publish_generation_stream(&publisher, &context, &mut sequence, &plan)
+    if let Err(error) = publish_stream(&publisher, &context, &mut sequence, &plan)
         && publish_terminal_failure(&publisher, &context, sequence, error).is_err()
     {
         context.cancel();
+    }
+}
+
+fn publish_stream(
+    publisher: &ProviderStreamPublisher,
+    context: &StreamExecutionContext,
+    sequence: &mut u64,
+    plan: &StreamPlan,
+) -> Result<(), ProviderFailure> {
+    match plan {
+        StreamPlan::Generation(plan) => {
+            publish_generation_stream(publisher, context, sequence, plan)
+        }
+        StreamPlan::Audio(plan) => publish_audio_stream(publisher, context, sequence, plan),
     }
 }
 
@@ -622,6 +674,32 @@ fn publish_generation_stream(
         |delta| publish_next(publisher, context, sequence, plan.delta_event(delta)),
     )?;
     publish_next(publisher, context, sequence, plan.completed_event())
+}
+
+fn publish_audio_stream(
+    publisher: &ProviderStreamPublisher,
+    context: &StreamExecutionContext,
+    sequence: &mut u64,
+    plan: &AudioStreamPlan,
+) -> Result<(), ProviderFailure> {
+    for_each_audio_chunk(
+        plan,
+        || context.check_active(),
+        |chunk| {
+            publish_next(
+                publisher,
+                context,
+                sequence,
+                ProviderStreamEvent::AudioChunk(chunk),
+            )
+        },
+    )?;
+    publish_next(
+        publisher,
+        context,
+        sequence,
+        ProviderStreamEvent::AudioCompleted,
+    )
 }
 
 fn publish_next(

@@ -29,13 +29,13 @@
 //! Bounded canonical PCM WAV generated from validated request values.
 
 use ariadnion_api_domain::{
-    AudioChannelCount, AudioMediaType, AudioSampleRate, AudioServiceRequest, AudioServiceResponse,
-    GeneratedAudio,
+    AudioChannelCount, AudioChunk, AudioMediaType, AudioOutputSpecification, AudioSampleRate,
+    AudioServiceRequest, AudioServiceResponse, GeneratedAudio, ServiceContractVersion,
 };
 use ariadnion_core::RequestContext;
 use ariadnion_provider_sdk::{ProviderFailure, ProviderFailureClass};
 
-use crate::provider::check_context;
+use crate::provider::{MAX_MOCK_STREAM_DELTA_BYTES, check_context};
 
 const WAV_HEADER_BYTES: usize = 44;
 const PCM_FORMAT_CODE: u16 = 1;
@@ -70,6 +70,124 @@ pub(crate) fn plan_audio(
     )
     .map_err(|_| internal_failure())?;
     Ok(AudioServiceResponse::new(request.version(), audio))
+}
+
+pub(crate) struct AudioStreamPlan {
+    version: ServiceContractVersion,
+    specification: AudioOutputSpecification,
+    frame_count: u32,
+    fingerprint: u64,
+    layout: WavLayout,
+}
+
+impl AudioStreamPlan {
+    pub(crate) const fn version(&self) -> ServiceContractVersion {
+        self.version
+    }
+
+    pub(crate) const fn specification(&self) -> AudioOutputSpecification {
+        self.specification
+    }
+}
+
+pub(crate) fn plan_audio_stream(
+    request: &AudioServiceRequest,
+) -> Result<AudioStreamPlan, ProviderFailure> {
+    let specification = request.output_specification();
+    let frame_count = specification.sample_rate().as_hz();
+    let layout = wav_layout(
+        specification.sample_rate(),
+        specification.channel_count(),
+        frame_count,
+    )?;
+    Ok(AudioStreamPlan {
+        version: request.version(),
+        specification,
+        frame_count,
+        fingerprint: request_fingerprint(request),
+        layout,
+    })
+}
+
+pub(crate) fn for_each_audio_chunk(
+    plan: &AudioStreamPlan,
+    mut check_active: impl FnMut() -> Result<(), ProviderFailure>,
+    mut emit: impl FnMut(AudioChunk) -> Result<(), ProviderFailure>,
+) -> Result<(), ProviderFailure> {
+    let mut header = Vec::with_capacity(WAV_HEADER_BYTES);
+    append_wav_header(
+        &mut header,
+        plan.specification.sample_rate(),
+        plan.specification.channel_count(),
+        plan.layout,
+    );
+    emit(audio_chunk(header)?)?;
+    emit_sample_chunks(plan, &mut check_active, &mut emit)
+}
+
+fn emit_sample_chunks(
+    plan: &AudioStreamPlan,
+    check_active: &mut impl FnMut() -> Result<(), ProviderFailure>,
+    emit: &mut impl FnMut(AudioChunk) -> Result<(), ProviderFailure>,
+) -> Result<(), ProviderFailure> {
+    let mut bytes = Vec::with_capacity(MAX_MOCK_STREAM_DELTA_BYTES);
+    for frame in 0..plan.frame_count {
+        append_checked_frame(&mut bytes, plan, frame, check_active)?;
+        emit_full_chunk(&mut bytes, emit)?;
+    }
+    emit_final_chunk(bytes, emit)
+}
+
+fn append_checked_frame(
+    bytes: &mut Vec<u8>,
+    plan: &AudioStreamPlan,
+    frame: u32,
+    check_active: &mut impl FnMut() -> Result<(), ProviderFailure>,
+) -> Result<(), ProviderFailure> {
+    check_active()?;
+    append_frame_samples(bytes, plan, frame)
+}
+
+fn emit_full_chunk(
+    bytes: &mut Vec<u8>,
+    emit: &mut impl FnMut(AudioChunk) -> Result<(), ProviderFailure>,
+) -> Result<(), ProviderFailure> {
+    if bytes.len() == MAX_MOCK_STREAM_DELTA_BYTES {
+        emit(take_audio_chunk(bytes)?)?;
+    }
+    Ok(())
+}
+
+fn emit_final_chunk(
+    bytes: Vec<u8>,
+    emit: &mut impl FnMut(AudioChunk) -> Result<(), ProviderFailure>,
+) -> Result<(), ProviderFailure> {
+    if bytes.is_empty() {
+        return Ok(());
+    }
+    emit(audio_chunk(bytes)?)
+}
+
+fn append_frame_samples(
+    bytes: &mut Vec<u8>,
+    plan: &AudioStreamPlan,
+    frame: u32,
+) -> Result<(), ProviderFailure> {
+    let channels = plan.specification.channel_count();
+    for channel in 0..channels.as_u16() {
+        let sample = sample_for_ordinal(plan.fingerprint, frame, channel, channels)?;
+        bytes.extend_from_slice(&sample.to_le_bytes());
+    }
+    Ok(())
+}
+
+fn take_audio_chunk(bytes: &mut Vec<u8>) -> Result<AudioChunk, ProviderFailure> {
+    let full = std::mem::replace(bytes, Vec::with_capacity(MAX_MOCK_STREAM_DELTA_BYTES));
+    audio_chunk(full)
+}
+
+fn audio_chunk(bytes: Vec<u8>) -> Result<AudioChunk, ProviderFailure> {
+    AudioChunk::new(bytes).map_err(|_| internal_failure())
 }
 
 fn request_fingerprint(request: &AudioServiceRequest) -> u64 {
