@@ -34,9 +34,12 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use ariadnion_api_domain::{ApiDomainError, ChatStreamEvent, ServiceStreamEvent, TextStreamEvent};
+use ariadnion_api_domain::{
+    ApiDomainError, AudioOutputSpecification, AudioStreamEvent, ChatStreamEvent,
+    ServiceContractVersion, ServiceStreamEvent, TextStreamEvent,
+};
 use ariadnion_core::{
-    CancellationToken, EventEnvelope, EventPublisher, EventSubscriber, PublishError,
+    CancellationToken, EventEnvelope, EventPublisher, EventSubscriber, ModuleVersion, PublishError,
     ReceiveOutcome, RequestContext, bounded_event_channel,
 };
 use ariadnion_provider_sdk::{ProviderStreamEvent, ProviderStreamSubscriber};
@@ -220,6 +223,8 @@ impl RelayManager {
             manager_cancellation: self.shutdown.clone(),
             attempt_context,
             kind,
+            last_sequence: None,
+            last_version: ModuleVersion::new(1, 0, 0),
         };
         // Health checks use the same lock, so no admission can observe a
         // started relay before its handle and permit become registered.
@@ -308,10 +313,12 @@ struct StreamRelay {
     manager_cancellation: CancellationToken,
     attempt_context: RequestContext,
     kind: ServiceKind,
+    last_sequence: Option<u64>,
+    last_version: ModuleVersion,
 }
 
 impl StreamRelay {
-    fn run(self) -> RelayExit {
+    fn run(mut self) -> RelayExit {
         while self.is_active() {
             let outcome = self.source.receive_timeout(PROVIDER_RECEIVE_WAIT);
             if let RelayStep::Stop(exit) = self.process_receive(outcome) {
@@ -337,14 +344,11 @@ impl StreamRelay {
         true
     }
 
-    fn process_receive(&self, outcome: ReceiveOutcome<ProviderStreamEvent>) -> RelayStep {
+    fn process_receive(&mut self, outcome: ReceiveOutcome<ProviderStreamEvent>) -> RelayStep {
         match outcome {
             ReceiveOutcome::Event(event) => self.forward(event),
             ReceiveOutcome::TimedOut => RelayStep::Continue,
-            ReceiveOutcome::Closed => {
-                self.cancel_output();
-                RelayStep::Stop(RelayExit::Healthy)
-            }
+            ReceiveOutcome::Closed => self.handle_premature_close(),
             ReceiveOutcome::Cancelled => {
                 self.cancel_output();
                 RelayStep::Stop(RelayExit::Healthy)
@@ -352,7 +356,9 @@ impl StreamRelay {
         }
     }
 
-    fn forward(&self, event: EventEnvelope<ProviderStreamEvent>) -> RelayStep {
+    fn forward(&mut self, event: EventEnvelope<ProviderStreamEvent>) -> RelayStep {
+        self.last_sequence = Some(event.sequence());
+        self.last_version = event.version();
         let projected = project_event(self.kind, event);
         let projected_exit = projected.exit;
         if projected_exit == RelayExit::Unhealthy {
@@ -372,6 +378,20 @@ impl StreamRelay {
         } else {
             RelayStep::Continue
         }
+    }
+
+    fn handle_premature_close(&self) -> RelayStep {
+        self.admission_health.mark_unhealthy();
+        let event = EventEnvelope::new(
+            next_relay_sequence(self.last_sequence),
+            self.last_version,
+            stream_internal_failure(self.kind),
+        );
+        let exit = match self.publish_retained(event) {
+            RelayPublication::Published => RelayExit::Unhealthy,
+            RelayPublication::Stopped(publication) => RelayExit::Unhealthy.merge(publication),
+        };
+        RelayStep::Stop(exit)
     }
 
     fn publish_retained(&self, mut event: EventEnvelope<ServiceStreamEvent>) -> RelayPublication {
@@ -420,6 +440,20 @@ impl StreamRelay {
     }
 }
 
+fn next_relay_sequence(previous: Option<u64>) -> u64 {
+    previous.map_or(1, |sequence| sequence.saturating_add(1))
+}
+
+fn stream_internal_failure(kind: ServiceKind) -> ServiceStreamEvent {
+    match kind {
+        ServiceKind::Text => ServiceStreamEvent::Text(TextStreamEvent::Failed(internal_error())),
+        ServiceKind::Chat => ServiceStreamEvent::Chat(ChatStreamEvent::Failed(internal_error())),
+        ServiceKind::Audio { .. } => {
+            ServiceStreamEvent::Audio(AudioStreamEvent::Failed(internal_error()))
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 enum RelayStep {
     Continue,
@@ -456,6 +490,10 @@ fn project_event(kind: ServiceKind, event: EventEnvelope<ProviderStreamEvent>) -
     match kind {
         ServiceKind::Text => project_text_event(event),
         ServiceKind::Chat => project_chat_event(event),
+        ServiceKind::Audio {
+            version,
+            specification,
+        } => project_audio_event(version, specification, event),
     }
 }
 
@@ -542,4 +580,62 @@ fn map_chat_payload(event: ProviderStreamEvent) -> ServiceStreamEvent {
         _ => ChatStreamEvent::Failed(internal_error()),
     };
     ServiceStreamEvent::Chat(mapped)
+}
+
+fn project_audio_event(
+    version: ServiceContractVersion,
+    specification: AudioOutputSpecification,
+    event: EventEnvelope<ProviderStreamEvent>,
+) -> ProjectedEvent {
+    let state = audio_projection_state(version, specification, event.payload());
+    let event = if state == ProjectionState::Reject {
+        event.map_payload(|_| ServiceStreamEvent::Audio(AudioStreamEvent::Failed(internal_error())))
+    } else {
+        event.map_payload(map_audio_payload)
+    };
+    ProjectedEvent {
+        event,
+        terminal: state != ProjectionState::Continue,
+        cancel_provider: state == ProjectionState::Reject,
+        exit: projection_exit(state),
+    }
+}
+
+fn audio_projection_state(
+    version: ServiceContractVersion,
+    specification: AudioOutputSpecification,
+    event: &ProviderStreamEvent,
+) -> ProjectionState {
+    match event {
+        ProviderStreamEvent::AudioStarted {
+            version: actual_version,
+            output_specification,
+        } if *actual_version == version && *output_specification == specification => {
+            ProjectionState::Continue
+        }
+        ProviderStreamEvent::AudioChunk(_) => ProjectionState::Continue,
+        ProviderStreamEvent::AudioCompleted | ProviderStreamEvent::Failed(_) => {
+            ProjectionState::Terminal
+        }
+        _ => ProjectionState::Reject,
+    }
+}
+
+fn map_audio_payload(event: ProviderStreamEvent) -> ServiceStreamEvent {
+    let mapped = match event {
+        ProviderStreamEvent::AudioStarted {
+            version,
+            output_specification,
+        } => AudioStreamEvent::Started {
+            version,
+            output_specification,
+        },
+        ProviderStreamEvent::AudioChunk(chunk) => AudioStreamEvent::Chunk(chunk),
+        ProviderStreamEvent::AudioCompleted => AudioStreamEvent::Completed,
+        ProviderStreamEvent::Failed(failure) => {
+            AudioStreamEvent::Failed(project_provider_failure(failure))
+        }
+        _ => AudioStreamEvent::Failed(internal_error()),
+    };
+    ServiceStreamEvent::Audio(mapped)
 }

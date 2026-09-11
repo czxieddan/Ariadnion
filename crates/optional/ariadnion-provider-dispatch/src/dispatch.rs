@@ -204,6 +204,10 @@ impl ServiceDispatchPort for ProviderDispatcher {
 pub(crate) enum ServiceKind {
     Text,
     Chat,
+    Audio {
+        version: ServiceContractVersion,
+        specification: AudioOutputSpecification,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -339,14 +343,29 @@ fn audio_admission(request: &AudioServiceRequest) -> Result<RequestAdmission<'_>
         idempotency_bytes(request.idempotency_key()),
     ])?;
     Ok(RequestAdmission {
-        delivery: DeliveryKind::Complete(CompleteKind::Audio {
-            version: request.version(),
-            specification,
-        }),
+        delivery: audio_delivery(request.version(), specification, request.response_mode())?,
         required_capability: ProviderCapability::AudioOutput,
         selector: request.model(),
         bounded_bytes,
     })
+}
+
+fn audio_delivery(
+    version: ServiceContractVersion,
+    specification: AudioOutputSpecification,
+    mode: ResponseMode,
+) -> Result<DeliveryKind, ApiDomainError> {
+    match mode {
+        ResponseMode::Complete => Ok(DeliveryKind::Complete(CompleteKind::Audio {
+            version,
+            specification,
+        })),
+        ResponseMode::Stream => Ok(DeliveryKind::Stream(ServiceKind::Audio {
+            version,
+            specification,
+        })),
+        _ => Err(internal_error()),
+    }
 }
 
 fn generation_delivery(
@@ -354,12 +373,17 @@ fn generation_delivery(
     mode: ResponseMode,
 ) -> Result<DeliveryKind, ApiDomainError> {
     match mode {
-        ResponseMode::Complete => Ok(DeliveryKind::Complete(match kind {
-            ServiceKind::Text => CompleteKind::Text,
-            ServiceKind::Chat => CompleteKind::Chat,
-        })),
+        ResponseMode::Complete => complete_generation_delivery(kind),
         ResponseMode::Stream => Ok(DeliveryKind::Stream(kind)),
         _ => Err(internal_error()),
+    }
+}
+
+const fn complete_generation_delivery(kind: ServiceKind) -> Result<DeliveryKind, ApiDomainError> {
+    match kind {
+        ServiceKind::Text => Ok(DeliveryKind::Complete(CompleteKind::Text)),
+        ServiceKind::Chat => Ok(DeliveryKind::Complete(CompleteKind::Chat)),
+        ServiceKind::Audio { .. } => Err(internal_error()),
     }
 }
 
@@ -404,12 +428,21 @@ fn validate_capabilities(
     if !capabilities.contains(required) {
         return Err(unavailable_error());
     }
-    if matches!(delivery, DeliveryKind::Stream(_))
-        && !capabilities.contains(ProviderCapability::TextStreaming)
-    {
+    let Some(streaming) = streaming_capability(delivery) else {
+        return Ok(());
+    };
+    if !capabilities.contains(streaming) {
         return Err(unavailable_error());
     }
     Ok(())
+}
+
+const fn streaming_capability(delivery: DeliveryKind) -> Option<ProviderCapability> {
+    match delivery {
+        DeliveryKind::Stream(ServiceKind::Audio { .. }) => Some(ProviderCapability::AudioStreaming),
+        DeliveryKind::Stream(_) => Some(ProviderCapability::TextStreaming),
+        DeliveryKind::Complete(_) => None,
+    }
 }
 
 fn project_outcome(
