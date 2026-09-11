@@ -42,6 +42,7 @@ mod identity;
 mod image;
 mod json;
 mod protocol;
+mod upgrade;
 
 use std::future::Future;
 use std::pin::Pin;
@@ -78,6 +79,10 @@ pub use protocol::{
     HttpGetProtocolAdapter, HttpProtocolAdapter, HttpProtocolProjection, ProtocolBufferedResponse,
     ProtocolExecutionState, ProtocolFailure, ProtocolGetExecutionState, ProtocolRequest,
     ProtocolRequestBody, ProtocolStreamResponse, protocol_get_route, protocol_post_route,
+};
+pub use upgrade::{
+    BoxHttpUpgradeFuture, BoxHttpUpgradeSession, HttpUpgradeProtocolAdapter, HttpUpgradeSession,
+    ProtocolUpgradeExecutionState, ProtocolUpgradeLimits, protocol_upgrade_route,
 };
 
 /// Maximum encoded request body admitted or protocol response body buffered.
