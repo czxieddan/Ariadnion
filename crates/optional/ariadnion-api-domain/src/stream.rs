@@ -34,6 +34,7 @@ use crate::error::{ApiDomainError, invalid_argument, limit_exceeded};
 use crate::request::ServiceContractVersion;
 use crate::response::FinishReason;
 use crate::usage::TokenUsage;
+use crate::{AudioChunk, AudioOutputSpecification};
 
 /// Maximum encoded size of one text delta in UTF-8 bytes.
 pub const MAX_TEXT_DELTA_BYTES: usize = 65_536;
@@ -122,6 +123,29 @@ pub enum ChatStreamEvent {
     Failed(ApiDomainError),
 }
 
+/// A payload event produced by an encoded audio-synthesis stream.
+///
+/// The owning stream port enforces ordering, aggregate byte and event bounds,
+/// backpressure, cancellation, and deadline propagation. Chunks are never an
+/// accumulated clone of the complete response.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum AudioStreamEvent {
+    /// Announces the service contract and physical output layout.
+    Started {
+        /// Service contract version used by this stream.
+        version: ServiceContractVersion,
+        /// Provider-neutral encoded output requirements.
+        output_specification: AudioOutputSpecification,
+    },
+    /// Carries one bounded increment of encoded audio.
+    Chunk(AudioChunk),
+    /// Reports normal completion without retaining accumulated audio.
+    Completed,
+    /// Reports a terminal redacted service failure.
+    Failed(ApiDomainError),
+}
+
 /// A transport-neutral service stream payload event.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -130,6 +154,8 @@ pub enum ServiceStreamEvent {
     Text(TextStreamEvent),
     /// An event from a role-preserving chat service stream.
     Chat(ChatStreamEvent),
+    /// An event from an encoded audio-synthesis stream.
+    Audio(AudioStreamEvent),
 }
 
 fn validate_text_delta(value: &str) -> Result<(), ApiDomainError> {

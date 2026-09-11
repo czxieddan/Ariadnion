@@ -40,6 +40,52 @@ pub use generated::{GeneratedAudio, MAX_AUDIO_DURATION_MILLIS, MAX_GENERATED_AUD
 pub const MAX_AUDIO_TEXT_BYTES: usize = 262_144;
 /// Maximum encoded size of one provider-neutral voice selector.
 pub const MAX_AUDIO_VOICE_SELECTOR_BYTES: usize = 128;
+/// Maximum encoded size of one binary audio stream chunk.
+pub const MAX_AUDIO_CHUNK_BYTES: usize = 65_536;
+
+/// One bounded nonempty binary audio chunk whose diagnostics redact its bytes.
+#[derive(Clone, Eq, PartialEq)]
+pub struct AudioChunk(Box<[u8]>);
+
+impl AudioChunk {
+    /// Validates and owns one incremental encoded-audio chunk.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ApiDomainErrorCode::InvalidArgument`] for an empty
+    /// chunk and [`crate::ApiDomainErrorCode::LimitExceeded`] above 65,536
+    /// bytes. Aggregate stream bounds remain the stream port's responsibility.
+    pub fn new(bytes: Vec<u8>) -> Result<Self, ApiDomainError> {
+        if bytes.len() > MAX_AUDIO_CHUNK_BYTES {
+            return Err(limit_exceeded());
+        }
+        if bytes.is_empty() {
+            return Err(invalid_argument());
+        }
+        Ok(Self(bytes.into_boxed_slice()))
+    }
+
+    /// Returns the encoded byte count.
+    #[must_use]
+    pub const fn encoded_bytes(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns the validated bytes to a trusted stream adapter.
+    #[must_use]
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl Debug for AudioChunk {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AudioChunk")
+            .field("encoded_bytes", &self.encoded_bytes())
+            .finish_non_exhaustive()
+    }
+}
 
 /// One bounded audio synthesis input whose diagnostics never expose its text.
 #[derive(Clone, Eq, PartialEq)]
@@ -186,7 +232,7 @@ impl AudioMediaType {
     }
 }
 
-/// Complete-only output requirements for one audio-synthesis request.
+/// Output requirements for one audio-synthesis request.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct AudioOutputSpecification {
     media_type: AudioMediaType,

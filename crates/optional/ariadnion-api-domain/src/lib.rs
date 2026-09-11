@@ -45,9 +45,10 @@ mod stream;
 mod usage;
 
 pub use audio::{
-    AudioChannelCount, AudioMediaType, AudioOutputSpecification, AudioSampleRate, AudioText,
-    AudioVoiceSelector, GeneratedAudio, MAX_AUDIO_DURATION_MILLIS, MAX_AUDIO_TEXT_BYTES,
-    MAX_AUDIO_VOICE_SELECTOR_BYTES, MAX_GENERATED_AUDIO_BYTES,
+    AudioChannelCount, AudioChunk, AudioMediaType, AudioOutputSpecification, AudioSampleRate,
+    AudioText, AudioVoiceSelector, GeneratedAudio, MAX_AUDIO_CHUNK_BYTES,
+    MAX_AUDIO_DURATION_MILLIS, MAX_AUDIO_TEXT_BYTES, MAX_AUDIO_VOICE_SELECTOR_BYTES,
+    MAX_GENERATED_AUDIO_BYTES,
 };
 pub use batch::{
     ApiBatchError, ApiBatchErrorCode, BatchCancelRequest, BatchCompletionWindow,
@@ -102,6 +103,7 @@ pub use response::{
     ImageServiceResponse, MAX_TEXT_OUTPUT_BYTES, ServiceResponse, TextOutput, TextServiceResponse,
 };
 pub use stream::{
-    ChatStreamEvent, MAX_TEXT_DELTA_BYTES, ServiceStreamEvent, TextDelta, TextStreamEvent,
+    AudioStreamEvent, ChatStreamEvent, MAX_TEXT_DELTA_BYTES, ServiceStreamEvent, TextDelta,
+    TextStreamEvent,
 };
 pub use usage::TokenUsage;
