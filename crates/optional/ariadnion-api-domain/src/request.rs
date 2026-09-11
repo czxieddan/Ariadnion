@@ -496,7 +496,7 @@ impl ImageServiceRequest {
     }
 }
 
-/// A fully validated request for complete-only audio synthesis.
+/// A fully validated request for bounded audio synthesis.
 #[derive(Clone, Eq, PartialEq)]
 pub struct AudioServiceRequest {
     version: ServiceContractVersion,
@@ -504,15 +504,16 @@ pub struct AudioServiceRequest {
     input: AudioText,
     voice: AudioVoiceSelector,
     output_specification: AudioOutputSpecification,
+    response_mode: ResponseMode,
     idempotency_key: Option<IdempotencyKey>,
 }
 
 impl AudioServiceRequest {
-    /// Creates an audio request from validated, transport-neutral values.
+    /// Creates a complete audio request from validated transport-neutral values.
     ///
-    /// Audio responses are complete-only. Provider quality controls, protocol
-    /// encoding choices, input-audio metadata, request identifiers, principals,
-    /// deadlines, cancellation handles, and trace state remain outside this value.
+    /// This compatibility constructor preserves complete-response behavior.
+    /// Use [`Self::with_response_mode`] when the caller explicitly negotiates
+    /// incremental delivery.
     #[must_use]
     pub const fn new(
         version: ServiceContractVersion,
@@ -522,12 +523,39 @@ impl AudioServiceRequest {
         output_specification: AudioOutputSpecification,
         idempotency_key: Option<IdempotencyKey>,
     ) -> Self {
+        Self::with_response_mode(
+            version,
+            model,
+            input,
+            voice,
+            output_specification,
+            ResponseMode::Complete,
+            idempotency_key,
+        )
+    }
+
+    /// Creates an audio request with an explicit response delivery mode.
+    ///
+    /// Provider quality controls, protocol encoding choices, input-audio
+    /// metadata, request identifiers, principals, deadlines, cancellation
+    /// handles, and trace state remain outside this value.
+    #[must_use]
+    pub const fn with_response_mode(
+        version: ServiceContractVersion,
+        model: ModelSelector,
+        input: AudioText,
+        voice: AudioVoiceSelector,
+        output_specification: AudioOutputSpecification,
+        response_mode: ResponseMode,
+        idempotency_key: Option<IdempotencyKey>,
+    ) -> Self {
         Self {
             version,
             model,
             input,
             voice,
             output_specification,
+            response_mode,
             idempotency_key,
         }
     }
@@ -556,10 +584,16 @@ impl AudioServiceRequest {
         &self.voice
     }
 
-    /// Returns the complete-only output requirements.
+    /// Returns the requested output requirements.
     #[must_use]
     pub const fn output_specification(&self) -> AudioOutputSpecification {
         self.output_specification
+    }
+
+    /// Returns the requested response delivery mode.
+    #[must_use]
+    pub const fn response_mode(&self) -> ResponseMode {
+        self.response_mode
     }
 
     /// Returns the optional idempotency key.
@@ -581,7 +615,7 @@ pub enum ServiceRequest {
     Embedding(EmbeddingServiceRequest),
     /// A bounded complete-only image-generation request.
     Image(ImageServiceRequest),
-    /// A bounded complete-only audio-synthesis request.
+    /// A bounded audio-synthesis request.
     Audio(AudioServiceRequest),
 }
 
