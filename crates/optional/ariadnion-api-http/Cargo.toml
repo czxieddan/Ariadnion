@@ -45,7 +45,7 @@ ariadnion-core = { path = "../../ariadnion-core" }
 ariadnion-principal-binding = { path = "../ariadnion-principal-binding" }
 ariadnion-rbac = { path = "../ariadnion-rbac" }
 ariadnion-user-domain = { path = "../ariadnion-user-domain" }
-axum = { version = "=0.8.9", default-features = false, features = ["json"] }
+axum = { version = "=0.8.9", default-features = false, features = ["json", "ws"] }
 base64 = { version = "=0.22.1", default-features = false, features = ["alloc"] }
 bytes = "=1.12.1"
 futures-core = "=0.3.33"
