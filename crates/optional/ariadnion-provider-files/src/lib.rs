@@ -34,10 +34,11 @@
 use std::collections::BTreeMap;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::future::Future;
+use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use ariadnion_api_domain::FileReference;
+use ariadnion_api_domain::{FileReference, IdempotencyKey};
 use ariadnion_core::{CoreError, ErrorCode, RequestContext, TenantId};
 
 pub use ariadnion_provider_sdk::ProviderId;
@@ -50,6 +51,8 @@ pub const MAX_PROVIDER_FILE_ID_BYTES: usize = 256;
 pub const MAX_PROVIDER_FILE_PURPOSE_BYTES: usize = 64;
 /// Maximum number of records accepted by one immutable mapping snapshot.
 pub const MAX_PROVIDER_FILE_MAPPINGS: usize = 100_000;
+/// Maximum mappings returned by one provider-file page.
+pub const MAX_PROVIDER_FILE_PAGE_RESULTS: usize = 1_000;
 
 /// A boxed, lazy, sendable provider-file operation future.
 pub type BoxProviderFileFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -76,6 +79,8 @@ pub enum ProviderFilesErrorCode {
     ResourceExhausted,
     /// The mapping capability is unavailable.
     Unavailable,
+    /// Durable publication may have committed and requires idempotent replay.
+    CommitIndeterminate,
     /// The operation failed without a safe external explanation.
     Internal,
 }
@@ -94,6 +99,7 @@ impl ProviderFilesErrorCode {
             | Self::DeadlineExceeded
             | Self::ResourceExhausted
             | Self::Unavailable
+            | Self::CommitIndeterminate
             | Self::Internal => execution_machine_code(self),
         }
     }
@@ -116,6 +122,7 @@ const fn execution_machine_code(code: ProviderFilesErrorCode) -> &'static str {
         ProviderFilesErrorCode::DeadlineExceeded => "PROVIDER_FILES_DEADLINE_EXCEEDED",
         ProviderFilesErrorCode::ResourceExhausted => "PROVIDER_FILES_RESOURCE_EXHAUSTED",
         ProviderFilesErrorCode::Unavailable => "PROVIDER_FILES_UNAVAILABLE",
+        ProviderFilesErrorCode::CommitIndeterminate => "PROVIDER_FILES_COMMIT_INDETERMINATE",
         _ => "PROVIDER_FILES_INTERNAL",
     }
 }
@@ -409,6 +416,191 @@ impl Debug for ProviderFileLookup {
     }
 }
 
+/// One provider and account namespace used for reverse lookup and listing.
+#[derive(Clone, Eq, Hash, PartialEq)]
+pub struct ProviderFileScope {
+    provider: ProviderId,
+    account_id: ProviderAccountId,
+}
+
+impl ProviderFileScope {
+    /// Creates an immutable provider/account scope without acquiring credentials.
+    #[must_use]
+    pub const fn new(provider: ProviderId, account_id: ProviderAccountId) -> Self {
+        Self {
+            provider,
+            account_id,
+        }
+    }
+
+    /// Returns the provider namespace.
+    #[must_use]
+    pub const fn provider(&self) -> &ProviderId {
+        &self.provider
+    }
+
+    /// Returns the provider account scope.
+    #[must_use]
+    pub const fn account_id(&self) -> &ProviderAccountId {
+        &self.account_id
+    }
+
+    /// Creates an exact public-alias lookup in this scope.
+    #[must_use]
+    pub fn lookup(&self, provider_file_id: ProviderFileId) -> ProviderFileLookup {
+        ProviderFileLookup::new(
+            self.provider.clone(),
+            self.account_id.clone(),
+            provider_file_id,
+        )
+    }
+}
+
+impl Debug for ProviderFileScope {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ProviderFileScope")
+            .field("provider", &self.provider)
+            .field("account_id", &self.account_id)
+            .finish()
+    }
+}
+
+/// A validated non-zero maximum for one provider-file mapping page.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct ProviderFilePageLimit(NonZeroUsize);
+
+impl ProviderFilePageLimit {
+    /// Validates a page limit in the inclusive range `1..=1000`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `InvalidArgument` for zero and `LimitExceeded` above the bound.
+    pub const fn new(value: usize) -> Result<Self, ProviderFilesError> {
+        if value > MAX_PROVIDER_FILE_PAGE_RESULTS {
+            return Err(ProviderFilesError::new(
+                ProviderFilesErrorCode::LimitExceeded,
+            ));
+        }
+        let Some(value) = NonZeroUsize::new(value) else {
+            return Err(ProviderFilesError::new(
+                ProviderFilesErrorCode::InvalidArgument,
+            ));
+        };
+        Ok(Self(value))
+    }
+
+    /// Returns the checked page limit.
+    #[must_use]
+    pub const fn get(self) -> usize {
+        self.0.get()
+    }
+}
+
+/// One tenant-authenticated provider-file mapping list request.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProviderFileListRequest {
+    scope: ProviderFileScope,
+    after: Option<ProviderFileId>,
+    limit: ProviderFilePageLimit,
+}
+
+impl ProviderFileListRequest {
+    /// Creates a bounded exclusive-cursor list request.
+    #[must_use]
+    pub const fn new(
+        scope: ProviderFileScope,
+        after: Option<ProviderFileId>,
+        limit: ProviderFilePageLimit,
+    ) -> Self {
+        Self {
+            scope,
+            after,
+            limit,
+        }
+    }
+
+    /// Returns the provider/account namespace.
+    #[must_use]
+    pub const fn scope(&self) -> &ProviderFileScope {
+        &self.scope
+    }
+
+    /// Returns the optional exclusive public-alias cursor.
+    #[must_use]
+    pub const fn after(&self) -> Option<&ProviderFileId> {
+        self.after.as_ref()
+    }
+
+    /// Returns the checked result limit.
+    #[must_use]
+    pub const fn limit(&self) -> ProviderFilePageLimit {
+        self.limit
+    }
+}
+
+/// One bounded page of immutable provider-file mappings.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProviderFileMappingPage {
+    data: Box<[ProviderFileMapping]>,
+    first_id: Option<ProviderFileId>,
+    last_id: Option<ProviderFileId>,
+    has_more: bool,
+}
+
+impl ProviderFileMappingPage {
+    /// Creates a checked page and derives its first and last public IDs.
+    ///
+    /// # Errors
+    ///
+    /// Returns `LimitExceeded` above the request limit and `Internal` when an
+    /// empty page claims that a following page exists.
+    pub fn new(
+        data: Vec<ProviderFileMapping>,
+        limit: ProviderFilePageLimit,
+        has_more: bool,
+    ) -> Result<Self, ProviderFilesError> {
+        if data.len() > limit.get() {
+            return Err(error(ProviderFilesErrorCode::LimitExceeded));
+        }
+        if data.is_empty() && has_more {
+            return Err(error(ProviderFilesErrorCode::Internal));
+        }
+        let first_id = data.first().map(|mapping| mapping.provider_file_id.clone());
+        let last_id = data.last().map(|mapping| mapping.provider_file_id.clone());
+        Ok(Self {
+            data: data.into_boxed_slice(),
+            first_id,
+            last_id,
+            has_more,
+        })
+    }
+
+    /// Returns mappings in deterministic public-ID order.
+    #[must_use]
+    pub fn data(&self) -> &[ProviderFileMapping] {
+        &self.data
+    }
+
+    /// Returns the first public ID, when the page is non-empty.
+    #[must_use]
+    pub const fn first_id(&self) -> Option<&ProviderFileId> {
+        self.first_id.as_ref()
+    }
+
+    /// Returns the last public ID, when the page is non-empty.
+    #[must_use]
+    pub const fn last_id(&self) -> Option<&ProviderFileId> {
+        self.last_id.as_ref()
+    }
+
+    /// Reports whether another page follows this result.
+    #[must_use]
+    pub const fn has_more(&self) -> bool {
+        self.has_more
+    }
+}
+
 /// Immutable metadata retained alongside one provider file alias.
 #[derive(Clone, Eq, Hash, PartialEq)]
 pub struct ProviderFileMappingMetadata {
@@ -637,6 +829,112 @@ pub trait ProviderFileMappingPort: Send + Sync {
     ) -> BoxProviderFileFuture<'a, Result<ProviderFileMapping, ProviderFilesError>> {
         self.resolve(lookup, context)
     }
+
+    /// Lazily resolves an internal reference back to its public alias.
+    ///
+    /// This operation is required when a provider-neutral domain operation
+    /// returns a file reference that must cross a public protocol boundary.
+    /// Unknown, foreign, expired, and multiply mapped references must fail
+    /// without exposing the internal reference bytes.
+    fn resolve_reference<'a>(
+        &'a self,
+        scope: ProviderFileScope,
+        reference: FileReference,
+        context: &'a RequestContext,
+    ) -> BoxProviderFileFuture<'a, Result<ProviderFileMapping, ProviderFilesError>> {
+        Box::pin(async move {
+            let _ = (scope, reference, context);
+            Err(error(ProviderFilesErrorCode::Unavailable))
+        })
+    }
+
+    /// Lazily lists one deterministic tenant-scoped mapping page.
+    fn list<'a>(
+        &'a self,
+        request: ProviderFileListRequest,
+        context: &'a RequestContext,
+    ) -> BoxProviderFileFuture<'a, Result<ProviderFileMappingPage, ProviderFilesError>> {
+        Box::pin(async move {
+            let _ = (request, context);
+            Err(error(ProviderFilesErrorCode::Unavailable))
+        })
+    }
+}
+
+/// A validated request to publish a new immutable public file alias.
+#[derive(Clone, Eq, PartialEq)]
+pub struct ProviderFilePublishRequest {
+    scope: ProviderFileScope,
+    metadata: ProviderFileMappingMetadata,
+    idempotency_key: IdempotencyKey,
+}
+
+impl ProviderFilePublishRequest {
+    /// Creates a publication request from checked scope, metadata, and replay key.
+    #[must_use]
+    pub const fn new(
+        scope: ProviderFileScope,
+        metadata: ProviderFileMappingMetadata,
+        idempotency_key: IdempotencyKey,
+    ) -> Self {
+        Self {
+            scope,
+            metadata,
+            idempotency_key,
+        }
+    }
+
+    /// Returns the provider/account namespace.
+    #[must_use]
+    pub const fn scope(&self) -> &ProviderFileScope {
+        &self.scope
+    }
+
+    /// Returns immutable file mapping metadata.
+    #[must_use]
+    pub const fn metadata(&self) -> &ProviderFileMappingMetadata {
+        &self.metadata
+    }
+
+    /// Returns opaque publication idempotency material.
+    #[must_use]
+    pub const fn idempotency_key(&self) -> &IdempotencyKey {
+        &self.idempotency_key
+    }
+}
+
+impl Debug for ProviderFilePublishRequest {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ProviderFilePublishRequest")
+            .field("scope", &self.scope)
+            .field("metadata", &self.metadata)
+            .field("idempotency_key", &"<redacted>")
+            .finish()
+    }
+}
+
+/// Publishes immutable public aliases for newly durable internal files.
+///
+/// Implementations own cryptographically unpredictable alias issuance,
+/// tenant-scoped idempotency, collision handling, and durable publication. The
+/// protocol adapter never derives an alias from `FileReference`, request text,
+/// a clock, or a caller-selected identifier. Construction of the returned future
+/// must perform no authentication, entropy access, lookup, or write.
+pub trait ProviderFilePublisherPort: Send + Sync {
+    /// Publishes one immutable alias or returns the exact prior mapping on replay.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable redacted authentication, conflict, context, resource,
+    /// availability, or internal failure. A commit-indeterminate outcome must be
+    /// represented by the implementing durable boundary and must never cause the
+    /// adapter to invent or retry with a different alias.
+    fn publish<'a>(
+        &'a self,
+        request: ProviderFilePublishRequest,
+        context: &'a RequestContext,
+    ) -> BoxProviderFileFuture<'a, Result<ProviderFileMapping, ProviderFilesError>>;
 }
 
 #[derive(Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -731,6 +1029,87 @@ impl ProviderFileMappingPort for StaticProviderFileMappings {
             Ok(mapping.clone())
         })
     }
+
+    fn resolve_reference<'a>(
+        &'a self,
+        scope: ProviderFileScope,
+        reference: FileReference,
+        context: &'a RequestContext,
+    ) -> BoxProviderFileFuture<'a, Result<ProviderFileMapping, ProviderFilesError>> {
+        Box::pin(async move {
+            let tenant_id = authenticated_tenant(context)?;
+            let now = SystemTime::now();
+            let mut matches = self.entries.values().filter(|mapping| {
+                mapping_matches_scope(mapping, tenant_id, &scope)
+                    && mapping.file_reference == reference
+                    && !mapping.expired_at(now)
+            });
+            let mapping = matches
+                .next()
+                .ok_or_else(|| error(ProviderFilesErrorCode::NotFound))?;
+            if matches.next().is_some() {
+                return Err(error(ProviderFilesErrorCode::Conflict));
+            }
+            Ok(mapping.clone())
+        })
+    }
+
+    fn list<'a>(
+        &'a self,
+        request: ProviderFileListRequest,
+        context: &'a RequestContext,
+    ) -> BoxProviderFileFuture<'a, Result<ProviderFileMappingPage, ProviderFilesError>> {
+        Box::pin(async move {
+            let tenant_id = authenticated_tenant(context)?;
+            let now = SystemTime::now();
+            let mut data = Vec::with_capacity(request.limit.get().saturating_add(1));
+            for mapping in self.entries.values() {
+                if mapping_is_list_candidate(mapping, tenant_id, &request, now) {
+                    data.push(mapping.clone());
+                }
+                if data.len() > request.limit.get() {
+                    break;
+                }
+            }
+            let has_more = data.len() > request.limit.get();
+            if has_more {
+                data.pop();
+            }
+            ProviderFileMappingPage::new(data, request.limit, has_more)
+        })
+    }
+}
+
+fn authenticated_tenant(context: &RequestContext) -> Result<&TenantId, ProviderFilesError> {
+    let principal = context
+        .principal()
+        .ok_or_else(|| error(ProviderFilesErrorCode::Unauthenticated))?;
+    context.check_active().map_err(ProviderFilesError::from)?;
+    Ok(principal.tenant_id())
+}
+
+fn mapping_matches_scope(
+    mapping: &ProviderFileMapping,
+    tenant_id: &TenantId,
+    scope: &ProviderFileScope,
+) -> bool {
+    mapping.tenant_id == *tenant_id
+        && mapping.provider == scope.provider
+        && mapping.account_id == scope.account_id
+}
+
+fn mapping_is_list_candidate(
+    mapping: &ProviderFileMapping,
+    tenant_id: &TenantId,
+    request: &ProviderFileListRequest,
+    now: SystemTime,
+) -> bool {
+    mapping_matches_scope(mapping, tenant_id, &request.scope)
+        && !mapping.expired_at(now)
+        && request
+            .after
+            .as_ref()
+            .is_none_or(|after| mapping.provider_file_id > *after)
 }
 
 fn unix_seconds(now: SystemTime) -> u64 {
