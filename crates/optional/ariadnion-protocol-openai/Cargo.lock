@@ -112,10 +112,12 @@ version = "0.1.0"
 dependencies = [
  "ariadnion-api-dispatch",
  "ariadnion-api-domain",
+ "ariadnion-api-files",
  "ariadnion-api-http",
  "ariadnion-core",
  "ariadnion-organization",
  "ariadnion-principal-binding",
+ "ariadnion-provider-files",
  "ariadnion-user-domain",
  "axum",
  "base64",
@@ -124,6 +126,23 @@ dependencies = [
  "serde_json",
  "tokio",
  "tower",
+]
+
+[[package]]
+name = "ariadnion-provider-files"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-api-domain",
+ "ariadnion-core",
+ "ariadnion-provider-sdk",
+]
+
+[[package]]
+name = "ariadnion-provider-sdk"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-api-domain",
+ "ariadnion-core",
 ]
 
 [[package]]

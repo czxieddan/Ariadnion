@@ -38,8 +38,10 @@ publish = false
 
 [dependencies]
 ariadnion-api-domain = { path = "../ariadnion-api-domain" }
+ariadnion-api-files = { path = "../ariadnion-api-files" }
 ariadnion-api-http = { path = "../ariadnion-api-http" }
 ariadnion-core = { path = "../../ariadnion-core" }
+ariadnion-provider-files = { path = "../ariadnion-provider-files" }
 axum = { version = "=0.8.9", default-features = false, features = ["json"] }
 base64 = { version = "=0.22.1", default-features = false, features = ["alloc"] }
 futures-core = "=0.3.33"
