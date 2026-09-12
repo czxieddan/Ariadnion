@@ -50,13 +50,16 @@ pub use ariadnion_api_dispatch::{
 };
 pub use public::{
     ApiHttpError, ApiHttpErrorCode, BoxHttpBodyStream, BoxHttpFuture, BoxHttpUpgradeFuture,
-    BoxHttpUpgradeSession, HttpApiState, HttpGetProtocolAdapter, HttpProtocolAdapter,
-    HttpProtocolProjection, HttpRequestIdentity, HttpUpgradeProtocolAdapter, HttpUpgradeSession,
-    MAX_PRESENTED_BEARER_BYTES, MAX_PUBLIC_BODY_BYTES, MAX_PUBLIC_HEADER_BYTES, MAX_PUBLIC_HEADERS,
+    BoxHttpUpgradeSession, BoxProtocolOperationFuture, HttpApiState, HttpGetProtocolAdapter,
+    HttpOperationProtocolAdapter, HttpProtocolAdapter, HttpProtocolProjection, HttpRequestIdentity,
+    HttpUpgradeProtocolAdapter, HttpUpgradeSession, MAX_PRESENTED_BEARER_BYTES,
+    MAX_PUBLIC_BODY_BYTES, MAX_PUBLIC_HEADER_BYTES, MAX_PUBLIC_HEADERS,
     MAX_PUBLIC_IN_FLIGHT_REQUESTS, MonotonicRequestIdentityIssuer, PresentedBearer,
     ProtocolBufferedResponse, ProtocolExecutionState, ProtocolFailure, ProtocolGetExecutionState,
-    ProtocolRequest, ProtocolRequestBody, ProtocolStreamResponse, ProtocolUpgradeExecutionState,
+    ProtocolOperationExecutionState, ProtocolOperationResponse, ProtocolRequest,
+    ProtocolRequestBody, ProtocolStreamResponse, ProtocolUpgradeExecutionState,
     ProtocolUpgradeLimits, PublicApiRouter, RequestIdentityPort, ServiceAuthenticationPort,
     ServiceStreamBridgePort, UnavailableServiceAuthentication, protocol_get_route,
+    protocol_operation_delete_route, protocol_operation_get_route, protocol_operation_post_route,
     protocol_post_route, protocol_upgrade_route, public_router,
 };
