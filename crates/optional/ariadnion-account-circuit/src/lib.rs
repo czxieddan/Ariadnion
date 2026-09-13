@@ -41,6 +41,7 @@ const MAX_LEASE_MILLIS: u64 = 300_000;
 const MAX_PROBES: u16 = 128;
 
 /// Stable machine-readable circuit errors.
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum AccountCircuitErrorCode {
@@ -58,6 +59,8 @@ pub enum AccountCircuitErrorCode {
     RecoveryWindowClosed,
     /// No half-open probe slot is available.
     ProbeLimitReached,
+    /// The account requires an explicit administrative reset before probing.
+    AdministrativeResetRequired,
     /// A probe lease is unknown, already completed, or belongs to another generation.
     LeaseConflict,
     /// A probe lease exceeded its bounded lifetime.
@@ -72,19 +75,21 @@ impl AccountCircuitErrorCode {
     /// Returns the stable external machine code.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::InvalidArgument => "ACCOUNT_CIRCUIT_INVALID_ARGUMENT",
-            Self::AccountMismatch => "ACCOUNT_CIRCUIT_ACCOUNT_MISMATCH",
-            Self::GenerationConflict => "ACCOUNT_CIRCUIT_GENERATION_CONFLICT",
-            Self::TimestampOutOfOrder => "ACCOUNT_CIRCUIT_TIMESTAMP_OUT_OF_ORDER",
-            Self::InvalidTransition => "ACCOUNT_CIRCUIT_INVALID_TRANSITION",
-            Self::RecoveryWindowClosed => "ACCOUNT_CIRCUIT_RECOVERY_WINDOW_CLOSED",
-            Self::ProbeLimitReached => "ACCOUNT_CIRCUIT_PROBE_LIMIT_REACHED",
-            Self::LeaseConflict => "ACCOUNT_CIRCUIT_LEASE_CONFLICT",
-            Self::LeaseExpired => "ACCOUNT_CIRCUIT_LEASE_EXPIRED",
-            Self::VersionExhausted => "ACCOUNT_CIRCUIT_VERSION_EXHAUSTED",
-            Self::StateUnavailable => "ACCOUNT_CIRCUIT_STATE_UNAVAILABLE",
-        }
+        const CODES: [&str; 12] = [
+            "ACCOUNT_CIRCUIT_INVALID_ARGUMENT",
+            "ACCOUNT_CIRCUIT_ACCOUNT_MISMATCH",
+            "ACCOUNT_CIRCUIT_GENERATION_CONFLICT",
+            "ACCOUNT_CIRCUIT_TIMESTAMP_OUT_OF_ORDER",
+            "ACCOUNT_CIRCUIT_INVALID_TRANSITION",
+            "ACCOUNT_CIRCUIT_RECOVERY_WINDOW_CLOSED",
+            "ACCOUNT_CIRCUIT_PROBE_LIMIT_REACHED",
+            "ACCOUNT_CIRCUIT_ADMINISTRATIVE_RESET_REQUIRED",
+            "ACCOUNT_CIRCUIT_LEASE_CONFLICT",
+            "ACCOUNT_CIRCUIT_LEASE_EXPIRED",
+            "ACCOUNT_CIRCUIT_VERSION_EXHAUSTED",
+            "ACCOUNT_CIRCUIT_STATE_UNAVAILABLE",
+        ];
+        CODES[self as usize]
     }
 }
 
@@ -203,6 +208,8 @@ pub enum CircuitState {
     Open,
     /// A bounded number of recovery probes may run.
     HalfOpen,
+    /// The account is permanently unavailable until an administrative reset.
+    Terminal,
 }
 
 /// Result classified at the provider boundary without retaining response data.
@@ -544,8 +551,9 @@ impl AccountCircuit {
 
     /// Applies one ordered closed-state observation.
     ///
-    /// A retryable threshold or terminal failure opens the circuit. Rejected
-    /// observations leave the prior snapshot and leases untouched.
+    /// A retryable threshold opens the circuit; a terminal failure enters the
+    /// administrative-only terminal state. Rejected observations leave the
+    /// prior snapshot and leases untouched.
     ///
     /// # Errors
     /// Returns stable account, generation, ordering, transition, or state errors.
@@ -624,36 +632,52 @@ impl AccountCircuit {
             .state
             .write()
             .map_err(|_| error(AccountCircuitErrorCode::StateUnavailable))?;
-        if lease.account_id != self.account_id {
-            return Err(error(AccountCircuitErrorCode::AccountMismatch));
+        let index = validate_lease_request(
+            &state,
+            &self.account_id,
+            &lease,
+            observed_at,
+            monotonic,
+        )?;
+        if monotonic >= lease.expires_at {
+            return expire_probe(&mut state, index, observed_at, monotonic);
         }
-        if lease.generation != state.snapshot.generation {
+        let next = complete_valid_probe(&mut state, index, outcome, observed_at, monotonic, self.policy)?;
+        state.snapshot = next.clone();
+        Ok(next)
+    }
+
+    /// Resets a terminal circuit after an authorized administrative change.
+    ///
+    /// The caller must enforce the administrative authorization boundary before
+    /// invoking this method. The reset is generation-bound and advances the
+    /// circuit generation so stale decisions cannot resume the account.
+    ///
+    /// # Errors
+    /// Returns a stable generation, ordering, transition, overflow, or state
+    /// error. Rejected resets leave the prior snapshot untouched.
+    pub fn reset(
+        &self,
+        expected_generation: CircuitGeneration,
+        observed_at: UtcMillis,
+        monotonic: MonotonicMillis,
+    ) -> Result<CircuitSnapshot, AccountCircuitError> {
+        let mut state = self
+            .state
+            .write()
+            .map_err(|_| error(AccountCircuitErrorCode::StateUnavailable))?;
+        if state.snapshot.generation != expected_generation {
             return Err(error(AccountCircuitErrorCode::GenerationConflict));
         }
         validate_clock(&state.snapshot, observed_at, monotonic)?;
-        let Some(index) = state.leases.iter().position(|entry| entry.id == lease.id) else {
-            return Err(error(AccountCircuitErrorCode::LeaseConflict));
-        };
-        if monotonic > lease.expires_at {
-            let mut next = state.snapshot.clone();
-            advance_clock(&mut next, observed_at, monotonic);
-            fail_closed(&mut next)?;
-            state.leases.remove(index);
-            state.snapshot = next;
-            state.leases.clear();
-            return Err(error(AccountCircuitErrorCode::LeaseExpired));
+        if state.snapshot.state != CircuitState::Terminal {
+            return Err(error(AccountCircuitErrorCode::InvalidTransition));
         }
         let mut next = state.snapshot.clone();
-        next.half_open_in_flight = (state.leases.len() - 1) as u16;
         advance_clock(&mut next, observed_at, monotonic);
-        apply_probe_outcome(&mut next, outcome, self.policy)?;
-        if matches!(next.state, CircuitState::Open | CircuitState::Closed) {
-            next.generation = next.generation.next()?;
-        }
-        state.leases.remove(index);
-        if matches!(next.state, CircuitState::Open | CircuitState::Closed) {
-            state.leases.clear();
-        }
+        clear_recovery_state(&mut next);
+        next.generation = next.generation.next()?;
+        state.leases.clear();
         state.snapshot = next.clone();
         Ok(next)
     }
@@ -740,7 +764,7 @@ fn apply_closed_outcome(
         }
         CircuitOutcome::TerminalFailure => {
             snapshot.consecutive_failures = policy.failure_threshold;
-            snapshot.state = CircuitState::Open;
+            snapshot.state = CircuitState::Terminal;
             snapshot.opened_at = snapshot.last_observed_at;
         }
     }
@@ -754,32 +778,9 @@ fn admit_probe(
     observed_at: UtcMillis,
     monotonic: MonotonicMillis,
 ) -> Result<ProbeLease, AccountCircuitError> {
-    if state.snapshot.state == CircuitState::Closed {
-        return Err(error(AccountCircuitErrorCode::InvalidTransition));
-    }
-    if let Some(opened_at) = state.snapshot.opened_at
-        && observed_at.get().saturating_sub(opened_at.get()) < policy.recovery_window_millis
-    {
-        return Err(error(AccountCircuitErrorCode::RecoveryWindowClosed));
-    }
-    if state.leases.len() >= usize::from(policy.max_half_open_probes) {
-        return Err(error(AccountCircuitErrorCode::ProbeLimitReached));
-    }
-    let id = ProbeLeaseId(state.next_lease_id);
-    let next_lease_id = state
-        .next_lease_id
-        .checked_add(1)
-        .ok_or_else(|| error(AccountCircuitErrorCode::VersionExhausted))?;
-    let expires = monotonic
-        .get()
-        .checked_add(policy.probe_lease_millis)
-        .ok_or_else(|| error(AccountCircuitErrorCode::VersionExhausted))?;
-    let expires_at = MonotonicMillis::new(expires)?;
-    if state.snapshot.state == CircuitState::Open {
-        state.snapshot.state = CircuitState::HalfOpen;
-        state.snapshot.recovery_successes = 0;
-        state.snapshot.half_open_in_flight = 0;
-    }
+    validate_probe_admission(state, policy, observed_at)?;
+    let (id, next_lease_id, expires_at) = prepare_probe_lease(state.next_lease_id, monotonic, policy)?;
+    transition_to_half_open(&mut state.snapshot);
     state.next_lease_id = next_lease_id;
     state.leases.push(LeaseRecord { id });
     state.snapshot.half_open_in_flight = state.leases.len() as u16;
@@ -812,11 +813,150 @@ fn apply_probe_outcome(
                 snapshot.opened_at = None;
             }
         }
-        CircuitOutcome::RetryableFailure | CircuitOutcome::TerminalFailure => {
-            mark_open(snapshot);
-        }
+        CircuitOutcome::RetryableFailure => mark_open(snapshot),
+        CircuitOutcome::TerminalFailure => mark_terminal(snapshot),
     }
     Ok(())
+}
+
+fn validate_lease_request(
+    state: &CircuitStateData,
+    account_id: &AccountId,
+    lease: &ProbeLease,
+    observed_at: UtcMillis,
+    monotonic: MonotonicMillis,
+) -> Result<usize, AccountCircuitError> {
+    if &lease.account_id != account_id {
+        return Err(error(AccountCircuitErrorCode::AccountMismatch));
+    }
+    if lease.generation != state.snapshot.generation {
+        return Err(error(AccountCircuitErrorCode::GenerationConflict));
+    }
+    validate_clock(&state.snapshot, observed_at, monotonic)?;
+    state
+        .leases
+        .iter()
+        .position(|entry| entry.id == lease.id)
+        .ok_or_else(|| error(AccountCircuitErrorCode::LeaseConflict))
+}
+
+fn expire_probe(
+    state: &mut CircuitStateData,
+    index: usize,
+    observed_at: UtcMillis,
+    monotonic: MonotonicMillis,
+) -> Result<CircuitSnapshot, AccountCircuitError> {
+    let mut next = state.snapshot.clone();
+    advance_clock(&mut next, observed_at, monotonic);
+    fail_closed(&mut next)?;
+    state.leases.remove(index);
+    state.leases.clear();
+    state.snapshot = next;
+    Err(error(AccountCircuitErrorCode::LeaseExpired))
+}
+
+fn complete_valid_probe(
+    state: &mut CircuitStateData,
+    index: usize,
+    outcome: CircuitOutcome,
+    observed_at: UtcMillis,
+    monotonic: MonotonicMillis,
+    policy: CircuitPolicy,
+) -> Result<CircuitSnapshot, AccountCircuitError> {
+    let mut next = state.snapshot.clone();
+    next.half_open_in_flight = (state.leases.len() - 1) as u16;
+    advance_clock(&mut next, observed_at, monotonic);
+    apply_probe_outcome(&mut next, outcome, policy)?;
+    if next.state != state.snapshot.state {
+        next.generation = next.generation.next()?;
+    }
+    state.leases.remove(index);
+    if next.state != CircuitState::HalfOpen {
+        state.leases.clear();
+    }
+    Ok(next)
+}
+
+fn validate_probe_admission(
+    state: &CircuitStateData,
+    policy: CircuitPolicy,
+    observed_at: UtcMillis,
+) -> Result<(), AccountCircuitError> {
+    validate_probe_state(state)?;
+    validate_recovery_window(state, policy, observed_at)?;
+    validate_probe_capacity(state, policy)
+}
+
+fn validate_probe_state(state: &CircuitStateData) -> Result<(), AccountCircuitError> {
+    if state.snapshot.state == CircuitState::Closed {
+        return Err(error(AccountCircuitErrorCode::InvalidTransition));
+    }
+    if state.snapshot.state == CircuitState::Terminal {
+        return Err(error(AccountCircuitErrorCode::AdministrativeResetRequired));
+    }
+    Ok(())
+}
+
+fn validate_recovery_window(
+    state: &CircuitStateData,
+    policy: CircuitPolicy,
+    observed_at: UtcMillis,
+) -> Result<(), AccountCircuitError> {
+    if let Some(opened_at) = state.snapshot.opened_at
+        && observed_at.get().saturating_sub(opened_at.get()) < policy.recovery_window_millis
+    {
+        return Err(error(AccountCircuitErrorCode::RecoveryWindowClosed));
+    }
+    Ok(())
+}
+
+fn validate_probe_capacity(
+    state: &CircuitStateData,
+    policy: CircuitPolicy,
+) -> Result<(), AccountCircuitError> {
+    if state.leases.len() >= usize::from(policy.max_half_open_probes) {
+        return Err(error(AccountCircuitErrorCode::ProbeLimitReached));
+    }
+    Ok(())
+}
+
+fn prepare_probe_lease(
+    next_lease_id: u64,
+    monotonic: MonotonicMillis,
+    policy: CircuitPolicy,
+) -> Result<(ProbeLeaseId, u64, MonotonicMillis), AccountCircuitError> {
+    let next_id = next_lease_id
+        .checked_add(1)
+        .ok_or_else(|| error(AccountCircuitErrorCode::VersionExhausted))?;
+    let expires = monotonic
+        .get()
+        .checked_add(policy.probe_lease_millis)
+        .ok_or_else(|| error(AccountCircuitErrorCode::VersionExhausted))?;
+    let expires_at = MonotonicMillis::new(expires)?;
+    Ok((ProbeLeaseId(next_lease_id), next_id, expires_at))
+}
+
+fn transition_to_half_open(snapshot: &mut CircuitSnapshot) {
+    if snapshot.state == CircuitState::Open {
+        snapshot.state = CircuitState::HalfOpen;
+        snapshot.recovery_successes = 0;
+        snapshot.half_open_in_flight = 0;
+    }
+}
+
+fn clear_recovery_state(snapshot: &mut CircuitSnapshot) {
+    snapshot.state = CircuitState::Closed;
+    snapshot.consecutive_failures = 0;
+    snapshot.recovery_successes = 0;
+    snapshot.half_open_in_flight = 0;
+    snapshot.opened_at = None;
+}
+
+fn mark_terminal(snapshot: &mut CircuitSnapshot) {
+    snapshot.state = CircuitState::Terminal;
+    snapshot.opened_at = snapshot.last_observed_at;
+    snapshot.recovery_successes = 0;
+    snapshot.half_open_in_flight = 0;
 }
 
 fn fail_closed(snapshot: &mut CircuitSnapshot) -> Result<(), AccountCircuitError> {
