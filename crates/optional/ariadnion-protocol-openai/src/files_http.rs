@@ -50,7 +50,7 @@ use ariadnion_provider_files::{
     ProviderFileMapping, ProviderFileMappingPort, ProviderFilePublisherPort, ProviderFilePurpose,
     ProviderFileScope, ProviderFileUnixSeconds, ProviderFilesError,
 };
-use axum::body::{Body, Bytes, to_bytes};
+use axum::body::{Body, Bytes, HttpBody, to_bytes};
 use axum::http::{HeaderMap, HeaderValue, Method, Request, StatusCode, header};
 use futures_core::Stream;
 use serde_json::to_vec;
@@ -431,11 +431,11 @@ fn buffered_json(
     Ok(ProtocolOperationResponse::Buffered(response))
 }
 
-fn require_no_query(query: Option<&str>) -> Result<(), ProtocolFailure> {
+pub(crate) fn require_no_query(query: Option<&str>) -> Result<(), ProtocolFailure> {
     query.is_none().then_some(()).ok_or_else(invalid)
 }
 
-fn require_bodyless(request: &Request<Body>) -> Result<(), ProtocolFailure> {
+pub(crate) fn require_bodyless(request: &Request<Body>) -> Result<(), ProtocolFailure> {
     if request.headers().contains_key(header::TRANSFER_ENCODING)
         || !request.body().is_end_stream()
     {

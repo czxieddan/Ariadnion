@@ -52,6 +52,7 @@ use axum::http::{HeaderMap, Method, Request, StatusCode, header};
 use serde_json::{Value, json};
 
 use crate::batch::{BatchCreateBody, parse_create_members, validate_jsonl_with};
+use crate::files_http::{require_bodyless, require_no_query};
 
 /// Batch collection route.
 pub const OPENAI_BATCH_HTTP_PATH: &str = "/v1/batches";
@@ -228,8 +229,22 @@ impl OpenAiBatchHttpAdapter {
                 self.dispatch_collection(method, query, request, identity, context)
                     .await
             }
-            RouteKind::Retrieve(id) => self.dispatch_retrieve(method, id, context).await,
-            RouteKind::Cancel(id) => self.dispatch_cancel(method, id, context).await,
+            RouteKind::Retrieve(id) => {
+                if method != Method::GET {
+                    return Err(invalid());
+                }
+                require_no_query(query)?;
+                require_bodyless(&request)?;
+                self.retrieve(id, context).await
+            }
+            RouteKind::Cancel(id) => {
+                if method != Method::POST {
+                    return Err(invalid());
+                }
+                require_no_query(query)?;
+                require_bodyless(&request)?;
+                self.cancel(id, context).await
+            }
             RouteKind::Unsupported => Err(invalid()),
         }
     }
@@ -255,37 +270,6 @@ impl OpenAiBatchHttpAdapter {
         }
     }
 
-    async fn dispatch_retrieve(
-        &self,
-        method: Method,
-        id: &str,
-        query: Option<&str>,
-        request: &Request<Body>,
-        context: &RequestContext,
-    ) -> Result<ProtocolBufferedResponse, ProtocolFailure> {
-        if method != Method::GET {
-            return Err(invalid());
-        }
-        require_no_query(query)?;
-        require_bodyless(request)?;
-        self.retrieve(id, context).await
-    }
-
-    async fn dispatch_cancel(
-        &self,
-        method: Method,
-        id: &str,
-        query: Option<&str>,
-        request: &Request<Body>,
-        context: &RequestContext,
-    ) -> Result<ProtocolBufferedResponse, ProtocolFailure> {
-        if method != Method::POST {
-            return Err(invalid());
-        }
-        require_no_query(query)?;
-        require_bodyless(request)?;
-        self.cancel(id, context).await
-    }
 }
 
 #[derive(Clone, Copy)]
