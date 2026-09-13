@@ -186,6 +186,11 @@ bounded_identity!(
     "ProviderModelId"
 );
 
+/// Compatibility alias for callers that name the canonical identity explicitly.
+pub type CanonicalModelId = ModelId;
+/// Compatibility alias for callers that use provider-model naming terminology.
+pub type ProviderModelName = ProviderModelId;
+
 /// A non-zero immutable model descriptor version.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ModelVersion(NonZeroU64);
@@ -431,6 +436,12 @@ impl ProviderModelMapping {
         &self.model
     }
 
+    /// Returns the primary provider-side model identity.
+    #[must_use]
+    pub const fn provider_model(&self) -> &ProviderModelId {
+        &self.model
+    }
+
     /// Returns provider-side aliases in deterministic order.
     #[must_use]
     pub fn aliases(&self) -> &[ProviderModelId] {
@@ -510,6 +521,12 @@ impl ModelDescriptor {
     /// Returns the canonical model identity.
     #[must_use]
     pub const fn id(&self) -> &ModelId {
+        &self.id
+    }
+
+    /// Returns the canonical model identity.
+    #[must_use]
+    pub const fn model_id(&self) -> &ModelId {
         &self.id
     }
 
@@ -603,6 +620,11 @@ impl ModelCatalog {
             .ok_or_else(|| error(ModelDomainErrorCode::NotFound))
     }
 
+    /// Alias for [`Self::resolve`] using lookup terminology.
+    pub fn lookup(&self, value: &str) -> Result<&ModelDescriptor, ModelDomainError> {
+        self.resolve(value)
+    }
+
     /// Resolves a provider-side model identity to its canonical descriptor.
     ///
     /// # Errors
@@ -621,6 +643,15 @@ impl ModelCatalog {
                     .any(|mapping| mapping.provider == *provider && mapping.matches(model))
             })
             .ok_or_else(|| error(ModelDomainErrorCode::NotFound))
+    }
+
+    /// Alias for [`Self::resolve_provider`] using lookup terminology.
+    pub fn lookup_provider(
+        &self,
+        provider: &ProviderId,
+        model: &ProviderModelId,
+    ) -> Result<&ModelDescriptor, ModelDomainError> {
+        self.resolve_provider(provider, model)
     }
 }
 
