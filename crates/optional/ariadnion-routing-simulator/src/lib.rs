@@ -53,6 +53,7 @@ pub const MAX_CANDIDATES: usize = 4_096;
 pub const MAX_FORECAST_UNITS: u64 = 1_000_000_000_000;
 
 /// Stable machine-readable simulator failures.
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum SimulationErrorCode {
@@ -72,22 +73,26 @@ pub enum SimulationErrorCode {
     NoEligibleCandidates,
     /// A projected request or capacity value exceeds its fixed bound.
     CapacityOverflow,
+    /// The routing context and snapshot belong to different tenants.
+    TenantMismatch,
 }
 
 impl SimulationErrorCode {
     /// Returns the stable external machine code.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::InvalidArgument => "ROUTING_SIMULATOR_INVALID_ARGUMENT",
-            Self::EmptyCandidates => "ROUTING_SIMULATOR_EMPTY_CANDIDATES",
-            Self::TooManyCandidates => "ROUTING_SIMULATOR_TOO_MANY_CANDIDATES",
-            Self::DuplicateCandidate => "ROUTING_SIMULATOR_DUPLICATE_CANDIDATE",
-            Self::CandidateNotFound => "ROUTING_SIMULATOR_CANDIDATE_NOT_FOUND",
-            Self::ModelMismatch => "ROUTING_SIMULATOR_MODEL_MISMATCH",
-            Self::NoEligibleCandidates => "ROUTING_SIMULATOR_NO_ELIGIBLE_CANDIDATES",
-            Self::CapacityOverflow => "ROUTING_SIMULATOR_CAPACITY_OVERFLOW",
-        }
+        const CODES: [&str; 9] = [
+            "ROUTING_SIMULATOR_INVALID_ARGUMENT",
+            "ROUTING_SIMULATOR_EMPTY_CANDIDATES",
+            "ROUTING_SIMULATOR_TOO_MANY_CANDIDATES",
+            "ROUTING_SIMULATOR_DUPLICATE_CANDIDATE",
+            "ROUTING_SIMULATOR_CANDIDATE_NOT_FOUND",
+            "ROUTING_SIMULATOR_MODEL_MISMATCH",
+            "ROUTING_SIMULATOR_NO_ELIGIBLE_CANDIDATES",
+            "ROUTING_SIMULATOR_CAPACITY_OVERFLOW",
+            "ROUTING_SIMULATOR_TENANT_MISMATCH",
+        ];
+        CODES[self as usize]
     }
 }
 
@@ -215,28 +220,8 @@ impl SimulationInput {
         projected: u64,
         capacity: u64,
     ) -> Result<Self, SimulationError> {
-        if policy.is_empty() {
-            return Err(SimulationError::new(SimulationErrorCode::EmptyCandidates));
-        }
-        if policy.len() > MAX_CANDIDATES {
-            return Err(SimulationError::new(SimulationErrorCode::TooManyCandidates));
-        }
-        CapacityForecast::new(projected, capacity)?;
-        let mut ids = BTreeSet::new();
-        for candidate in &policy {
-            if !ids.insert(candidate.id().clone()) {
-                return Err(SimulationError::new(
-                    SimulationErrorCode::DuplicateCandidate,
-                ));
-            }
-            if !snapshot
-                .candidates()
-                .iter()
-                .any(|route| route.key().as_str() == candidate.id().as_str())
-            {
-                return Err(SimulationError::new(SimulationErrorCode::CandidateNotFound));
-            }
-        }
+        validate_input_bounds(&context, &snapshot, &policy, projected, capacity)?;
+        validate_policy_candidates(&snapshot, &policy)?;
         Ok(Self {
             context,
             snapshot,
@@ -316,23 +301,84 @@ impl SimulationResult {
 /// failures. No sensitive candidate metadata is included in errors.
 pub fn simulate(input: impl Borrow<SimulationInput>) -> Result<SimulationResult, SimulationError> {
     let input = input.borrow();
-    let policy_decision = WeightedLeastLoadPolicy::new()
+    let policy_decision = select_policy(input)?;
+    let evaluation = evaluate_policy(input, &policy_decision)?;
+    let forecast = CapacityForecast::new(input.projected(), input.capacity())?;
+    Ok(SimulationResult {
+        policy: policy_decision,
+        evaluation,
+        forecast,
+    })
+}
+
+fn validate_input_bounds(
+    context: &RoutingContext,
+    snapshot: &RouteSnapshot,
+    policy: &[Candidate],
+    projected: u64,
+    capacity: u64,
+) -> Result<(), SimulationError> {
+    if policy.is_empty() {
+        return Err(SimulationError::new(SimulationErrorCode::EmptyCandidates));
+    }
+    if context.tenant_id() != snapshot.tenant_id() {
+        return Err(SimulationError::new(SimulationErrorCode::TenantMismatch));
+    }
+    if policy.len() > MAX_CANDIDATES {
+        return Err(SimulationError::new(SimulationErrorCode::TooManyCandidates));
+    }
+    CapacityForecast::new(projected, capacity).map(|_| ())
+}
+
+fn validate_policy_candidates(
+    snapshot: &RouteSnapshot,
+    policy: &[Candidate],
+) -> Result<(), SimulationError> {
+    let mut ids = BTreeSet::new();
+    for candidate in policy {
+        if !ids.insert(candidate.id().clone()) {
+            return Err(SimulationError::new(SimulationErrorCode::DuplicateCandidate));
+        }
+        if !snapshot
+            .candidates()
+            .iter()
+            .any(|route| route.key().as_str() == candidate.id().as_str())
+        {
+            return Err(SimulationError::new(SimulationErrorCode::CandidateNotFound));
+        }
+    }
+    Ok(())
+}
+
+fn select_policy(input: &SimulationInput) -> Result<SelectionDecision, SimulationError> {
+    WeightedLeastLoadPolicy::new()
         .select(input.policy())
-        .map_err(map_policy_error)?;
+        .map_err(map_policy_error)
+}
+
+fn evaluate_policy(
+    input: &SimulationInput,
+    policy: &SelectionDecision,
+) -> Result<RoutingEvaluation, SimulationError> {
     let selected = input
         .snapshot()
         .candidates()
         .iter()
-        .find(|candidate| candidate.key().as_str() == policy_decision.selected().as_str())
+        .find(|candidate| candidate.key().as_str() == policy.selected().as_str())
         .ok_or_else(|| SimulationError::new(SimulationErrorCode::CandidateNotFound))?;
     let decision = RouteDecision::new(input.snapshot().version(), selected.key().clone())
         .map_err(|_| SimulationError::new(SimulationErrorCode::InvalidArgument))?;
-    let exclusions = policy_decision
+    let exclusions = policy_exclusions(input.snapshot(), policy);
+    RoutingEvaluation::new(input.context().clone(), input.snapshot(), decision, exclusions)
+        .map_err(map_domain_error)
+}
+
+fn policy_exclusions(snapshot: &RouteSnapshot, policy: &SelectionDecision) -> Vec<DomainExclusion> {
+    policy
         .exclusions()
         .iter()
         .filter_map(|exclusion| {
-            input
-                .snapshot()
+            snapshot
                 .candidates()
                 .iter()
                 .find(|candidate| candidate.key().as_str() == exclusion.candidate_id().as_str())
@@ -343,28 +389,23 @@ pub fn simulate(input: impl Borrow<SimulationInput>) -> Result<SimulationResult,
                     )
                 })
         })
-        .collect();
-    let evaluation = RoutingEvaluation::new(
-        input.context().clone(),
-        input.snapshot(),
-        decision,
-        exclusions,
-    )
-    .map_err(|error| match error.code() {
+        .collect()
+}
+
+fn map_domain_error(error: ariadnion_routing_domain::RoutingDomainError) -> SimulationError {
+    let code = match error.code() {
         ariadnion_routing_domain::RoutingDomainErrorCode::ModelMismatch => {
-            SimulationError::new(SimulationErrorCode::ModelMismatch)
+            SimulationErrorCode::ModelMismatch
         }
         ariadnion_routing_domain::RoutingDomainErrorCode::CandidateNotFound => {
-            SimulationError::new(SimulationErrorCode::CandidateNotFound)
+            SimulationErrorCode::CandidateNotFound
         }
-        _ => SimulationError::new(SimulationErrorCode::InvalidArgument),
-    })?;
-    let forecast = CapacityForecast::new(input.projected(), input.capacity())?;
-    Ok(SimulationResult {
-        policy: policy_decision,
-        evaluation,
-        forecast,
-    })
+        ariadnion_routing_domain::RoutingDomainErrorCode::TenantMismatch => {
+            SimulationErrorCode::TenantMismatch
+        }
+        _ => SimulationErrorCode::InvalidArgument,
+    };
+    SimulationError::new(code)
 }
 
 fn map_policy_error(error: ariadnion_routing_policy::RoutingPolicyError) -> SimulationError {
