@@ -221,8 +221,8 @@ impl RotationJournal {
 
     /// Returns the new-version store receipt, when durable storage succeeded.
     #[must_use]
-    pub const fn new_receipt(&self) -> Option<SecretStoreReceipt> {
-        self.new_receipt
+    pub fn new_receipt(&self) -> Option<SecretStoreReceipt> {
+        self.new_receipt.clone()
     }
 
     /// Returns the activation time, when the new version became active.
@@ -240,11 +240,18 @@ impl RotationJournal {
     /// Records a durable store receipt for exactly the planned new version.
     ///
     /// # Errors
-    /// Returns [`VaultErrorCode::Conflict`] when the phase or receipt version
-    /// does not match the plan.
-    pub fn record_new_version(&mut self, receipt: SecretStoreReceipt) -> Result<(), VaultError> {
+    /// Returns [`VaultErrorCode::Conflict`] when the phase, locator, version, or
+    /// receipt time does not match the plan or observed time.
+    pub fn record_new_version(
+        &mut self,
+        receipt: SecretStoreReceipt,
+        now: SystemTime,
+    ) -> Result<(), VaultError> {
         ensure_phase(self.phase, RotationPhase::Prepared)?;
-        if receipt.version() != self.plan.next().version() {
+        if receipt.reference() != self.plan.next()
+            || receipt.version() != self.plan.next().version()
+            || receipt.committed_at() > now
+        {
             return Err(VaultError::new(VaultErrorCode::Conflict));
         }
         self.new_receipt = Some(receipt);
@@ -260,6 +267,14 @@ impl RotationJournal {
     /// represent the overlap expiry.
     pub fn activate(&mut self, activated_at: SystemTime) -> Result<(), VaultError> {
         ensure_phase(self.phase, RotationPhase::NewVersionStored)?;
+        let committed_at = self
+            .new_receipt
+            .as_ref()
+            .map(SecretStoreReceipt::committed_at)
+            .ok_or_else(|| VaultError::new(VaultErrorCode::Conflict))?;
+        if activated_at < committed_at {
+            return Err(VaultError::new(VaultErrorCode::Conflict));
+        }
         let overlap_expires_at = activated_at
             .checked_add(self.plan.overlap().duration())
             .ok_or_else(|| VaultError::new(VaultErrorCode::InvalidArgument))?;
@@ -273,7 +288,7 @@ impl RotationJournal {
     ///
     /// # Errors
     /// Returns [`VaultErrorCode::Conflict`] for an early call, a mismatched
-    /// receipt, or a receipt committed before activation.
+    /// receipt, or a receipt committed before the overlap expires.
     pub fn revoke_previous(
         &mut self,
         receipt: SecretRevokeReceipt,
@@ -283,15 +298,7 @@ impl RotationJournal {
         let overlap_expires_at = self
             .overlap_expires_at
             .ok_or_else(|| VaultError::new(VaultErrorCode::Conflict))?;
-        let activated_at = self
-            .activated_at
-            .ok_or_else(|| VaultError::new(VaultErrorCode::Conflict))?;
-        if now < overlap_expires_at
-            || receipt.version() != self.plan.previous().version()
-            || receipt.committed_at() < activated_at
-        {
-            return Err(VaultError::new(VaultErrorCode::Conflict));
-        }
+        validate_previous_revoke(&self.plan, &receipt, now, overlap_expires_at)?;
         self.old_revoke_receipt = Some(receipt);
         self.phase = RotationPhase::Completed;
         Ok(())
@@ -324,11 +331,18 @@ impl RotationJournal {
     /// Records durable compensation of the new version and marks the rotation failed.
     ///
     /// # Errors
-    /// Returns [`VaultErrorCode::Conflict`] for an invalid phase or receipt
-    /// version.
-    pub fn record_compensation(&mut self, receipt: SecretRevokeReceipt) -> Result<(), VaultError> {
+    /// Returns [`VaultErrorCode::Conflict`] for an invalid phase, locator,
+    /// version, or future receipt time.
+    pub fn record_compensation(
+        &mut self,
+        receipt: SecretRevokeReceipt,
+        now: SystemTime,
+    ) -> Result<(), VaultError> {
         ensure_phase(self.phase, RotationPhase::Compensating)?;
-        if receipt.version() != self.plan.next().version() {
+        if receipt.reference() != self.plan.next()
+            || receipt.version() != self.plan.next().version()
+            || receipt.committed_at() > now
+        {
             return Err(VaultError::new(VaultErrorCode::Conflict));
         }
         self.compensation_receipt = Some(receipt);
@@ -354,6 +368,23 @@ impl Debug for RotationJournal {
 
 fn ensure_phase(actual: RotationPhase, expected: RotationPhase) -> Result<(), VaultError> {
     if actual != expected {
+        return Err(VaultError::new(VaultErrorCode::Conflict));
+    }
+    Ok(())
+}
+
+fn validate_previous_revoke(
+    plan: &CredentialRotationPlan,
+    receipt: &SecretRevokeReceipt,
+    now: SystemTime,
+    overlap_expires_at: SystemTime,
+) -> Result<(), VaultError> {
+    if now < overlap_expires_at
+        || receipt.reference() != plan.previous()
+        || receipt.version() != plan.previous().version()
+        || receipt.committed_at() < overlap_expires_at
+        || receipt.committed_at() > now
+    {
         return Err(VaultError::new(VaultErrorCode::Conflict));
     }
     Ok(())
