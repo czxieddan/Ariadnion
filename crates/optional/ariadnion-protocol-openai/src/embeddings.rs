@@ -106,12 +106,12 @@ pub fn openai_embeddings_router(http: HttpApiState) -> OpenAiEmbeddingsRouter {
         .with_state(state)
 }
 
-struct DecodedRequest {
+pub(crate) struct DecodedRequest {
     request: EmbeddingServiceRequest,
     model: Box<str>,
 }
 
-fn decode_request(bytes: &[u8]) -> Result<DecodedRequest, ProtocolFailure> {
+pub(crate) fn decode_request(bytes: &[u8]) -> Result<DecodedRequest, ProtocolFailure> {
     let mut deserializer = serde_json::Deserializer::from_slice(bytes);
     let raw = RawRequest::deserialize(&mut deserializer).map_err(|_| invalid_request())?;
     deserializer.end().map_err(|_| invalid_request())?;

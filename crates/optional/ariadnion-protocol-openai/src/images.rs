@@ -139,12 +139,12 @@ pub fn openai_images_router_with_clock(
         .with_state(state)
 }
 
-struct DecodedRequest {
+pub(crate) struct DecodedRequest {
     request: ImageServiceRequest,
     output: ImageOutputSpecification,
 }
 
-fn decode_request(
+pub(crate) fn decode_request(
     bytes: &[u8],
     idempotency: Option<IdempotencyKey>,
 ) -> Result<DecodedRequest, ProtocolFailure> {
@@ -433,15 +433,24 @@ fn append_image_data(
 ) -> Result<(), ProtocolFailure> {
     for (index, image) in images.iter().enumerate() {
         check_context(context)?;
-        if index != 0 {
-            append_bytes(body, b",")?;
-        }
-        append_bytes(body, b"{\"b64_json\":\"")?;
-        append_base64(body, image.as_bytes(), context)?;
-        append_bytes(body, b"\"}")?;
+        append_image(body, image, index, context)?;
         check_context(context)?;
     }
     Ok(())
+}
+
+fn append_image(
+    body: &mut Vec<u8>,
+    image: &GeneratedImage,
+    index: usize,
+    context: Option<&RequestContext>,
+) -> Result<(), ProtocolFailure> {
+    if index != 0 {
+        append_bytes(body, b",")?;
+    }
+    append_bytes(body, b"{\"b64_json\":\"")?;
+    append_base64(body, image.as_bytes(), context)?;
+    append_bytes(body, b"\"}")
 }
 
 fn append_base64(
@@ -453,16 +462,26 @@ fn append_base64(
     let start = reserve_append(body, total)?;
     let end = start.checked_add(total).ok_or_else(internal_failure)?;
     body.resize(end, 0);
+    let offset = encode_chunks(input, body, start, context)?;
+    if offset != end {
+        return Err(internal_failure());
+    }
+    Ok(())
+}
+
+fn encode_chunks(
+    input: &[u8],
+    body: &mut [u8],
+    start: usize,
+    context: Option<&RequestContext>,
+) -> Result<usize, ProtocolFailure> {
     let mut offset = start;
     for chunk in input.chunks(BASE64_INPUT_CHUNK_BYTES) {
         check_context(context)?;
         offset = encode_chunk(chunk, body, offset)?;
         check_context(context)?;
     }
-    if offset != end {
-        return Err(internal_failure());
-    }
-    Ok(())
+    Ok(offset)
 }
 
 fn encode_chunk(input: &[u8], output: &mut [u8], offset: usize) -> Result<usize, ProtocolFailure> {

@@ -43,7 +43,7 @@ use axum::Router;
 
 use crate::{OpenAiTimestampPort, SystemOpenAiTimestamp};
 
-mod request;
+pub(crate) mod request;
 mod response;
 mod stream;
 
