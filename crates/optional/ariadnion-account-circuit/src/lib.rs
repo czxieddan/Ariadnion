@@ -813,19 +813,23 @@ fn apply_probe_outcome(
             }
         }
         CircuitOutcome::RetryableFailure | CircuitOutcome::TerminalFailure => {
-            fail_closed(snapshot)?;
+            mark_open(snapshot);
         }
     }
     Ok(())
 }
 
 fn fail_closed(snapshot: &mut CircuitSnapshot) -> Result<(), AccountCircuitError> {
+    mark_open(snapshot);
+    snapshot.generation = snapshot.generation.next()?;
+    Ok(())
+}
+
+fn mark_open(snapshot: &mut CircuitSnapshot) {
     snapshot.state = CircuitState::Open;
     snapshot.opened_at = snapshot.last_observed_at;
     snapshot.recovery_successes = 0;
     snapshot.half_open_in_flight = 0;
-    snapshot.generation = snapshot.generation.next()?;
-    Ok(())
 }
 
 const fn error(code: AccountCircuitErrorCode) -> AccountCircuitError {
