@@ -36,7 +36,8 @@ use std::sync::Arc;
 use ariadnion_api_domain::{AudioOutputSpecification, ModelSelector};
 use ariadnion_api_files::{FileCatalogServicePort, FileReferenceIssuerPort, FileServicePort};
 use ariadnion_api_http::{
-    HttpApiState, MonotonicRequestIdentityIssuer, PublicApiRouter, RequestIdentityPort,
+    HttpApiState, HttpOperationProtocolAdapter, HttpUpgradeProtocolAdapter,
+    MonotonicRequestIdentityIssuer, ProtocolUpgradeLimits, PublicApiRouter, RequestIdentityPort,
     ServiceAuthenticationPort, ServiceDispatchPort, ServiceStreamBridgePort, public_router,
 };
 use ariadnion_api_stream::SseBridge;
@@ -95,6 +96,18 @@ pub struct PublicApiInputs {
     openai_models: Option<Arc<OpenAiModelCatalog>>,
     openai_speech_output: Option<AudioOutputSpecification>,
     openai_timestamp: Option<Arc<dyn OpenAiTimestampPort>>,
+    openai_files: Option<Arc<dyn HttpOperationProtocolAdapter>>,
+    openai_batch: Option<Arc<dyn HttpOperationProtocolAdapter>>,
+    openai_realtime: Option<(Arc<dyn HttpUpgradeProtocolAdapter>, ProtocolUpgradeLimits)>,
+}
+
+struct OpenAiCompatibilityInputs {
+    models: Option<Arc<OpenAiModelCatalog>>,
+    speech_output: Option<AudioOutputSpecification>,
+    timestamp: Option<Arc<dyn OpenAiTimestampPort>>,
+    files: Option<Arc<dyn HttpOperationProtocolAdapter>>,
+    batch: Option<Arc<dyn HttpOperationProtocolAdapter>>,
+    realtime: Option<(Arc<dyn HttpUpgradeProtocolAdapter>, ProtocolUpgradeLimits)>,
 }
 
 impl PublicApiInputs {
@@ -119,6 +132,9 @@ impl PublicApiInputs {
             openai_models: None,
             openai_speech_output: None,
             openai_timestamp: None,
+            openai_files: None,
+            openai_batch: None,
+            openai_realtime: None,
         }
     }
 
@@ -154,6 +170,31 @@ impl PublicApiInputs {
     #[must_use]
     pub fn with_openai_timestamp(mut self, timestamp: Arc<dyn OpenAiTimestampPort>) -> Self {
         self.openai_timestamp = Some(timestamp);
+        self
+    }
+
+    /// Installs the provider-neutral OpenAI Files compatibility capability.
+    #[must_use]
+    pub fn with_openai_files(mut self, files: Arc<dyn HttpOperationProtocolAdapter>) -> Self {
+        self.openai_files = Some(files);
+        self
+    }
+
+    /// Installs the durable OpenAI Batch operation capability.
+    #[must_use]
+    pub fn with_openai_batch(mut self, batch: Arc<dyn HttpOperationProtocolAdapter>) -> Self {
+        self.openai_batch = Some(batch);
+        self
+    }
+
+    /// Installs the OpenAI Realtime WebSocket transport capability.
+    #[must_use]
+    pub fn with_openai_realtime(
+        mut self,
+        realtime: Arc<dyn HttpUpgradeProtocolAdapter>,
+        limits: ProtocolUpgradeLimits,
+    ) -> Self {
+        self.openai_realtime = Some((realtime, limits));
         self
     }
 }
@@ -208,30 +249,77 @@ pub fn assemble_public_api(
         openai_models,
         openai_speech_output,
         openai_timestamp,
+        openai_files,
+        openai_batch,
+        openai_realtime,
     } = inputs;
-    let mut state = HttpApiState::new(identity, authentication, dispatch, shutdown);
+    let state = apply_http_capabilities(
+        HttpApiState::new(identity, authentication, dispatch, shutdown),
+        stream_bridge,
+        file_service,
+    );
+    match profile {
+        StandardPublicApiProfile::Native => public_router(state),
+        StandardPublicApiProfile::Compatibility => mount_openai_compatibility(
+            state,
+            OpenAiCompatibilityInputs {
+                models: openai_models,
+                speech_output: openai_speech_output,
+                timestamp: openai_timestamp,
+                files: openai_files,
+                batch: openai_batch,
+                realtime: openai_realtime,
+            },
+        ),
+    }
+}
+
+fn apply_http_capabilities(
+    mut state: HttpApiState,
+    stream_bridge: Option<Arc<dyn ServiceStreamBridgePort>>,
+    file_service: Option<Arc<dyn FileServicePort>>,
+) -> HttpApiState {
     if let Some(bridge) = stream_bridge {
         state = state.with_stream_bridge(bridge);
     }
     if let Some(service) = file_service {
         state = state.with_file_service(service);
     }
-    match profile {
-        StandardPublicApiProfile::Native => public_router(state),
-        StandardPublicApiProfile::Compatibility => {
-            let mut manifest = OpenAiRouteManifest::new();
-            if let Some(catalog) = openai_models {
-                manifest = manifest.with_models(catalog);
-            }
-            if let Some(output) = openai_speech_output {
-                manifest = manifest.with_speech_output(output);
-            }
-            if let Some(timestamp) = openai_timestamp {
-                manifest = manifest.with_timestamp(timestamp);
-            }
-            manifest.mount(state)
-        }
+    state
+}
+
+fn mount_openai_compatibility(
+    state: HttpApiState,
+    inputs: OpenAiCompatibilityInputs,
+) -> PublicApiRouter {
+    let OpenAiCompatibilityInputs {
+        models,
+        speech_output,
+        timestamp,
+        files,
+        batch,
+        realtime,
+    } = inputs;
+    let mut manifest = OpenAiRouteManifest::new();
+    if let Some(catalog) = models {
+        manifest = manifest.with_models(catalog);
     }
+    if let Some(output) = speech_output {
+        manifest = manifest.with_speech_output(output);
+    }
+    if let Some(clock) = timestamp {
+        manifest = manifest.with_timestamp(clock);
+    }
+    if let Some(adapter) = files {
+        manifest = manifest.with_files_adapter(adapter);
+    }
+    if let Some(adapter) = batch {
+        manifest = manifest.with_batch_adapter(adapter);
+    }
+    if let Some((adapter, limits)) = realtime {
+        manifest = manifest.with_realtime_adapter(adapter, limits);
+    }
+    manifest.mount(state)
 }
 
 /// Assembles exactly one verification-only mock public API profile.
