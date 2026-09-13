@@ -30,8 +30,9 @@
 //!
 //! This crate stops before encryption or signature verification. Importers pass
 //! only typed [`SecretRef`] values and opaque digests. A coordinator performs a
-//! deterministic dry run and generation-checked publication, leaving cryptographic
-//! custody and durable storage to a later adapter.
+//! deterministic dry run and local generation sequencing, leaving cryptographic
+//! custody and durable snapshot publication to a later adapter such as the
+//! account-pool boundary.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -49,6 +50,7 @@ pub const DIGEST_HEX_BYTES: usize = 64;
 const CURRENT_SCHEMA_VERSION: u16 = 1;
 
 /// Stable machine-readable account-import failures.
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum ImportErrorCode {
@@ -74,16 +76,17 @@ impl ImportErrorCode {
     /// Returns the stable external machine code.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::InvalidArgument => "ACCOUNT_IMPORT_INVALID_ARGUMENT",
-            Self::UnsupportedSchemaVersion => "ACCOUNT_IMPORT_UNSUPPORTED_SCHEMA_VERSION",
-            Self::TooManyEntries => "ACCOUNT_IMPORT_TOO_MANY_ENTRIES",
-            Self::DuplicateEntry => "ACCOUNT_IMPORT_DUPLICATE_ENTRY",
-            Self::Conflict => "ACCOUNT_IMPORT_CONFLICT",
-            Self::GenerationConflict => "ACCOUNT_IMPORT_GENERATION_CONFLICT",
-            Self::GenerationExhausted => "ACCOUNT_IMPORT_GENERATION_EXHAUSTED",
-            Self::StateUnavailable => "ACCOUNT_IMPORT_STATE_UNAVAILABLE",
-        }
+        const CODES: [&str; 8] = [
+            "ACCOUNT_IMPORT_INVALID_ARGUMENT",
+            "ACCOUNT_IMPORT_UNSUPPORTED_SCHEMA_VERSION",
+            "ACCOUNT_IMPORT_TOO_MANY_ENTRIES",
+            "ACCOUNT_IMPORT_DUPLICATE_ENTRY",
+            "ACCOUNT_IMPORT_CONFLICT",
+            "ACCOUNT_IMPORT_GENERATION_CONFLICT",
+            "ACCOUNT_IMPORT_GENERATION_EXHAUSTED",
+            "ACCOUNT_IMPORT_STATE_UNAVAILABLE",
+        ];
+        CODES[self as usize]
     }
 }
 
@@ -424,7 +427,12 @@ impl PublishIntent {
     }
 }
 
-/// Receipt returned after an intent is atomically accepted.
+/// Receipt returned after an intent is accepted by the in-memory coordinator.
+///
+/// This receipt is deliberately non-durable. It only advances the coordinator's
+/// local optimistic generation and must never be used as evidence of a durable
+/// account snapshot commit. Durable generation ownership belongs to the storage
+/// adapter that consumes the intent.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PublishReceipt {
     generation: ImportGeneration,
@@ -443,6 +451,7 @@ impl PublishReceipt {
     pub const fn published_count(self) -> usize {
         self.published_count
     }
+
 }
 
 #[derive(Debug)]
@@ -450,7 +459,11 @@ struct CoordinatorState {
     generation: ImportGeneration,
 }
 
-/// Coordinator for deterministic dry runs and generation-checked publication.
+/// Coordinator for deterministic dry runs and local generation sequencing.
+///
+/// The coordinator does not access storage and does not prove durable success.
+/// A durable adapter must consume the immutable [`PublishIntent`] and own its
+/// generation compare-and-swap, transaction, and reconciliation behavior.
 #[derive(Debug)]
 pub struct ImportCoordinator {
     state: RwLock<CoordinatorState>,
@@ -514,12 +527,15 @@ impl ImportCoordinator {
         })
     }
 
-    /// Atomically accepts an intent if its expected generation is still current.
+    /// Atomically accepts an intent in coordinator memory if its expected generation is current.
+    ///
+    /// This advances only the coordinator's local generation. It is not a
+    /// durable commit and must not be used as one.
     ///
     /// # Errors
     /// Returns [`ImportErrorCode::GenerationConflict`] for stale intents and a
     /// stable state or overflow error for other failures.
-    pub fn publish(&self, intent: PublishIntent) -> Result<PublishReceipt, ImportError> {
+    pub fn accept_intent(&self, intent: PublishIntent) -> Result<PublishReceipt, ImportError> {
         let mut state = self
             .state
             .write()
@@ -533,6 +549,14 @@ impl ImportCoordinator {
             generation,
             published_count: intent.entries.len(),
         })
+    }
+
+    /// Backward-compatible alias for [`Self::accept_intent`].
+    ///
+    /// The returned receipt is explicitly non-durable. Durable publication is
+    /// owned by the adapter that consumes the intent.
+    pub fn publish(&self, intent: PublishIntent) -> Result<PublishReceipt, ImportError> {
+        self.accept_intent(intent)
     }
 
     /// Returns the current coordinator generation.
