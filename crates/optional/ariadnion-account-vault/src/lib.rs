@@ -38,12 +38,17 @@
 
 mod error;
 mod port;
+mod rotation;
 mod secret;
 
 pub use error::{VaultError, VaultErrorCode};
 pub use port::{
     BoxVaultFuture, SecretReadRequest, SecretRevokeReceipt, SecretStoreReceipt, SecretStoreRequest,
     VaultPort, VaultRevokeReason, VaultRevokeRequest,
+};
+pub use rotation::{
+    CredentialRotationPlan, MAX_ROTATION_ID_BYTES, MAX_ROTATION_OVERLAP, RotationJournal,
+    RotationPhase, RotationWindow,
 };
 pub use secret::{
     ENVELOPE_NONCE_BYTES, EncryptedSecretEnvelope, MAX_CIPHERTEXT_BYTES, MAX_LEASE_LIFETIME,
