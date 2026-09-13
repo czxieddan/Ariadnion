@@ -85,6 +85,10 @@ pub enum AccountPoolErrorCode {
     InvalidCandidate,
     /// Internal publication state could not be read or updated.
     StateUnavailable,
+    /// A candidate belongs to a different tenant than the requested projection.
+    TenantMismatch,
+    /// A candidate snapshot could not be represented by routing-domain bounds.
+    RoutingProjectionFailed,
 }
 
 impl AccountPoolErrorCode {
@@ -102,6 +106,8 @@ impl AccountPoolErrorCode {
             Self::VersionExhausted => "ACCOUNT_POOL_VERSION_EXHAUSTED",
             Self::InvalidCandidate => "ACCOUNT_POOL_INVALID_CANDIDATE",
             Self::StateUnavailable => "ACCOUNT_POOL_STATE_UNAVAILABLE",
+            Self::TenantMismatch => "ACCOUNT_POOL_TENANT_MISMATCH",
+            Self::RoutingProjectionFailed => "ACCOUNT_POOL_ROUTING_PROJECTION_FAILED",
         }
     }
 }
@@ -170,6 +176,8 @@ use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
 
 use ariadnion_account_domain::{Account, AccountId, ModelName, ProviderId};
+use ariadnion_core::TenantId;
+use ariadnion_routing_domain::{CandidateRef, RouteModel, RouteSnapshot, RouteSnapshotVersion};
 
 /// Maximum records accepted by one account import.
 pub const MAX_IMPORT_RECORDS: usize = 100_000;
@@ -498,6 +506,7 @@ impl AccountImport {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CandidateMetadata {
     id: CandidateId,
+    tenant_id: Option<TenantId>,
     account_id: AccountId,
     provider_id: ProviderId,
     model: Option<ModelName>,
@@ -519,6 +528,7 @@ impl CandidateMetadata {
     ) -> Self {
         Self {
             id,
+            tenant_id: None,
             account_id,
             provider_id,
             model,
@@ -531,7 +541,7 @@ impl CandidateMetadata {
 
     pub(crate) fn from_record(record: &AccountImportRecord) -> Self {
         let account = record.account();
-        Self::new(
+        let mut candidate = Self::new(
             CandidateId::from_account(account.id()),
             account.id().clone(),
             account.provider().id().clone(),
@@ -542,7 +552,9 @@ impl CandidateMetadata {
                 record.load(),
                 record.availability(),
             ),
-        )
+        );
+        candidate.tenant_id = Some(account.tenant_id().clone());
+        candidate
     }
 
     /// Returns the stable candidate identity.
@@ -555,6 +567,12 @@ impl CandidateMetadata {
     #[must_use]
     pub const fn account_id(&self) -> &AccountId {
         &self.account_id
+    }
+
+    /// Returns the source tenant when this candidate came from an account record.
+    #[must_use]
+    pub const fn tenant_id(&self) -> Option<&TenantId> {
+        self.tenant_id.as_ref()
     }
 
     /// Returns the provider identity.
@@ -681,6 +699,60 @@ impl CandidateSnapshot {
     #[must_use]
     pub fn candidates(&self) -> &[CandidateMetadata] {
         &self.candidates
+    }
+
+    /// Projects this immutable candidate set into a tenant-bound routing snapshot.
+    ///
+    /// Unavailable candidates are excluded before projection. Candidates retain
+    /// deterministic candidate-ID order, while the routing snapshot version is
+    /// copied without exposing account-pool internals.
+    ///
+    /// # Errors
+    /// Returns a redacted account-pool error when a candidate crosses the
+    /// requested tenant boundary, lacks a model, or exceeds routing-domain
+    /// validation bounds.
+    pub fn to_route_snapshot(
+        &self,
+        tenant_id: &TenantId,
+    ) -> Result<RouteSnapshot, AccountPoolError> {
+        let version = RouteSnapshotVersion::new(self.version.get())
+            .map_err(|_| error(AccountPoolErrorCode::RoutingProjectionFailed))?;
+        let mut projected = Vec::with_capacity(self.candidates.len());
+        for candidate in self
+            .candidates
+            .iter()
+            .filter(|candidate| candidate.availability() == Availability::Available)
+        {
+            let source_tenant = candidate
+                .tenant_id()
+                .ok_or_else(|| error(AccountPoolErrorCode::InvalidCandidate))?;
+            if source_tenant != tenant_id {
+                return Err(error(AccountPoolErrorCode::TenantMismatch));
+            }
+            let model = candidate
+                .model()
+                .ok_or_else(|| error(AccountPoolErrorCode::InvalidCandidate))?;
+            let model = RouteModel::parse(model.as_str())
+                .map_err(|_| error(AccountPoolErrorCode::InvalidCandidate))?;
+            let route_candidate = CandidateRef::new(
+                tenant_id.clone(),
+                candidate.id().as_str(),
+                candidate.account_id().clone(),
+                candidate.provider_id().clone(),
+                model,
+            )
+            .map_err(|_| error(AccountPoolErrorCode::InvalidCandidate))?;
+            projected.push(route_candidate);
+        }
+        RouteSnapshot::new(tenant_id.clone(), version, projected).map_err(projected_routing_error)
+    }
+
+    /// Alias for [`Self::to_route_snapshot`] using projection terminology.
+    pub fn project_for_tenant(
+        &self,
+        tenant_id: &TenantId,
+    ) -> Result<RouteSnapshot, AccountPoolError> {
+        self.to_route_snapshot(tenant_id)
     }
 }
 
@@ -978,5 +1050,19 @@ fn ensure_generation(
 }
 
 const fn error(code: AccountPoolErrorCode) -> AccountPoolError {
+    AccountPoolError::new(code)
+}
+
+fn projected_routing_error(
+    routing_error: ariadnion_routing_domain::RoutingDomainError,
+) -> AccountPoolError {
+    use ariadnion_routing_domain::RoutingDomainErrorCode;
+
+    let code = match routing_error.code() {
+        RoutingDomainErrorCode::DuplicateCandidateId => AccountPoolErrorCode::DuplicateCandidate,
+        RoutingDomainErrorCode::SnapshotVersionExhausted => AccountPoolErrorCode::VersionExhausted,
+        RoutingDomainErrorCode::TenantMismatch => AccountPoolErrorCode::TenantMismatch,
+        _ => AccountPoolErrorCode::RoutingProjectionFailed,
+    };
     AccountPoolError::new(code)
 }
