@@ -334,10 +334,12 @@ impl OpenAiFilesHttpAdapter {
         context.check_active().map_err(|error| {
             ProtocolFailure::from(ariadnion_api_domain::ApiDomainError::from(error))
         })?;
+        // Multipart parsing uses bounded staging; service-side chunk polling
+        // preserves backpressure after the request body has been validated.
         let bytes = to_bytes(request.into_body(), MAX_MULTIPART_BODY_BYTES)
             .await
             .map_err(|_| body_read_failure(context))?;
-        let parts = parse_multipart(&bytes, &boundary)?;
+        let parts = parse_multipart(bytes, &boundary)?;
         let purpose = validate_upload_purpose(&parts)?;
         Ok((parts, purpose, idempotency))
     }
@@ -567,16 +569,17 @@ struct MultipartParts {
     filename: String,
     media_type: String,
     purpose: String,
-    bytes: Vec<u8>,
+    bytes: Bytes,
 }
 
-fn parse_multipart(body: &[u8], boundary: &str) -> Result<MultipartParts, ProtocolFailure> {
+fn parse_multipart(body: Bytes, boundary: &str) -> Result<MultipartParts, ProtocolFailure> {
     let marker = format!("--{boundary}").into_bytes();
     let mut cursor = 0;
     let mut file = None;
     let mut purpose = None;
     while cursor < body.len() {
-        let Some(next) = parse_next_multipart_part(body, &marker, cursor, &mut file, &mut purpose)?
+        let Some(next) =
+            parse_next_multipart_part(&body, &body, &marker, cursor, &mut file, &mut purpose)?
         else {
             break;
         };
@@ -594,9 +597,10 @@ fn parse_multipart(body: &[u8], boundary: &str) -> Result<MultipartParts, Protoc
 
 fn parse_next_multipart_part(
     body: &[u8],
+    source: &Bytes,
     marker: &[u8],
     cursor: usize,
-    file: &mut Option<(String, String, Vec<u8>)>,
+    file: &mut Option<(String, String, Bytes)>,
     purpose: &mut Option<String>,
 ) -> Result<Option<usize>, ProtocolFailure> {
     let cursor = consume_delimiter(body, marker, cursor)?;
@@ -605,29 +609,38 @@ fn parse_next_multipart_part(
     }
     let (headers, content_start) = parse_part_headers(body, cursor)?;
     let (content_end, next) = find_part_end(body, marker, content_start)?;
-    parse_multipart_part(body, &headers, content_start, content_end, file, purpose)?;
+    parse_multipart_part(
+        body,
+        source,
+        &headers,
+        content_start,
+        content_end,
+        file,
+        purpose,
+    )?;
     Ok(Some(next))
 }
 
 fn parse_multipart_part(
     body: &[u8],
+    source: &Bytes,
     headers: &[String],
     content_start: usize,
     content_end: usize,
-    file: &mut Option<(String, String, Vec<u8>)>,
+    file: &mut Option<(String, String, Bytes)>,
     purpose: &mut Option<String>,
 ) -> Result<(), ProtocolFailure> {
     let name = disposition_parameter(headers, "name").ok_or_else(invalid)?;
     match name {
-        "file" => assign_file_part(file, body, headers, content_start, content_end),
+        "file" => assign_file_part(file, source, headers, content_start, content_end),
         "purpose" => assign_purpose_part(purpose, body, content_start, content_end),
         _ => Err(invalid()),
     }
 }
 
 fn assign_file_part(
-    file: &mut Option<(String, String, Vec<u8>)>,
-    body: &[u8],
+    file: &mut Option<(String, String, Bytes)>,
+    source: &Bytes,
     headers: &[String],
     content_start: usize,
     content_end: usize,
@@ -635,7 +648,12 @@ fn assign_file_part(
     if file.is_some() {
         return Err(invalid());
     }
-    *file = Some(parse_file_part(body, headers, content_start, content_end)?);
+    *file = Some(parse_file_part(
+        source,
+        headers,
+        content_start,
+        content_end,
+    )?);
     Ok(())
 }
 
@@ -653,20 +671,18 @@ fn assign_purpose_part(
 }
 
 fn parse_file_part(
-    body: &[u8],
+    body: &Bytes,
     headers: &[String],
     content_start: usize,
     content_end: usize,
-) -> Result<(String, String, Vec<u8>), ProtocolFailure> {
+) -> Result<(String, String, Bytes), ProtocolFailure> {
     let filename = disposition_parameter(headers, "filename").ok_or_else(invalid)?;
     let media_type = header_value(headers, "content-type")
         .filter(|value| !value.is_empty())
         .unwrap_or("application/octet-stream")
         .to_owned();
-    let bytes = body
-        .get(content_start..content_end)
-        .ok_or_else(invalid)?
-        .to_vec();
+    body.get(content_start..content_end).ok_or_else(invalid)?;
+    let bytes = body.slice(content_start..content_end);
     Ok((filename.to_owned(), media_type, bytes))
 }
 
@@ -948,13 +964,13 @@ fn parse_text_part(body: &[u8], start: usize, end: usize) -> Result<String, Prot
 }
 
 struct VecUploadSource {
-    bytes: Vec<u8>,
+    bytes: Bytes,
     offset: usize,
     complete: bool,
 }
 
 impl VecUploadSource {
-    fn new(bytes: Vec<u8>) -> Self {
+    fn new(bytes: Bytes) -> Self {
         Self {
             bytes,
             offset: 0,
