@@ -38,6 +38,7 @@ publish = false
 [workspace]
 
 [dependencies]
+ariadnion-core = { path = "../../ariadnion-core" }
 sha2 = "=0.10.9"
 
 [lints.rust]

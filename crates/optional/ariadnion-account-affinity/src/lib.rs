@@ -31,6 +31,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+use ariadnion_core::TenantId;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fmt::{self, Debug, Display, Formatter};
@@ -48,6 +49,7 @@ pub const MAX_CANDIDATES: usize = 100_000;
 pub const MAX_TTL_SECONDS: u64 = 30 * 86_400;
 
 /// Stable machine-readable account-affinity failures.
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum AccountAffinityErrorCode {
@@ -65,6 +67,8 @@ pub enum AccountAffinityErrorCode {
     GenerationConflict,
     /// A key belongs to an inactive affinity epoch.
     EpochConflict,
+    /// A key belongs to a different tenant than the registry.
+    TenantMismatch,
     /// An epoch or generation cannot advance without wrapping.
     VersionExhausted,
     /// The authoritative affinity state could not be accessed.
@@ -75,17 +79,19 @@ impl AccountAffinityErrorCode {
     /// Returns the stable external machine code.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::InvalidArgument => "ACCOUNT_AFFINITY_INVALID_ARGUMENT",
-            Self::EmptyCandidateSet => "ACCOUNT_AFFINITY_EMPTY_CANDIDATE_SET",
-            Self::TooManyCandidates => "ACCOUNT_AFFINITY_TOO_MANY_CANDIDATES",
-            Self::CapacityExceeded => "ACCOUNT_AFFINITY_CAPACITY_EXCEEDED",
-            Self::InvalidTtl => "ACCOUNT_AFFINITY_INVALID_TTL",
-            Self::GenerationConflict => "ACCOUNT_AFFINITY_GENERATION_CONFLICT",
-            Self::EpochConflict => "ACCOUNT_AFFINITY_EPOCH_CONFLICT",
-            Self::VersionExhausted => "ACCOUNT_AFFINITY_VERSION_EXHAUSTED",
-            Self::StateUnavailable => "ACCOUNT_AFFINITY_STATE_UNAVAILABLE",
-        }
+        const CODES: [&str; 10] = [
+            "ACCOUNT_AFFINITY_INVALID_ARGUMENT",
+            "ACCOUNT_AFFINITY_EMPTY_CANDIDATE_SET",
+            "ACCOUNT_AFFINITY_TOO_MANY_CANDIDATES",
+            "ACCOUNT_AFFINITY_CAPACITY_EXCEEDED",
+            "ACCOUNT_AFFINITY_INVALID_TTL",
+            "ACCOUNT_AFFINITY_GENERATION_CONFLICT",
+            "ACCOUNT_AFFINITY_EPOCH_CONFLICT",
+            "ACCOUNT_AFFINITY_TENANT_MISMATCH",
+            "ACCOUNT_AFFINITY_VERSION_EXHAUSTED",
+            "ACCOUNT_AFFINITY_STATE_UNAVAILABLE",
+        ];
+        CODES[self as usize]
     }
 }
 
@@ -228,7 +234,7 @@ pub enum AffinityScope {
 pub struct OpaqueAffinityId([u8; 32]);
 
 impl OpaqueAffinityId {
-    /// Hashes a bounded subject with a scope and epoch domain separator.
+    /// Hashes a bounded subject with tenant, scope, and epoch separators.
     ///
     /// The input is not retained after this call. Callers should pass a stable
     /// identifier, never a credential or request body.
@@ -237,6 +243,7 @@ impl OpaqueAffinityId {
     /// Returns [`AccountAffinityErrorCode::InvalidArgument`] for empty, oversized,
     /// or control-containing input.
     pub fn derive(
+        tenant_id: TenantId,
         scope: AffinityScope,
         subject: &str,
         epoch: AffinityEpoch,
@@ -250,6 +257,8 @@ impl OpaqueAffinityId {
         }
         let mut hasher = Sha256::new();
         hasher.update(b"ariadnion-affinity-v1\0");
+        hasher.update((tenant_id.as_str().len() as u16).to_be_bytes());
+        hasher.update(tenant_id.as_str().as_bytes());
         hasher.update([scope as u8]);
         hasher.update(epoch.get().to_be_bytes());
         hasher.update((subject.len() as u16).to_be_bytes());
@@ -280,8 +289,9 @@ impl Display for OpaqueAffinityId {
 }
 
 /// A scoped, epoch-bound key used for affinity lookups.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct AffinityKey {
+    tenant_id: TenantId,
     scope: AffinityScope,
     id: OpaqueAffinityId,
     epoch: AffinityEpoch,
@@ -290,50 +300,67 @@ pub struct AffinityKey {
 impl AffinityKey {
     /// Derives a key from a user, session, or session-family subject.
     pub fn derive(
+        tenant_id: TenantId,
         scope: AffinityScope,
         subject: &str,
         epoch: AffinityEpoch,
     ) -> Result<Self, AccountAffinityError> {
         Ok(Self {
+            tenant_id: tenant_id.clone(),
             scope,
-            id: OpaqueAffinityId::derive(scope, subject, epoch)?,
+            id: OpaqueAffinityId::derive(tenant_id, scope, subject, epoch)?,
             epoch,
         })
     }
 
     /// Derives a user-scoped key.
-    pub fn user(subject: &str, epoch: AffinityEpoch) -> Result<Self, AccountAffinityError> {
-        Self::derive(AffinityScope::User, subject, epoch)
+    pub fn user(
+        tenant_id: TenantId,
+        subject: &str,
+        epoch: AffinityEpoch,
+    ) -> Result<Self, AccountAffinityError> {
+        Self::derive(tenant_id, AffinityScope::User, subject, epoch)
     }
 
     /// Derives a leaf-session-scoped key.
-    pub fn session(subject: &str, epoch: AffinityEpoch) -> Result<Self, AccountAffinityError> {
-        Self::derive(AffinityScope::Session, subject, epoch)
+    pub fn session(
+        tenant_id: TenantId,
+        subject: &str,
+        epoch: AffinityEpoch,
+    ) -> Result<Self, AccountAffinityError> {
+        Self::derive(tenant_id, AffinityScope::Session, subject, epoch)
     }
 
     /// Derives a session-family-scoped key.
     pub fn session_family(
+        tenant_id: TenantId,
         subject: &str,
         epoch: AffinityEpoch,
     ) -> Result<Self, AccountAffinityError> {
-        Self::derive(AffinityScope::SessionFamily, subject, epoch)
+        Self::derive(tenant_id, AffinityScope::SessionFamily, subject, epoch)
     }
 
     /// Returns the scope without exposing the source subject.
     #[must_use]
-    pub const fn scope(self) -> AffinityScope {
+    pub const fn scope(&self) -> AffinityScope {
         self.scope
+    }
+
+    /// Returns the tenant bound to this key.
+    #[must_use]
+    pub const fn tenant_id(&self) -> &TenantId {
+        &self.tenant_id
     }
 
     /// Returns the opaque digest.
     #[must_use]
-    pub const fn id(self) -> OpaqueAffinityId {
+    pub const fn id(&self) -> OpaqueAffinityId {
         self.id
     }
 
     /// Returns the epoch used during derivation.
     #[must_use]
-    pub const fn epoch(self) -> AffinityEpoch {
+    pub const fn epoch(&self) -> AffinityEpoch {
         self.epoch
     }
 }
@@ -389,8 +416,8 @@ pub struct AffinityBinding {
 impl AffinityBinding {
     /// Returns the bound affinity key.
     #[must_use]
-    pub const fn key(&self) -> AffinityKey {
-        self.key
+    pub const fn key(&self) -> &AffinityKey {
+        &self.key
     }
 
     /// Returns the selected candidate identity.
@@ -405,14 +432,15 @@ impl AffinityBinding {
         self.expires_at
     }
 
-    fn is_live(&self, key: AffinityKey, now: UtcSeconds) -> bool {
-        self.key == key && self.expires_at > now
+    fn is_live(&self, key: &AffinityKey, now: UtcSeconds) -> bool {
+        &self.key == key && self.expires_at > now
     }
 }
 
 /// Immutable view of the affinity registry.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AffinitySnapshot {
+    tenant_id: TenantId,
     generation: AffinityGeneration,
     epoch: AffinityEpoch,
     bindings: Arc<[AffinityBinding]>,
@@ -423,6 +451,12 @@ impl AffinitySnapshot {
     #[must_use]
     pub const fn generation(&self) -> AffinityGeneration {
         self.generation
+    }
+
+    /// Returns the tenant bound to this snapshot.
+    #[must_use]
+    pub const fn tenant_id(&self) -> &TenantId {
+        &self.tenant_id
     }
 
     /// Returns the active epoch.
@@ -438,15 +472,15 @@ impl AffinitySnapshot {
     }
 }
 
-#[derive(Default)]
 struct RegistryState {
+    tenant_id: TenantId,
     generation: AffinityGeneration,
     epoch: AffinityEpoch,
     bindings: HashMap<AffinityKey, AffinityBinding>,
 }
 
 /// Thread-safe bounded affinity registry.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct AffinityRegistry {
     state: Arc<RwLock<RegistryState>>,
 }
@@ -458,28 +492,43 @@ impl Debug for AffinityRegistry {
 }
 
 impl AffinityRegistry {
-    /// Creates an empty registry at the initial epoch.
+    /// Creates an empty registry at the initial epoch for one tenant.
     #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Creates an empty registry at a reconstructed epoch.
-    #[must_use]
-    pub fn with_epoch(epoch: AffinityEpoch) -> Self {
+    pub fn new(tenant_id: TenantId) -> Self {
         Self {
             state: Arc::new(RwLock::new(RegistryState {
-                epoch,
-                ..RegistryState::default()
+                tenant_id,
+                generation: AffinityGeneration::initial(),
+                epoch: AffinityEpoch::initial(),
+                bindings: HashMap::new(),
             })),
         }
     }
 
-    /// Creates an empty registry reconstructed at explicit durable versions.
+    /// Creates an empty registry at a reconstructed epoch for one tenant.
     #[must_use]
-    pub fn with_versions(epoch: AffinityEpoch, generation: AffinityGeneration) -> Self {
+    pub fn with_epoch(tenant_id: TenantId, epoch: AffinityEpoch) -> Self {
         Self {
             state: Arc::new(RwLock::new(RegistryState {
+                tenant_id,
+                generation: AffinityGeneration::initial(),
+                epoch,
+                bindings: HashMap::new(),
+            })),
+        }
+    }
+
+    /// Creates an empty registry reconstructed at explicit durable versions for
+    /// one tenant.
+    #[must_use]
+    pub fn with_versions(
+        tenant_id: TenantId,
+        epoch: AffinityEpoch,
+        generation: AffinityGeneration,
+    ) -> Self {
+        Self {
+            state: Arc::new(RwLock::new(RegistryState {
+                tenant_id,
                 generation,
                 epoch,
                 bindings: HashMap::new(),
@@ -499,6 +548,7 @@ impl AffinityRegistry {
         let mut bindings: Vec<_> = state.bindings.values().cloned().collect();
         bindings.sort_by_key(|binding| (binding.key.scope, binding.key.id, binding.key.epoch));
         Ok(AffinitySnapshot {
+            tenant_id: state.tenant_id.clone(),
             generation: state.generation,
             epoch: state.epoch,
             bindings: bindings.into(),
@@ -534,23 +584,11 @@ impl AffinityRegistry {
             .state
             .read()
             .map_err(|_| error(AccountAffinityErrorCode::StateUnavailable))?;
-        if key.epoch != state.epoch {
-            return Err(error(AccountAffinityErrorCode::EpochConflict));
+        validate_key(&state, &key)?;
+        if let Some(index) = live_candidate_index(&state, &key, candidates, now) {
+            return Ok(&candidates[index]);
         }
-        if let Some(binding) = state.bindings.get(&key)
-            && binding.is_live(key, now)
-            && candidates
-                .iter()
-                .any(|candidate| candidate == &binding.candidate)
-        {
-            let selected = candidates
-                .iter()
-                .find(|candidate| *candidate == &binding.candidate);
-            if let Some(candidate) = selected {
-                return Ok(candidate);
-            }
-        }
-        deterministic_candidate(key, candidates)
+        deterministic_candidate(&key, candidates)
     }
 
     /// Assigns a candidate and atomically retains the resulting binding.
@@ -568,38 +606,18 @@ impl AffinityRegistry {
         now: UtcSeconds,
         ttl_seconds: u64,
     ) -> Result<AffinityBinding, AccountAffinityError> {
-        validate_candidates(candidates)?;
-        if ttl_seconds == 0 || ttl_seconds > MAX_TTL_SECONDS {
-            return Err(error(AccountAffinityErrorCode::InvalidTtl));
-        }
+        validate_assignment_inputs(candidates, ttl_seconds)?;
         let expires_at = now.checked_add(ttl_seconds)?;
         let mut state = self
             .state
             .write()
             .map_err(|_| error(AccountAffinityErrorCode::StateUnavailable))?;
-        if key.epoch != state.epoch {
-            return Err(error(AccountAffinityErrorCode::EpochConflict));
-        }
-        let next_generation = state.generation.next()?;
+        let next_generation = prepare_assignment(&state, &key)?;
         prune_expired(&mut state.bindings, now);
-        let selected = state
-            .bindings
-            .get(&key)
-            .filter(|binding| {
-                binding.is_live(key, now)
-                    && candidates
-                        .iter()
-                        .any(|candidate| candidate == &binding.candidate)
-            })
-            .map(|binding| binding.candidate.clone())
-            .or_else(|| deterministic_candidate(key, candidates).ok().cloned());
-        let candidate =
-            selected.ok_or_else(|| error(AccountAffinityErrorCode::EmptyCandidateSet))?;
-        if !state.bindings.contains_key(&key) && state.bindings.len() >= MAX_BINDINGS {
-            return Err(error(AccountAffinityErrorCode::CapacityExceeded));
-        }
+        let candidate = assignment_candidate(&state, &key, candidates, now)?;
+        ensure_capacity(&state, &key)?;
         let binding = AffinityBinding {
-            key,
+            key: key.clone(),
             candidate,
             expires_at,
         };
@@ -669,17 +687,89 @@ fn validate_candidates(candidates: &[CandidateId]) -> Result<(), AccountAffinity
     Ok(())
 }
 
+fn validate_ttl(ttl_seconds: u64) -> Result<(), AccountAffinityError> {
+    if ttl_seconds == 0 || ttl_seconds > MAX_TTL_SECONDS {
+        return Err(error(AccountAffinityErrorCode::InvalidTtl));
+    }
+    Ok(())
+}
+
+fn validate_assignment_inputs(
+    candidates: &[CandidateId],
+    ttl_seconds: u64,
+) -> Result<(), AccountAffinityError> {
+    validate_candidates(candidates)?;
+    validate_ttl(ttl_seconds)
+}
+
+fn validate_key(state: &RegistryState, key: &AffinityKey) -> Result<(), AccountAffinityError> {
+    if key.tenant_id() != &state.tenant_id {
+        return Err(error(AccountAffinityErrorCode::TenantMismatch));
+    }
+    if key.epoch != state.epoch {
+        return Err(error(AccountAffinityErrorCode::EpochConflict));
+    }
+    Ok(())
+}
+
+fn prepare_assignment(
+    state: &RegistryState,
+    key: &AffinityKey,
+) -> Result<AffinityGeneration, AccountAffinityError> {
+    validate_key(state, key)?;
+    state.generation.next()
+}
+
+fn live_candidate_index(
+    state: &RegistryState,
+    key: &AffinityKey,
+    candidates: &[CandidateId],
+    now: UtcSeconds,
+) -> Option<usize> {
+    let binding = state.bindings.get(key)?;
+    if !binding.is_live(key, now) {
+        return None;
+    }
+    candidates
+        .iter()
+        .position(|candidate| candidate == &binding.candidate)
+}
+
+fn assignment_candidate(
+    state: &RegistryState,
+    key: &AffinityKey,
+    candidates: &[CandidateId],
+    now: UtcSeconds,
+) -> Result<CandidateId, AccountAffinityError> {
+    if let Some(binding) = state.bindings.get(key)
+        && binding.is_live(key, now)
+        && candidates
+            .iter()
+            .any(|candidate| candidate == &binding.candidate)
+    {
+        return Ok(binding.candidate.clone());
+    }
+    deterministic_candidate(key, candidates).cloned()
+}
+
+fn ensure_capacity(state: &RegistryState, key: &AffinityKey) -> Result<(), AccountAffinityError> {
+    if !state.bindings.contains_key(key) && state.bindings.len() >= MAX_BINDINGS {
+        return Err(error(AccountAffinityErrorCode::CapacityExceeded));
+    }
+    Ok(())
+}
+
 fn deterministic_candidate<'a>(
-    key: AffinityKey,
+    key: &AffinityKey,
     candidates: &'a [CandidateId],
 ) -> Result<&'a CandidateId, AccountAffinityError> {
     let mut best: Option<([u8; 32], &'a CandidateId)> = None;
     for candidate in candidates {
         let mut hasher = Sha256::new();
         hasher.update(b"ariadnion-affinity-select-v1\0");
-        hasher.update([key.scope as u8]);
-        hasher.update(key.epoch.get().to_be_bytes());
-        hasher.update(key.id.as_bytes());
+        hasher.update([key.scope() as u8]);
+        hasher.update(key.epoch().get().to_be_bytes());
+        hasher.update(key.id().as_bytes());
         hasher.update((candidate.as_str().len() as u16).to_be_bytes());
         hasher.update(candidate.as_str().as_bytes());
         let score: [u8; 32] = hasher.finalize().into();
