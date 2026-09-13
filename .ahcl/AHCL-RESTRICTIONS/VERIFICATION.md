@@ -2,18 +2,18 @@
 
 ## Current result
 
-`ARIADNION-AR-2026-001` remains effective under AHCL Article 11 from `2026-07-29T11:14:32Z`. `ARIADNION-AR-2026-002` was removed by its Restriction Author effective `2026-08-12T11:35:39Z`; its removal record is `AHCL/AHCL-RESTRICTIONS/REMOVAL-ARIADNION-AR-2026-002-2026-08-12.md`.
+`ARIADNION-AR-2026-001` remains effective under AHCL Article 11 from the UTC Effective Date `2026-07-29`; its exact historical activation timestamp is `2026-07-29T11:14:32Z`. `ARIADNION-AR-2026-002` was removed by its Restriction Author effective `2026-08-12` (UTC); its exact historical removal timestamp is retained in the removal record at `.ahcl/AHCL-RESTRICTIONS/REMOVAL-ARIADNION-AR-2026-08-12.md`.
 
 ## Article 11.2 evidence
 
 | Requirement | Evidence |
 | --- | --- |
-| Section 11.2(a): independent file | AR-001 is stored in its own stable file at `AHCL/AHCL-RESTRICTIONS/ARIADNION-AR-2026-001.md`. |
-| Section 11.2(b): complete metadata | The independent AR-001 record states its unique identifier, complete terms, Restriction Author, contact method, scope, corresponding revision, exact UTC effective time, digest algorithm, and clause digest. |
+| Section 11.2(a): independent file | AR-001 is stored in its own stable file at `.ahcl/AHCL-RESTRICTIONS/ARIADNION-AR-2026-001.md`. |
+| Section 11.2(b): complete metadata | The independent AR-001 record states its unique identifier, complete terms, Restriction Author, contact method, scope, UTC Effective Date, exact historical activation timestamp, corresponding revision, digest algorithm, and clause digest. |
 | Section 11.2(c): signed or verifiable instrument | The immutable Git object `43638e898bd2e8a810957673f57c5e13ac9c43cb:AHCL/AHCL-RESTRICTIONS/ACTIVATION-2026-07-29.md` preserves the electronically signed written instrument bearing `/s/ czxieddan`; it identifies the author, complete AR-001 clause and digest, baseline revision, scope, and exact UTC effective time. |
 | Section 11.2(d): prominent notice | The restriction index provides the legal entry point; principal documentation and applicable source, build-manifest, configuration, template, script, and ignored external-test headers identify AR-001. |
 
-The root `LICENSE` remains the short Attachment B entry to AHCL 1.0, the official publication location, and the verbatim repository copy. Additional Restriction notice is supplied through the principal documentation, AHCL project materials, and applicable source/build access points without expanding the root license template.
+The root `LICENSE` remains the short Attachment B entry to AHCL 1.1, the official publication location, and the verbatim repository copy. Additional Restriction notice is supplied through the principal documentation, AHCL project materials, and applicable source/build access points without expanding the root license template.
 
 ## Identity, content, and time
 
@@ -21,7 +21,8 @@ The root `LICENSE` remains the short Attachment B entry to AHCL 1.0, the officia
 - Canonical repository: <https://github.com/czxieddan/Ariadnion>
 - Canonical branch: `master`
 - Corresponding revision: `a84297005c16a55886248e1b4aa06e37f575298e` (restricted-copy baseline)
-- Effective and execution time (UTC): `2026-07-29T11:14:32Z`
+- Effective Date (UTC): `2026-07-29`
+- Exact historical activation timestamp (UTC): `2026-07-29T11:14:32Z`
 - Instrument identifier: `ARIADNION-AR-ACTIVATION-2026-07-29`
 - Historical instrument object: `43638e898bd2e8a810957673f57c5e13ac9c43cb:AHCL/AHCL-RESTRICTIONS/ACTIVATION-2026-07-29.md`
 - Instrument SHA-256: `CDD11562468A603370F91922EE4F9E0CF8F19459FC44425DC80050704471D978`

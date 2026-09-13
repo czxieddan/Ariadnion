@@ -2,7 +2,7 @@
 //
 // Copyright (C) 2026 czxieddan
 //
-// This file is part of Ariadnion and is provided under version 1.0 of the
+// This file is part of Ariadnion and is provided under version 1.1 of the
 // Aperip Heimdall Commons License (AHCL). The applicable version is also subject
 // to the AHCL provisions concerning Continuous AHCL Licensing Segments and
 // migration to later official versions.
@@ -14,17 +14,17 @@
 // over a network.
 //
 // Official AHCL English text and public notices: https://ahcl.aperip.com
-// Repository verbatim AHCL copy:                 AHCL/AHCL-1.0.md
+// Repository verbatim AHCL copy:                 .ahcl/AHCL-1.1.md
 // Project canonical repository:                  https://github.com/czxieddan/Ariadnion
-// AHCL origin and project notice:                AHCL/AHCL-PROJECT-NOTICE.md
-// AHCL Version Adoption records:                 AHCL/AHCL-VERSION-ADOPTION.md
-// Complete Corresponding Source and history:     AHCL/AHCL-SOURCE.md
+// AHCL origin and project notice:                .ahcl/AHCL-PROJECT-NOTICE.md
+// AHCL Version Adoption records:                 .ahcl/AHCL-VERSION-ADOPTION.md
+// Complete Corresponding Source and history:     .ahcl/AHCL-SOURCE.md
 // Dependencies, Referenced Materials, and licenses:
-//                                                   AHCL/AHCL-DEPENDENCIES.md
+//                                                   .ahcl/AHCL-DEPENDENCIES.md
 // Additional Restrictions:                       Effective; one record applies:
-//                                                   AHCL/AHCL-RESTRICTIONS/ARIADNION-AR-2026-001.md (ARIADNION-AR-2026-001)
+//                                                   .ahcl/AHCL-RESTRICTIONS/ARIADNION-AR-2026-001.md (ARIADNION-AR-2026-001)
 //
-// SPDX-License-Identifier: LicenseRef-AHCL-1.0
+// SPDX-License-Identifier: LicenseRef-AHCL-1.1
 //
 //! Repository composition commands for independently resolved bundles.
 
@@ -43,9 +43,9 @@ const MAX_CAPABILITIES: usize = 256;
 const MAX_POLICY_BYTES: u64 = 65_536;
 const MAX_LOCK_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_LOCK_FILES: usize = 512;
-const FIRST_PARTY_LICENSE: &str = "LicenseRef-AHCL-1.0";
+const FIRST_PARTY_LICENSE: &str = "LicenseRef-AHCL-1.1";
 const RNMDB_SELECTED_LICENSE: &str = "LicenseRef-AHCL-1.0";
-const RNMDB_LICENSE_COPY: &str = "AHCL/AHCL-1.0.md";
+const RNMDB_LICENSE_COPY: &str = ".ahcl/AHCL-1.0.md";
 const RNMDB_ADDITIONAL_RESTRICTIONS: &str = "none";
 const RNMDB_REPOSITORY: &str = "https://github.com/czxieddan/RNovModularDB.git";
 const RNMDB_COMMIT: &str = "f20040a127a56ec8c37b3398283df36f024a1dd2";

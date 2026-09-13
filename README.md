@@ -14,8 +14,8 @@ The name comes from Ariadne's thread: a clear and dependable path connecting the
 
 ## Source Code, History, and Licenses
 
-The canonical source repository and complete published history are available at <https://github.com/czxieddan/Ariadnion>. Source acquisition, immutable revision, build-material, and release-mapping requirements are documented in [AHCL/AHCL-SOURCE.md](AHCL/AHCL-SOURCE.md).
+The canonical source repository and complete published history are available at <https://github.com/czxieddan/Ariadnion>. Source acquisition, immutable revision, build-material, and release-mapping requirements are documented in [.ahcl/AHCL-SOURCE.md](.ahcl/AHCL-SOURCE.md).
 
-Ariadnion is licensed under version 1.0 of the Aperip Heimdall Commons License (AHCL 1.0). See [LICENSE](LICENSE), the repository's [verbatim AHCL 1.0 text](AHCL/AHCL-1.0.md), the [project notice](AHCL/AHCL-PROJECT-NOTICE.md), and the [dependency and third-party license inventory](AHCL/AHCL-DEPENDENCIES.md).
+Ariadnion is licensed under version 1.1 of the Aperip Heimdall Commons License (AHCL 1.1). See [LICENSE](LICENSE), the repository's [verbatim AHCL 1.1 text](.ahcl/AHCL-1.1.md), the [project notice](.ahcl/AHCL-PROJECT-NOTICE.md), and the [dependency and third-party license inventory](.ahcl/AHCL-DEPENDENCIES.md).
 
-One [Additional Restriction](AHCL/AHCL-RESTRICTIONS/INDEX.md), `ARIADNION-AR-2026-001`, is currently effective for this distribution chain and preserves legal notices presented by Ariadnion frontends and command-line interfaces. Its complete terms, scope, effective time, fixed clause digest, historical activation evidence, and the recorded removal of the former `ARIADNION-AR-2026-002` restriction are available under `AHCL/AHCL-RESTRICTIONS/`.
+One [Additional Restriction](.ahcl/AHCL-RESTRICTIONS/INDEX.md), `ARIADNION-AR-2026-001`, is currently effective for this distribution chain and preserves legal notices presented by Ariadnion frontends and command-line interfaces. Its complete terms, scope, effective time, fixed clause digest, historical activation evidence, and the recorded removal of the former `ARIADNION-AR-2026-002` restriction are available under `.ahcl/AHCL-RESTRICTIONS/`.

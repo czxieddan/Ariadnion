@@ -2,7 +2,7 @@
 //
 // Copyright (C) 2026 czxieddan
 //
-// This file is part of Ariadnion and is provided under version 1.0 of the
+// This file is part of Ariadnion and is provided under version 1.1 of the
 // Aperip Heimdall Commons License (AHCL). The applicable version is also subject
 // to the AHCL provisions concerning Continuous AHCL Licensing Segments and
 // migration to later official versions.
@@ -14,17 +14,17 @@
 // over a network.
 //
 // Official AHCL English text and public notices: https://ahcl.aperip.com
-// Repository verbatim AHCL copy:                 AHCL/AHCL-1.0.md
+// Repository verbatim AHCL copy:                 .ahcl/AHCL-1.1.md
 // Project canonical repository:                  https://github.com/czxieddan/Ariadnion
-// AHCL origin and project notice:                AHCL/AHCL-PROJECT-NOTICE.md
-// AHCL Version Adoption records:                 AHCL/AHCL-VERSION-ADOPTION.md
-// Complete Corresponding Source and history:     AHCL/AHCL-SOURCE.md
+// AHCL origin and project notice:                .ahcl/AHCL-PROJECT-NOTICE.md
+// AHCL Version Adoption records:                 .ahcl/AHCL-VERSION-ADOPTION.md
+// Complete Corresponding Source and history:     .ahcl/AHCL-SOURCE.md
 // Dependencies, Referenced Materials, and licenses:
-//                                                   AHCL/AHCL-DEPENDENCIES.md
+//                                                   .ahcl/AHCL-DEPENDENCIES.md
 // Additional Restrictions:                       Effective; one record applies:
-//                                                   AHCL/AHCL-RESTRICTIONS/ARIADNION-AR-2026-001.md (ARIADNION-AR-2026-001)
+//                                                   .ahcl/AHCL-RESTRICTIONS/ARIADNION-AR-2026-001.md (ARIADNION-AR-2026-001)
 //
-// SPDX-License-Identifier: LicenseRef-AHCL-1.0
+// SPDX-License-Identifier: LicenseRef-AHCL-1.1
 //
 //! RNMDB relational-storage module descriptor and lifecycle adapter.
 
@@ -67,7 +67,7 @@ const FILE_CATALOG_LOOKUP_KEY_CAPABILITY: &str = "org.ariadnion.secret.file-cata
 const FILE_CATALOG_COMMITMENT_KEYS_CAPABILITY: &str =
     "org.ariadnion.secret.file-catalog-commitment-keys";
 const CONFIGURATION_SCHEMA: &str = "org.ariadnion.storage.rnmdb.config";
-const MODULE_LICENSE: &str = "LicenseRef-AHCL-1.0";
+const MODULE_LICENSE: &str = "LicenseRef-AHCL-1.1";
 const EMPTY_CONFIGURATION_DIGEST: &str =
     "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 const MODULE_VERSION: ModuleVersion = ModuleVersion::new(0, 1, 0);

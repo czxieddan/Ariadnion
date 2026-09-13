@@ -75,8 +75,8 @@ Canonical upstream: <https://github.com/gimli-rs/addr2line>
 
 License evidence:
 
-- `addr2line 0.26.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/addr2line/0.26.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/addr2line-0.26.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/addr2line-0.26.1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
-- `addr2line 0.26.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/addr2line/0.26.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/addr2line-0.26.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/addr2line-0.26.1/LICENSE-MIT) (SHA-256 `e99d88d232bf57d70f0fb87f6b496d44b6653f99f8a63d250a54c61ea4bcde40`; 1069 bytes).
+- `addr2line 0.26.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/addr2line/0.26.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/addr2line-0.26.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/addr2line-0.26.1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `addr2line 0.26.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/addr2line/0.26.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/addr2line-0.26.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/addr2line-0.26.1/LICENSE-MIT) (SHA-256 `e99d88d232bf57d70f0fb87f6b496d44b6653f99f8a63d250a54c61ea4bcde40`; 1069 bytes).
 
 ### AEADs
 
@@ -88,8 +88,8 @@ Canonical upstream: <https://github.com/RustCrypto/AEADs>
 
 License evidence:
 
-- `chacha20poly1305 0.11.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/chacha20poly1305/0.11.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/chacha20poly1305-0.11.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/chacha20poly1305-0.11.0/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
-- `chacha20poly1305 0.11.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/chacha20poly1305/0.11.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/chacha20poly1305-0.11.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/chacha20poly1305-0.11.0/LICENSE-MIT) (SHA-256 `b8c6939380a400f53e11923d50fcc4dd2fa1ba8339fd9d04cda38a0251b6c9b0`; 1082 bytes).
+- `chacha20poly1305 0.11.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/chacha20poly1305/0.11.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/chacha20poly1305-0.11.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/chacha20poly1305-0.11.0/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
+- `chacha20poly1305 0.11.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/chacha20poly1305/0.11.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/chacha20poly1305-0.11.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/chacha20poly1305-0.11.0/LICENSE-MIT) (SHA-256 `b8c6939380a400f53e11923d50fcc4dd2fa1ba8339fd9d04cda38a0251b6c9b0`; 1082 bytes).
 
 ### allocator-api2
 
@@ -101,8 +101,8 @@ Canonical upstream: <https://github.com/zakarumych/allocator-api2>
 
 License evidence:
 
-- `allocator-api2 0.2.21`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/allocator-api2/0.2.21/download) -> [`AHCL/THIRD-PARTY-LICENSES/allocator-api2-0.2.21/LICENSE-APACHE`](THIRD-PARTY-LICENSES/allocator-api2-0.2.21/LICENSE-APACHE) (SHA-256 `20fe7b00e904ed690e3b9fd6073784d3fc428141dbd10b81c01fd143d0797f58`; 9899 bytes).
-- `allocator-api2 0.2.21`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/allocator-api2/0.2.21/download) -> [`AHCL/THIRD-PARTY-LICENSES/allocator-api2-0.2.21/LICENSE-MIT`](THIRD-PARTY-LICENSES/allocator-api2-0.2.21/LICENSE-MIT) (SHA-256 `36516aefdc84c5d5a1e7485425913a22dbda69eb1930c5e84d6ae4972b5194b9`; 1046 bytes).
+- `allocator-api2 0.2.21`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/allocator-api2/0.2.21/download) -> [`.ahcl/THIRD-PARTY-LICENSES/allocator-api2-0.2.21/LICENSE-APACHE`](THIRD-PARTY-LICENSES/allocator-api2-0.2.21/LICENSE-APACHE) (SHA-256 `20fe7b00e904ed690e3b9fd6073784d3fc428141dbd10b81c01fd143d0797f58`; 9899 bytes).
+- `allocator-api2 0.2.21`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/allocator-api2/0.2.21/download) -> [`.ahcl/THIRD-PARTY-LICENSES/allocator-api2-0.2.21/LICENSE-MIT`](THIRD-PARTY-LICENSES/allocator-api2-0.2.21/LICENSE-MIT) (SHA-256 `36516aefdc84c5d5a1e7485425913a22dbda69eb1930c5e84d6ae4972b5194b9`; 1046 bytes).
 
 ### ambient-authority
 
@@ -114,10 +114,10 @@ Canonical upstream: <https://github.com/sunfishcode/ambient-authority>
 
 License evidence:
 
-- `ambient-authority 0.0.2`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/ambient-authority/0.0.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/ambient-authority-0.0.2/LICENSE-MIT`](THIRD-PARTY-LICENSES/ambient-authority-0.0.2/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `ambient-authority 0.0.2`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/ambient-authority/0.0.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/ambient-authority-0.0.2/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/ambient-authority-0.0.2/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `ambient-authority 0.0.2`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/ambient-authority/0.0.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/ambient-authority-0.0.2/LICENSE-APACHE`](THIRD-PARTY-LICENSES/ambient-authority-0.0.2/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
-- `ambient-authority 0.0.2`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/ambient-authority/0.0.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/ambient-authority-0.0.2/COPYRIGHT`](THIRD-PARTY-LICENSES/ambient-authority-0.0.2/COPYRIGHT) (SHA-256 `d00d6d48df2db6f91e4ca9c656e5e30782d5becf52bb3e5bfd0aff467bd37781`; 897 bytes).
+- `ambient-authority 0.0.2`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/ambient-authority/0.0.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/ambient-authority-0.0.2/LICENSE-MIT`](THIRD-PARTY-LICENSES/ambient-authority-0.0.2/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `ambient-authority 0.0.2`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/ambient-authority/0.0.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/ambient-authority-0.0.2/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/ambient-authority-0.0.2/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `ambient-authority 0.0.2`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/ambient-authority/0.0.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/ambient-authority-0.0.2/LICENSE-APACHE`](THIRD-PARTY-LICENSES/ambient-authority-0.0.2/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `ambient-authority 0.0.2`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/ambient-authority/0.0.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/ambient-authority-0.0.2/COPYRIGHT`](THIRD-PARTY-LICENSES/ambient-authority-0.0.2/COPYRIGHT) (SHA-256 `d00d6d48df2db6f91e4ca9c656e5e30782d5becf52bb3e5bfd0aff467bd37781`; 897 bytes).
 
 ### anyhow
 
@@ -129,8 +129,8 @@ Canonical upstream: <https://github.com/dtolnay/anyhow>
 
 License evidence:
 
-- `anyhow 1.0.103`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/anyhow/1.0.103/download) -> [`AHCL/THIRD-PARTY-LICENSES/anyhow-1.0.103/LICENSE-MIT`](THIRD-PARTY-LICENSES/anyhow-1.0.103/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `anyhow 1.0.103`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/anyhow/1.0.103/download) -> [`AHCL/THIRD-PARTY-LICENSES/anyhow-1.0.103/LICENSE-APACHE`](THIRD-PARTY-LICENSES/anyhow-1.0.103/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
+- `anyhow 1.0.103`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/anyhow/1.0.103/download) -> [`.ahcl/THIRD-PARTY-LICENSES/anyhow-1.0.103/LICENSE-MIT`](THIRD-PARTY-LICENSES/anyhow-1.0.103/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `anyhow 1.0.103`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/anyhow/1.0.103/download) -> [`.ahcl/THIRD-PARTY-LICENSES/anyhow-1.0.103/LICENSE-APACHE`](THIRD-PARTY-LICENSES/anyhow-1.0.103/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
 
 ### arbitrary
 
@@ -142,8 +142,8 @@ Canonical upstream: <https://github.com/rust-fuzz/arbitrary>
 
 License evidence:
 
-- `arbitrary 1.4.2`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/arbitrary/1.4.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/arbitrary-1.4.2/LICENSE-MIT`](THIRD-PARTY-LICENSES/arbitrary-1.4.2/LICENSE-MIT) (SHA-256 `15656cc11a8331f28c0986b8ab97220d3e76f98e60ed388b5ffad37dfac4710c`; 1074 bytes).
-- `arbitrary 1.4.2`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/arbitrary/1.4.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/arbitrary-1.4.2/LICENSE-APACHE`](THIRD-PARTY-LICENSES/arbitrary-1.4.2/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `arbitrary 1.4.2`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/arbitrary/1.4.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/arbitrary-1.4.2/LICENSE-MIT`](THIRD-PARTY-LICENSES/arbitrary-1.4.2/LICENSE-MIT) (SHA-256 `15656cc11a8331f28c0986b8ab97220d3e76f98e60ed388b5ffad37dfac4710c`; 1074 bytes).
+- `arbitrary 1.4.2`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/arbitrary/1.4.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/arbitrary-1.4.2/LICENSE-APACHE`](THIRD-PARTY-LICENSES/arbitrary-1.4.2/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### argon2
 
@@ -155,8 +155,8 @@ Canonical upstream: <https://github.com/RustCrypto/password-hashes/tree/master/a
 
 License evidence:
 
-- `argon2 0.5.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/argon2/0.5.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/argon2-0.5.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/argon2-0.5.3/LICENSE-MIT) (SHA-256 `33f702959c0ea91c08b21b65cf1f08b6c122ec9e6db0b5db784a7b367d942330`; 1082 bytes).
-- `argon2 0.5.3`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/argon2/0.5.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/argon2-0.5.3/LICENSE-APACHE`](THIRD-PARTY-LICENSES/argon2-0.5.3/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
+- `argon2 0.5.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/argon2/0.5.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/argon2-0.5.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/argon2-0.5.3/LICENSE-MIT) (SHA-256 `33f702959c0ea91c08b21b65cf1f08b6c122ec9e6db0b5db784a7b367d942330`; 1082 bytes).
+- `argon2 0.5.3`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/argon2/0.5.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/argon2-0.5.3/LICENSE-APACHE`](THIRD-PARTY-LICENSES/argon2-0.5.3/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
 
 ### async-trait
 
@@ -168,8 +168,8 @@ Canonical upstream: <https://github.com/dtolnay/async-trait>
 
 License evidence:
 
-- `async-trait 0.1.89`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/async-trait/0.1.89/download) -> [`AHCL/THIRD-PARTY-LICENSES/async-trait-0.1.89/LICENSE-MIT`](THIRD-PARTY-LICENSES/async-trait-0.1.89/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `async-trait 0.1.89`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/async-trait/0.1.89/download) -> [`AHCL/THIRD-PARTY-LICENSES/async-trait-0.1.89/LICENSE-APACHE`](THIRD-PARTY-LICENSES/async-trait-0.1.89/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
+- `async-trait 0.1.89`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/async-trait/0.1.89/download) -> [`.ahcl/THIRD-PARTY-LICENSES/async-trait-0.1.89/LICENSE-MIT`](THIRD-PARTY-LICENSES/async-trait-0.1.89/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `async-trait 0.1.89`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/async-trait/0.1.89/download) -> [`.ahcl/THIRD-PARTY-LICENSES/async-trait-0.1.89/LICENSE-APACHE`](THIRD-PARTY-LICENSES/async-trait-0.1.89/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
 
 ### atomic-waker
 
@@ -181,9 +181,9 @@ Canonical upstream: <https://github.com/smol-rs/atomic-waker>
 
 License evidence:
 
-- `atomic-waker 1.1.2`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/atomic-waker/1.1.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/atomic-waker-1.1.2/LICENSE-MIT`](THIRD-PARTY-LICENSES/atomic-waker-1.1.2/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `atomic-waker 1.1.2`: crate archive member [`LICENSE-THIRD-PARTY`](https://crates.io/api/v1/crates/atomic-waker/1.1.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/atomic-waker-1.1.2/LICENSE-THIRD-PARTY`](THIRD-PARTY-LICENSES/atomic-waker-1.1.2/LICENSE-THIRD-PARTY) (SHA-256 `6226d0632e2e1a80c23597e964da9812ae193c535fe058154afb034e94167aa5`; 1849 bytes).
-- `atomic-waker 1.1.2`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/atomic-waker/1.1.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/atomic-waker-1.1.2/LICENSE-APACHE`](THIRD-PARTY-LICENSES/atomic-waker-1.1.2/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `atomic-waker 1.1.2`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/atomic-waker/1.1.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/atomic-waker-1.1.2/LICENSE-MIT`](THIRD-PARTY-LICENSES/atomic-waker-1.1.2/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `atomic-waker 1.1.2`: crate archive member [`LICENSE-THIRD-PARTY`](https://crates.io/api/v1/crates/atomic-waker/1.1.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/atomic-waker-1.1.2/LICENSE-THIRD-PARTY`](THIRD-PARTY-LICENSES/atomic-waker-1.1.2/LICENSE-THIRD-PARTY) (SHA-256 `6226d0632e2e1a80c23597e964da9812ae193c535fe058154afb034e94167aa5`; 1849 bytes).
+- `atomic-waker 1.1.2`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/atomic-waker/1.1.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/atomic-waker-1.1.2/LICENSE-APACHE`](THIRD-PARTY-LICENSES/atomic-waker-1.1.2/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### axum
 
@@ -196,8 +196,8 @@ Canonical upstream: <https://github.com/tokio-rs/axum>
 
 License evidence:
 
-- `axum-core 0.5.6`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/axum-core/0.5.6/download) -> [`AHCL/THIRD-PARTY-LICENSES/axum-core-0.5.6/LICENSE`](THIRD-PARTY-LICENSES/axum-core-0.5.6/LICENSE) (SHA-256 `008c87afcd2e626eaf564093250bed06dd7efb5732113264bba3dda8f1c556a1`; 1080 bytes).
-- `axum 0.8.9`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/axum/0.8.9/download) -> [`AHCL/THIRD-PARTY-LICENSES/axum-0.8.9/LICENSE`](THIRD-PARTY-LICENSES/axum-0.8.9/LICENSE) (SHA-256 `6a13bc24a100a6812f053879ec51b126b103af7cda6dbf48c4188722da44da9f`; 1061 bytes).
+- `axum-core 0.5.6`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/axum-core/0.5.6/download) -> [`.ahcl/THIRD-PARTY-LICENSES/axum-core-0.5.6/LICENSE`](THIRD-PARTY-LICENSES/axum-core-0.5.6/LICENSE) (SHA-256 `008c87afcd2e626eaf564093250bed06dd7efb5732113264bba3dda8f1c556a1`; 1080 bytes).
+- `axum 0.8.9`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/axum/0.8.9/download) -> [`.ahcl/THIRD-PARTY-LICENSES/axum-0.8.9/LICENSE`](THIRD-PARTY-LICENSES/axum-0.8.9/LICENSE) (SHA-256 `6a13bc24a100a6812f053879ec51b126b103af7cda6dbf48c4188722da44da9f`; 1061 bytes).
 
 ### bitflags
 
@@ -209,8 +209,8 @@ Canonical upstream: <https://github.com/bitflags/bitflags>
 
 License evidence:
 
-- `bitflags 2.13.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/bitflags/2.13.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/bitflags-2.13.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/bitflags-2.13.1/LICENSE-MIT) (SHA-256 `6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb`; 1071 bytes).
-- `bitflags 2.13.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/bitflags/2.13.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/bitflags-2.13.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/bitflags-2.13.1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `bitflags 2.13.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/bitflags/2.13.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/bitflags-2.13.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/bitflags-2.13.1/LICENSE-MIT) (SHA-256 `6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb`; 1071 bytes).
+- `bitflags 2.13.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/bitflags/2.13.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/bitflags-2.13.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/bitflags-2.13.1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### bumpalo
 
@@ -222,8 +222,8 @@ Canonical upstream: <https://github.com/fitzgen/bumpalo>
 
 License evidence:
 
-- `bumpalo 3.20.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/bumpalo/3.20.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/bumpalo-3.20.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/bumpalo-3.20.3/LICENSE-MIT) (SHA-256 `65f94e99ddaf4f5d1782a6dae23f35d4293a9a01444a13135a6887017d353cee`; 1059 bytes).
-- `bumpalo 3.20.3`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/bumpalo/3.20.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/bumpalo-3.20.3/LICENSE-APACHE`](THIRD-PARTY-LICENSES/bumpalo-3.20.3/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `bumpalo 3.20.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/bumpalo/3.20.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/bumpalo-3.20.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/bumpalo-3.20.3/LICENSE-MIT) (SHA-256 `65f94e99ddaf4f5d1782a6dae23f35d4293a9a01444a13135a6887017d353cee`; 1059 bytes).
+- `bumpalo 3.20.3`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/bumpalo/3.20.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/bumpalo-3.20.3/LICENSE-APACHE`](THIRD-PARTY-LICENSES/bumpalo-3.20.3/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### bytes
 
@@ -235,7 +235,7 @@ Canonical upstream: <https://github.com/tokio-rs/bytes>
 
 License evidence:
 
-- `bytes 1.12.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/bytes/1.12.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/bytes-1.12.1/LICENSE`](THIRD-PARTY-LICENSES/bytes-1.12.1/LICENSE) (SHA-256 `45f522cacecb1023856e46df79ca625dfc550c94910078bd8aec6e02880b3d42`; 1055 bytes).
+- `bytes 1.12.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/bytes/1.12.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/bytes-1.12.1/LICENSE`](THIRD-PARTY-LICENSES/bytes-1.12.1/LICENSE) (SHA-256 `45f522cacecb1023856e46df79ca625dfc550c94910078bd8aec6e02880b3d42`; 1055 bytes).
 
 ### cap-std
 
@@ -249,18 +249,18 @@ Canonical upstream: <https://github.com/bytecodealliance/cap-std>
 
 License evidence:
 
-- `cap-fs-ext 4.0.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/cap-fs-ext/4.0.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/cap-fs-ext-4.0.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/cap-fs-ext-4.0.3/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `cap-primitives 4.0.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/cap-primitives/4.0.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/cap-primitives-4.0.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/cap-primitives-4.0.3/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `cap-std 4.0.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/cap-std/4.0.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/cap-std-4.0.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/cap-std-4.0.3/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `cap-fs-ext 4.0.3`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/cap-fs-ext/4.0.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/cap-fs-ext-4.0.3/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/cap-fs-ext-4.0.3/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `cap-primitives 4.0.3`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/cap-primitives/4.0.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/cap-primitives-4.0.3/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/cap-primitives-4.0.3/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `cap-std 4.0.3`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/cap-std/4.0.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/cap-std-4.0.3/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/cap-std-4.0.3/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `cap-fs-ext 4.0.3`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/cap-fs-ext/4.0.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/cap-fs-ext-4.0.3/COPYRIGHT`](THIRD-PARTY-LICENSES/cap-fs-ext-4.0.3/COPYRIGHT) (SHA-256 `5b3d8a674979e158328c57f5c4cc12150df79d0bdf12c86eafc2e9c6006a2d4e`; 869 bytes).
-- `cap-std 4.0.3`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/cap-std/4.0.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/cap-std-4.0.3/COPYRIGHT`](THIRD-PARTY-LICENSES/cap-std-4.0.3/COPYRIGHT) (SHA-256 `6b1691fdee3b03c3946696a7be125fcf50eff310b9486fac850c1b8aea91478b`; 857 bytes).
-- `cap-fs-ext 4.0.3`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/cap-fs-ext/4.0.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/cap-fs-ext-4.0.3/LICENSE-APACHE`](THIRD-PARTY-LICENSES/cap-fs-ext-4.0.3/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
-- `cap-primitives 4.0.3`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/cap-primitives/4.0.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/cap-primitives-4.0.3/LICENSE-APACHE`](THIRD-PARTY-LICENSES/cap-primitives-4.0.3/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
-- `cap-std 4.0.3`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/cap-std/4.0.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/cap-std-4.0.3/LICENSE-APACHE`](THIRD-PARTY-LICENSES/cap-std-4.0.3/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
-- `cap-primitives 4.0.3`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/cap-primitives/4.0.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/cap-primitives-4.0.3/COPYRIGHT`](THIRD-PARTY-LICENSES/cap-primitives-4.0.3/COPYRIGHT) (SHA-256 `a8799c2a07dabcb8d52481f885c5ab7000acb8a4d3cd9503fbcb97c84d350e65`; 885 bytes).
+- `cap-fs-ext 4.0.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/cap-fs-ext/4.0.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cap-fs-ext-4.0.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/cap-fs-ext-4.0.3/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `cap-primitives 4.0.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/cap-primitives/4.0.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cap-primitives-4.0.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/cap-primitives-4.0.3/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `cap-std 4.0.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/cap-std/4.0.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cap-std-4.0.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/cap-std-4.0.3/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `cap-fs-ext 4.0.3`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/cap-fs-ext/4.0.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cap-fs-ext-4.0.3/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/cap-fs-ext-4.0.3/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `cap-primitives 4.0.3`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/cap-primitives/4.0.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cap-primitives-4.0.3/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/cap-primitives-4.0.3/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `cap-std 4.0.3`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/cap-std/4.0.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cap-std-4.0.3/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/cap-std-4.0.3/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `cap-fs-ext 4.0.3`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/cap-fs-ext/4.0.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cap-fs-ext-4.0.3/COPYRIGHT`](THIRD-PARTY-LICENSES/cap-fs-ext-4.0.3/COPYRIGHT) (SHA-256 `5b3d8a674979e158328c57f5c4cc12150df79d0bdf12c86eafc2e9c6006a2d4e`; 869 bytes).
+- `cap-std 4.0.3`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/cap-std/4.0.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cap-std-4.0.3/COPYRIGHT`](THIRD-PARTY-LICENSES/cap-std-4.0.3/COPYRIGHT) (SHA-256 `6b1691fdee3b03c3946696a7be125fcf50eff310b9486fac850c1b8aea91478b`; 857 bytes).
+- `cap-fs-ext 4.0.3`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/cap-fs-ext/4.0.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cap-fs-ext-4.0.3/LICENSE-APACHE`](THIRD-PARTY-LICENSES/cap-fs-ext-4.0.3/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `cap-primitives 4.0.3`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/cap-primitives/4.0.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cap-primitives-4.0.3/LICENSE-APACHE`](THIRD-PARTY-LICENSES/cap-primitives-4.0.3/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `cap-std 4.0.3`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/cap-std/4.0.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cap-std-4.0.3/LICENSE-APACHE`](THIRD-PARTY-LICENSES/cap-std-4.0.3/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `cap-primitives 4.0.3`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/cap-primitives/4.0.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cap-primitives-4.0.3/COPYRIGHT`](THIRD-PARTY-LICENSES/cap-primitives-4.0.3/COPYRIGHT) (SHA-256 `a8799c2a07dabcb8d52481f885c5ab7000acb8a4d3cd9503fbcb97c84d350e65`; 885 bytes).
 
 ### cc-rs
 
@@ -274,12 +274,12 @@ Canonical upstream: <https://github.com/rust-lang/cc-rs>
 
 License evidence:
 
-- `cc 1.2.67`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/cc/1.2.67/download) -> [`AHCL/THIRD-PARTY-LICENSES/cc-1.2.67/LICENSE-MIT`](THIRD-PARTY-LICENSES/cc-1.2.67/LICENSE-MIT) (SHA-256 `378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397`; 1057 bytes).
-- `cc 1.4.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/cc/1.4.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/cc-1.4.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/cc-1.4.0/LICENSE-MIT) (SHA-256 `378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397`; 1057 bytes).
-- `find-msvc-tools 0.1.9`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/find-msvc-tools/0.1.9/download) -> [`AHCL/THIRD-PARTY-LICENSES/find-msvc-tools-0.1.9/LICENSE-MIT`](THIRD-PARTY-LICENSES/find-msvc-tools-0.1.9/LICENSE-MIT) (SHA-256 `378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397`; 1057 bytes).
-- `cc 1.2.67`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/cc/1.2.67/download) -> [`AHCL/THIRD-PARTY-LICENSES/cc-1.2.67/LICENSE-APACHE`](THIRD-PARTY-LICENSES/cc-1.2.67/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
-- `cc 1.4.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/cc/1.4.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/cc-1.4.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/cc-1.4.0/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
-- `find-msvc-tools 0.1.9`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/find-msvc-tools/0.1.9/download) -> [`AHCL/THIRD-PARTY-LICENSES/find-msvc-tools-0.1.9/LICENSE-APACHE`](THIRD-PARTY-LICENSES/find-msvc-tools-0.1.9/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `cc 1.2.67`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/cc/1.2.67/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cc-1.2.67/LICENSE-MIT`](THIRD-PARTY-LICENSES/cc-1.2.67/LICENSE-MIT) (SHA-256 `378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397`; 1057 bytes).
+- `cc 1.4.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/cc/1.4.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cc-1.4.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/cc-1.4.0/LICENSE-MIT) (SHA-256 `378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397`; 1057 bytes).
+- `find-msvc-tools 0.1.9`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/find-msvc-tools/0.1.9/download) -> [`.ahcl/THIRD-PARTY-LICENSES/find-msvc-tools-0.1.9/LICENSE-MIT`](THIRD-PARTY-LICENSES/find-msvc-tools-0.1.9/LICENSE-MIT) (SHA-256 `378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397`; 1057 bytes).
+- `cc 1.2.67`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/cc/1.2.67/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cc-1.2.67/LICENSE-APACHE`](THIRD-PARTY-LICENSES/cc-1.2.67/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `cc 1.4.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/cc/1.4.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cc-1.4.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/cc-1.4.0/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `find-msvc-tools 0.1.9`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/find-msvc-tools/0.1.9/download) -> [`.ahcl/THIRD-PARTY-LICENSES/find-msvc-tools-0.1.9/LICENSE-APACHE`](THIRD-PARTY-LICENSES/find-msvc-tools-0.1.9/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### cfg-if
 
@@ -291,8 +291,8 @@ Canonical upstream: <https://github.com/rust-lang/cfg-if>
 
 License evidence:
 
-- `cfg-if 1.0.4`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/cfg-if/1.0.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/cfg-if-1.0.4/LICENSE-MIT`](THIRD-PARTY-LICENSES/cfg-if-1.0.4/LICENSE-MIT) (SHA-256 `378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397`; 1057 bytes).
-- `cfg-if 1.0.4`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/cfg-if/1.0.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/cfg-if-1.0.4/LICENSE-APACHE`](THIRD-PARTY-LICENSES/cfg-if-1.0.4/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `cfg-if 1.0.4`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/cfg-if/1.0.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cfg-if-1.0.4/LICENSE-MIT`](THIRD-PARTY-LICENSES/cfg-if-1.0.4/LICENSE-MIT) (SHA-256 `378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397`; 1057 bytes).
+- `cfg-if 1.0.4`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/cfg-if/1.0.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cfg-if-1.0.4/LICENSE-APACHE`](THIRD-PARTY-LICENSES/cfg-if-1.0.4/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### cfg_aliases
 
@@ -304,7 +304,7 @@ Canonical upstream: <https://github.com/katharostech/cfg_aliases>
 
 License evidence:
 
-- `cfg_aliases 0.2.2`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/cfg_aliases/0.2.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/cfg_aliases-0.2.2/LICENSE`](THIRD-PARTY-LICENSES/cfg_aliases-0.2.2/LICENSE) (SHA-256 `31b94860253d8ec7b4529f51901044d3b459d6292d996504a36b1bae3a36a812`; 1076 bytes).
+- `cfg_aliases 0.2.2`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/cfg_aliases/0.2.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cfg_aliases-0.2.2/LICENSE`](THIRD-PARTY-LICENSES/cfg_aliases-0.2.2/LICENSE) (SHA-256 `31b94860253d8ec7b4529f51901044d3b459d6292d996504a36b1bae3a36a812`; 1076 bytes).
 
 ### cobs.rs
 
@@ -316,8 +316,8 @@ Canonical upstream: <https://github.com/jamesmunns/cobs.rs>
 
 License evidence:
 
-- `cobs 0.3.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/cobs/0.3.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/cobs-0.3.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/cobs-0.3.0/LICENSE-APACHE) (SHA-256 `c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08`; 11358 bytes).
-- `cobs 0.3.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/cobs/0.3.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/cobs-0.3.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/cobs-0.3.0/LICENSE-MIT) (SHA-256 `e0cfa1006a64520633de6bfbf563f5b1bea04ef0c5b73f049681931fa297dda3`; 1066 bytes).
+- `cobs 0.3.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/cobs/0.3.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cobs-0.3.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/cobs-0.3.0/LICENSE-APACHE) (SHA-256 `c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08`; 11358 bytes).
+- `cobs 0.3.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/cobs/0.3.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cobs-0.3.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/cobs-0.3.0/LICENSE-MIT) (SHA-256 `e0cfa1006a64520633de6bfbf563f5b1bea04ef0c5b73f049681931fa297dda3`; 1066 bytes).
 
 ### compiler-builtins
 
@@ -329,7 +329,7 @@ Canonical upstream: <https://github.com/rust-lang/compiler-builtins>
 
 License evidence:
 
-- `libm 0.2.16`: crate archive member [`LICENSE.txt`](https://crates.io/api/v1/crates/libm/0.2.16/download) -> [`AHCL/THIRD-PARTY-LICENSES/libm-0.2.16/LICENSE.txt`](THIRD-PARTY-LICENSES/libm-0.2.16/LICENSE.txt) (SHA-256 `3823dda7cf046602f4b4e77ec8e227863dc4736037cc85bb33d9f19febe16bb7`; 14088 bytes).
+- `libm 0.2.16`: crate archive member [`LICENSE.txt`](https://crates.io/api/v1/crates/libm/0.2.16/download) -> [`.ahcl/THIRD-PARTY-LICENSES/libm-0.2.16/LICENSE.txt`](THIRD-PARTY-LICENSES/libm-0.2.16/LICENSE.txt) (SHA-256 `3823dda7cf046602f4b4e77ec8e227863dc4736037cc85bb33d9f19febe16bb7`; 14088 bytes).
 
 ### cpp_demangle
 
@@ -341,8 +341,8 @@ Canonical upstream: <https://github.com/gimli-rs/cpp_demangle>
 
 License evidence:
 
-- `cpp_demangle 0.4.5`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/cpp_demangle/0.4.5/download) -> [`AHCL/THIRD-PARTY-LICENSES/cpp_demangle-0.4.5/LICENSE-MIT`](THIRD-PARTY-LICENSES/cpp_demangle-0.4.5/LICENSE-MIT) (SHA-256 `7b63ecd5f1902af1b63729947373683c32745c16a10e8e6292e2e2dcd7e90ae0`; 1071 bytes).
-- `cpp_demangle 0.4.5`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/cpp_demangle/0.4.5/download) -> [`AHCL/THIRD-PARTY-LICENSES/cpp_demangle-0.4.5/LICENSE-APACHE`](THIRD-PARTY-LICENSES/cpp_demangle-0.4.5/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `cpp_demangle 0.4.5`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/cpp_demangle/0.4.5/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cpp_demangle-0.4.5/LICENSE-MIT`](THIRD-PARTY-LICENSES/cpp_demangle-0.4.5/LICENSE-MIT) (SHA-256 `7b63ecd5f1902af1b63729947373683c32745c16a10e8e6292e2e2dcd7e90ae0`; 1071 bytes).
+- `cpp_demangle 0.4.5`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/cpp_demangle/0.4.5/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cpp_demangle-0.4.5/LICENSE-APACHE`](THIRD-PARTY-LICENSES/cpp_demangle-0.4.5/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### crc-catalog
 
@@ -354,8 +354,8 @@ Canonical upstream: <https://github.com/akhilles/crc-catalog>
 
 License evidence:
 
-- `crc-catalog 2.5.0`: crate archive member [`LICENSES/MIT.txt`](https://crates.io/api/v1/crates/crc-catalog/2.5.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/crc-catalog-2.5.0/LICENSES__MIT.txt`](THIRD-PARTY-LICENSES/crc-catalog-2.5.0/LICENSES__MIT.txt) (SHA-256 `5ef8fcfb6cccec8fcae043c834099a60c8b7406408db576e026d2b7e67dc5cf5`; 1073 bytes).
-- `crc-catalog 2.5.0`: crate archive member [`LICENSES/Apache-2.0.txt`](https://crates.io/api/v1/crates/crc-catalog/2.5.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/crc-catalog-2.5.0/LICENSES__Apache-2.0.txt`](THIRD-PARTY-LICENSES/crc-catalog-2.5.0/LICENSES__Apache-2.0.txt) (SHA-256 `d3cdb764b98283ee7c3a3cea8d374e2a2957322374378d1f3263f4d512741fc3`; 11346 bytes).
+- `crc-catalog 2.5.0`: crate archive member [`LICENSES/MIT.txt`](https://crates.io/api/v1/crates/crc-catalog/2.5.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/crc-catalog-2.5.0/LICENSES__MIT.txt`](THIRD-PARTY-LICENSES/crc-catalog-2.5.0/LICENSES__MIT.txt) (SHA-256 `5ef8fcfb6cccec8fcae043c834099a60c8b7406408db576e026d2b7e67dc5cf5`; 1073 bytes).
+- `crc-catalog 2.5.0`: crate archive member [`LICENSES/Apache-2.0.txt`](https://crates.io/api/v1/crates/crc-catalog/2.5.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/crc-catalog-2.5.0/LICENSES__Apache-2.0.txt`](THIRD-PARTY-LICENSES/crc-catalog-2.5.0/LICENSES__Apache-2.0.txt) (SHA-256 `d3cdb764b98283ee7c3a3cea8d374e2a2957322374378d1f3263f4d512741fc3`; 11346 bytes).
 
 ### crc-rs
 
@@ -367,8 +367,8 @@ Canonical upstream: <https://github.com/mrhooray/crc-rs>
 
 License evidence:
 
-- `crc 3.4.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/crc/3.4.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/crc-3.4.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/crc-3.4.0/LICENSE-MIT) (SHA-256 `3488679340a49ecc34d342c4009d2dabf76f4a21f12aec2ca99b15805d656544`; 1074 bytes).
-- `crc 3.4.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/crc/3.4.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/crc-3.4.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/crc-3.4.0/LICENSE-APACHE) (SHA-256 `470355a7eed93fcc4281ec2e0f82ca3b94e7af1e4d83629f91de8cfac34d750e`; 10846 bytes).
+- `crc 3.4.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/crc/3.4.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/crc-3.4.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/crc-3.4.0/LICENSE-MIT) (SHA-256 `3488679340a49ecc34d342c4009d2dabf76f4a21f12aec2ca99b15805d656544`; 1074 bytes).
+- `crc 3.4.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/crc/3.4.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/crc-3.4.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/crc-3.4.0/LICENSE-APACHE) (SHA-256 `470355a7eed93fcc4281ec2e0f82ca3b94e7af1e4d83629f91de8cfac34d750e`; 10846 bytes).
 
 ### either
 
@@ -380,8 +380,8 @@ Canonical upstream: <https://github.com/rayon-rs/either>
 
 License evidence:
 
-- `either 1.16.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/either/1.16.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/either-1.16.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/either-1.16.0/LICENSE-MIT) (SHA-256 `7576269ea71f767b99297934c0b2367532690f8c4badc695edf8e04ab6a1e545`; 1043 bytes).
-- `either 1.16.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/either/1.16.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/either-1.16.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/either-1.16.0/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `either 1.16.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/either/1.16.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/either-1.16.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/either-1.16.0/LICENSE-MIT) (SHA-256 `7576269ea71f767b99297934c0b2367532690f8c4badc695edf8e04ab6a1e545`; 1043 bytes).
+- `either 1.16.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/either/1.16.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/either-1.16.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/either-1.16.0/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### embedded-hal
 
@@ -393,8 +393,8 @@ Canonical upstream: <https://github.com/rust-embedded/embedded-hal>
 
 License evidence:
 
-- `embedded-io 0.6.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/embedded-io/0.6.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/embedded-io-0.6.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/embedded-io-0.6.1/LICENSE-MIT) (SHA-256 `47674f8b7d98c232c6f81346c4cfe48933d913a9e257d7a522ad9f42e3dd61e1`; 1067 bytes).
-- `embedded-io 0.6.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/embedded-io/0.6.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/embedded-io-0.6.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/embedded-io-0.6.1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `embedded-io 0.6.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/embedded-io/0.6.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/embedded-io-0.6.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/embedded-io-0.6.1/LICENSE-MIT) (SHA-256 `47674f8b7d98c232c6f81346c4cfe48933d913a9e257d7a522ad9f42e3dd61e1`; 1067 bytes).
+- `embedded-io 0.6.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/embedded-io/0.6.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/embedded-io-0.6.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/embedded-io-0.6.1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### embedded-io
 
@@ -406,8 +406,8 @@ Canonical upstream: <https://github.com/embassy-rs/embedded-io>
 
 License evidence:
 
-- `embedded-io 0.4.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/embedded-io/0.4.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/embedded-io-0.4.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/embedded-io-0.4.0/LICENSE-MIT) (SHA-256 `423e1c4900b3fbb41cda3e34530b2597d50c2e61473e18c085756c507e46fe1c`; 1067 bytes).
-- `embedded-io 0.4.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/embedded-io/0.4.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/embedded-io-0.4.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/embedded-io-0.4.0/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `embedded-io 0.4.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/embedded-io/0.4.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/embedded-io-0.4.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/embedded-io-0.4.0/LICENSE-MIT) (SHA-256 `423e1c4900b3fbb41cda3e34530b2597d50c2e61473e18c085756c507e46fe1c`; 1067 bytes).
+- `embedded-io 0.4.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/embedded-io/0.4.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/embedded-io-0.4.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/embedded-io-0.4.0/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### equivalent
 
@@ -419,8 +419,8 @@ Canonical upstream: <https://github.com/indexmap-rs/equivalent>
 
 License evidence:
 
-- `equivalent 1.0.2`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/equivalent/1.0.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/equivalent-1.0.2/LICENSE-MIT`](THIRD-PARTY-LICENSES/equivalent-1.0.2/LICENSE-MIT) (SHA-256 `7365cc8878a1d7ce155a58c4ca09c3d7a6be413efa5334a80ea842912b669349`; 1049 bytes).
-- `equivalent 1.0.2`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/equivalent/1.0.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/equivalent-1.0.2/LICENSE-APACHE`](THIRD-PARTY-LICENSES/equivalent-1.0.2/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `equivalent 1.0.2`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/equivalent/1.0.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/equivalent-1.0.2/LICENSE-MIT`](THIRD-PARTY-LICENSES/equivalent-1.0.2/LICENSE-MIT) (SHA-256 `7365cc8878a1d7ce155a58c4ca09c3d7a6be413efa5334a80ea842912b669349`; 1049 bytes).
+- `equivalent 1.0.2`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/equivalent/1.0.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/equivalent-1.0.2/LICENSE-APACHE`](THIRD-PARTY-LICENSES/equivalent-1.0.2/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### foldhash
 
@@ -432,7 +432,7 @@ Canonical upstream: <https://github.com/orlp/foldhash>
 
 License evidence:
 
-- `foldhash 0.2.0`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/foldhash/0.2.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/foldhash-0.2.0/LICENSE`](THIRD-PARTY-LICENSES/foldhash-0.2.0/LICENSE) (SHA-256 `b1181a40b2a7b25cf66fd01481713bc1005df082c53ef73e851e55071b102744`; 856 bytes).
+- `foldhash 0.2.0`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/foldhash/0.2.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/foldhash-0.2.0/LICENSE`](THIRD-PARTY-LICENSES/foldhash-0.2.0/LICENSE) (SHA-256 `b1181a40b2a7b25cf66fd01481713bc1005df082c53ef73e851e55071b102744`; 856 bytes).
 
 ### formats
 
@@ -445,10 +445,10 @@ Canonical upstream: <https://github.com/RustCrypto/formats>
 
 License evidence:
 
-- `base64ct 1.8.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/base64ct/1.8.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/base64ct-1.8.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/base64ct-1.8.3/LICENSE-MIT) (SHA-256 `2d1c57bff28344b9e698f51063bc8509799cc4c99a4e0cf2aa3f7e7c3e1f9a9d`; 1148 bytes).
-- `const-oid 0.10.2`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/const-oid/0.10.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/const-oid-0.10.2/LICENSE-MIT`](THIRD-PARTY-LICENSES/const-oid-0.10.2/LICENSE-MIT) (SHA-256 `73b9dc2e79c7308998dd30296e073aefaefb944a68fb89aa412c23c0edcabcaa`; 1082 bytes).
-- `base64ct 1.8.3`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/base64ct/1.8.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/base64ct-1.8.3/LICENSE-APACHE`](THIRD-PARTY-LICENSES/base64ct-1.8.3/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
-- `const-oid 0.10.2`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/const-oid/0.10.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/const-oid-0.10.2/LICENSE-APACHE`](THIRD-PARTY-LICENSES/const-oid-0.10.2/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
+- `base64ct 1.8.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/base64ct/1.8.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/base64ct-1.8.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/base64ct-1.8.3/LICENSE-MIT) (SHA-256 `2d1c57bff28344b9e698f51063bc8509799cc4c99a4e0cf2aa3f7e7c3e1f9a9d`; 1148 bytes).
+- `const-oid 0.10.2`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/const-oid/0.10.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/const-oid-0.10.2/LICENSE-MIT`](THIRD-PARTY-LICENSES/const-oid-0.10.2/LICENSE-MIT) (SHA-256 `73b9dc2e79c7308998dd30296e073aefaefb944a68fb89aa412c23c0edcabcaa`; 1082 bytes).
+- `base64ct 1.8.3`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/base64ct/1.8.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/base64ct-1.8.3/LICENSE-APACHE`](THIRD-PARTY-LICENSES/base64ct-1.8.3/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
+- `const-oid 0.10.2`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/const-oid/0.10.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/const-oid-0.10.2/LICENSE-APACHE`](THIRD-PARTY-LICENSES/const-oid-0.10.2/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
 
 ### fs-set-times
 
@@ -460,10 +460,10 @@ Canonical upstream: <https://github.com/bytecodealliance/fs-set-times>
 
 License evidence:
 
-- `fs-set-times 0.20.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/fs-set-times/0.20.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/fs-set-times-0.20.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/fs-set-times-0.20.3/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `fs-set-times 0.20.3`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/fs-set-times/0.20.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/fs-set-times-0.20.3/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/fs-set-times-0.20.3/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `fs-set-times 0.20.3`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/fs-set-times/0.20.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/fs-set-times-0.20.3/LICENSE-APACHE`](THIRD-PARTY-LICENSES/fs-set-times-0.20.3/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
-- `fs-set-times 0.20.3`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/fs-set-times/0.20.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/fs-set-times-0.20.3/COPYRIGHT`](THIRD-PARTY-LICENSES/fs-set-times-0.20.3/COPYRIGHT) (SHA-256 `e196ffeb5ab101e9ec8bbe395c9f367c5380ee2d28c47e5c03371523798a9af7`; 877 bytes).
+- `fs-set-times 0.20.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/fs-set-times/0.20.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/fs-set-times-0.20.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/fs-set-times-0.20.3/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `fs-set-times 0.20.3`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/fs-set-times/0.20.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/fs-set-times-0.20.3/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/fs-set-times-0.20.3/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `fs-set-times 0.20.3`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/fs-set-times/0.20.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/fs-set-times-0.20.3/LICENSE-APACHE`](THIRD-PARTY-LICENSES/fs-set-times-0.20.3/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `fs-set-times 0.20.3`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/fs-set-times/0.20.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/fs-set-times-0.20.3/COPYRIGHT`](THIRD-PARTY-LICENSES/fs-set-times-0.20.3/COPYRIGHT) (SHA-256 `e196ffeb5ab101e9ec8bbe395c9f367c5380ee2d28c47e5c03371523798a9af7`; 877 bytes).
 
 ### futures-rs
 
@@ -485,28 +485,28 @@ Canonical upstream: <https://github.com/rust-lang/futures-rs>
 
 License evidence:
 
-- `futures 0.3.32`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/futures/0.3.32/download) -> [`AHCL/THIRD-PARTY-LICENSES/futures-0.3.32/LICENSE-APACHE`](THIRD-PARTY-LICENSES/futures-0.3.32/LICENSE-APACHE) (SHA-256 `275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427`; 10874 bytes).
-- `futures-channel 0.3.32`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/futures-channel/0.3.32/download) -> [`AHCL/THIRD-PARTY-LICENSES/futures-channel-0.3.32/LICENSE-APACHE`](THIRD-PARTY-LICENSES/futures-channel-0.3.32/LICENSE-APACHE) (SHA-256 `275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427`; 10874 bytes).
-- `futures-channel 0.3.33`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/futures-channel/0.3.33/download) -> [`AHCL/THIRD-PARTY-LICENSES/futures-channel-0.3.33/LICENSE-APACHE`](THIRD-PARTY-LICENSES/futures-channel-0.3.33/LICENSE-APACHE) (SHA-256 `275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427`; 10874 bytes).
-- `futures-core 0.3.33`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/futures-core/0.3.33/download) -> [`AHCL/THIRD-PARTY-LICENSES/futures-core-0.3.33/LICENSE-APACHE`](THIRD-PARTY-LICENSES/futures-core-0.3.33/LICENSE-APACHE) (SHA-256 `275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427`; 10874 bytes).
-- `futures-io 0.3.32`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/futures-io/0.3.32/download) -> [`AHCL/THIRD-PARTY-LICENSES/futures-io-0.3.32/LICENSE-APACHE`](THIRD-PARTY-LICENSES/futures-io-0.3.32/LICENSE-APACHE) (SHA-256 `275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427`; 10874 bytes).
-- `futures-macro 0.3.33`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/futures-macro/0.3.33/download) -> [`AHCL/THIRD-PARTY-LICENSES/futures-macro-0.3.33/LICENSE-APACHE`](THIRD-PARTY-LICENSES/futures-macro-0.3.33/LICENSE-APACHE) (SHA-256 `275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427`; 10874 bytes).
-- `futures-sink 0.3.32`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/futures-sink/0.3.32/download) -> [`AHCL/THIRD-PARTY-LICENSES/futures-sink-0.3.32/LICENSE-APACHE`](THIRD-PARTY-LICENSES/futures-sink-0.3.32/LICENSE-APACHE) (SHA-256 `275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427`; 10874 bytes).
-- `futures-task 0.3.32`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/futures-task/0.3.32/download) -> [`AHCL/THIRD-PARTY-LICENSES/futures-task-0.3.32/LICENSE-APACHE`](THIRD-PARTY-LICENSES/futures-task-0.3.32/LICENSE-APACHE) (SHA-256 `275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427`; 10874 bytes).
-- `futures-task 0.3.33`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/futures-task/0.3.33/download) -> [`AHCL/THIRD-PARTY-LICENSES/futures-task-0.3.33/LICENSE-APACHE`](THIRD-PARTY-LICENSES/futures-task-0.3.33/LICENSE-APACHE) (SHA-256 `275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427`; 10874 bytes).
-- `futures-util 0.3.32`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/futures-util/0.3.32/download) -> [`AHCL/THIRD-PARTY-LICENSES/futures-util-0.3.32/LICENSE-APACHE`](THIRD-PARTY-LICENSES/futures-util-0.3.32/LICENSE-APACHE) (SHA-256 `275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427`; 10874 bytes).
-- `futures-util 0.3.33`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/futures-util/0.3.33/download) -> [`AHCL/THIRD-PARTY-LICENSES/futures-util-0.3.33/LICENSE-APACHE`](THIRD-PARTY-LICENSES/futures-util-0.3.33/LICENSE-APACHE) (SHA-256 `275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427`; 10874 bytes).
-- `futures 0.3.32`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/futures/0.3.32/download) -> [`AHCL/THIRD-PARTY-LICENSES/futures-0.3.32/LICENSE-MIT`](THIRD-PARTY-LICENSES/futures-0.3.32/LICENSE-MIT) (SHA-256 `6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd`; 1094 bytes).
-- `futures-channel 0.3.32`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/futures-channel/0.3.32/download) -> [`AHCL/THIRD-PARTY-LICENSES/futures-channel-0.3.32/LICENSE-MIT`](THIRD-PARTY-LICENSES/futures-channel-0.3.32/LICENSE-MIT) (SHA-256 `6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd`; 1094 bytes).
-- `futures-channel 0.3.33`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/futures-channel/0.3.33/download) -> [`AHCL/THIRD-PARTY-LICENSES/futures-channel-0.3.33/LICENSE-MIT`](THIRD-PARTY-LICENSES/futures-channel-0.3.33/LICENSE-MIT) (SHA-256 `6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd`; 1094 bytes).
-- `futures-core 0.3.33`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/futures-core/0.3.33/download) -> [`AHCL/THIRD-PARTY-LICENSES/futures-core-0.3.33/LICENSE-MIT`](THIRD-PARTY-LICENSES/futures-core-0.3.33/LICENSE-MIT) (SHA-256 `6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd`; 1094 bytes).
-- `futures-io 0.3.32`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/futures-io/0.3.32/download) -> [`AHCL/THIRD-PARTY-LICENSES/futures-io-0.3.32/LICENSE-MIT`](THIRD-PARTY-LICENSES/futures-io-0.3.32/LICENSE-MIT) (SHA-256 `6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd`; 1094 bytes).
-- `futures-macro 0.3.33`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/futures-macro/0.3.33/download) -> [`AHCL/THIRD-PARTY-LICENSES/futures-macro-0.3.33/LICENSE-MIT`](THIRD-PARTY-LICENSES/futures-macro-0.3.33/LICENSE-MIT) (SHA-256 `6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd`; 1094 bytes).
-- `futures-sink 0.3.32`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/futures-sink/0.3.32/download) -> [`AHCL/THIRD-PARTY-LICENSES/futures-sink-0.3.32/LICENSE-MIT`](THIRD-PARTY-LICENSES/futures-sink-0.3.32/LICENSE-MIT) (SHA-256 `6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd`; 1094 bytes).
-- `futures-task 0.3.32`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/futures-task/0.3.32/download) -> [`AHCL/THIRD-PARTY-LICENSES/futures-task-0.3.32/LICENSE-MIT`](THIRD-PARTY-LICENSES/futures-task-0.3.32/LICENSE-MIT) (SHA-256 `6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd`; 1094 bytes).
-- `futures-task 0.3.33`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/futures-task/0.3.33/download) -> [`AHCL/THIRD-PARTY-LICENSES/futures-task-0.3.33/LICENSE-MIT`](THIRD-PARTY-LICENSES/futures-task-0.3.33/LICENSE-MIT) (SHA-256 `6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd`; 1094 bytes).
-- `futures-util 0.3.32`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/futures-util/0.3.32/download) -> [`AHCL/THIRD-PARTY-LICENSES/futures-util-0.3.32/LICENSE-MIT`](THIRD-PARTY-LICENSES/futures-util-0.3.32/LICENSE-MIT) (SHA-256 `6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd`; 1094 bytes).
-- `futures-util 0.3.33`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/futures-util/0.3.33/download) -> [`AHCL/THIRD-PARTY-LICENSES/futures-util-0.3.33/LICENSE-MIT`](THIRD-PARTY-LICENSES/futures-util-0.3.33/LICENSE-MIT) (SHA-256 `6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd`; 1094 bytes).
+- `futures 0.3.32`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/futures/0.3.32/download) -> [`.ahcl/THIRD-PARTY-LICENSES/futures-0.3.32/LICENSE-APACHE`](THIRD-PARTY-LICENSES/futures-0.3.32/LICENSE-APACHE) (SHA-256 `275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427`; 10874 bytes).
+- `futures-channel 0.3.32`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/futures-channel/0.3.32/download) -> [`.ahcl/THIRD-PARTY-LICENSES/futures-channel-0.3.32/LICENSE-APACHE`](THIRD-PARTY-LICENSES/futures-channel-0.3.32/LICENSE-APACHE) (SHA-256 `275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427`; 10874 bytes).
+- `futures-channel 0.3.33`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/futures-channel/0.3.33/download) -> [`.ahcl/THIRD-PARTY-LICENSES/futures-channel-0.3.33/LICENSE-APACHE`](THIRD-PARTY-LICENSES/futures-channel-0.3.33/LICENSE-APACHE) (SHA-256 `275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427`; 10874 bytes).
+- `futures-core 0.3.33`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/futures-core/0.3.33/download) -> [`.ahcl/THIRD-PARTY-LICENSES/futures-core-0.3.33/LICENSE-APACHE`](THIRD-PARTY-LICENSES/futures-core-0.3.33/LICENSE-APACHE) (SHA-256 `275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427`; 10874 bytes).
+- `futures-io 0.3.32`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/futures-io/0.3.32/download) -> [`.ahcl/THIRD-PARTY-LICENSES/futures-io-0.3.32/LICENSE-APACHE`](THIRD-PARTY-LICENSES/futures-io-0.3.32/LICENSE-APACHE) (SHA-256 `275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427`; 10874 bytes).
+- `futures-macro 0.3.33`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/futures-macro/0.3.33/download) -> [`.ahcl/THIRD-PARTY-LICENSES/futures-macro-0.3.33/LICENSE-APACHE`](THIRD-PARTY-LICENSES/futures-macro-0.3.33/LICENSE-APACHE) (SHA-256 `275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427`; 10874 bytes).
+- `futures-sink 0.3.32`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/futures-sink/0.3.32/download) -> [`.ahcl/THIRD-PARTY-LICENSES/futures-sink-0.3.32/LICENSE-APACHE`](THIRD-PARTY-LICENSES/futures-sink-0.3.32/LICENSE-APACHE) (SHA-256 `275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427`; 10874 bytes).
+- `futures-task 0.3.32`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/futures-task/0.3.32/download) -> [`.ahcl/THIRD-PARTY-LICENSES/futures-task-0.3.32/LICENSE-APACHE`](THIRD-PARTY-LICENSES/futures-task-0.3.32/LICENSE-APACHE) (SHA-256 `275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427`; 10874 bytes).
+- `futures-task 0.3.33`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/futures-task/0.3.33/download) -> [`.ahcl/THIRD-PARTY-LICENSES/futures-task-0.3.33/LICENSE-APACHE`](THIRD-PARTY-LICENSES/futures-task-0.3.33/LICENSE-APACHE) (SHA-256 `275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427`; 10874 bytes).
+- `futures-util 0.3.32`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/futures-util/0.3.32/download) -> [`.ahcl/THIRD-PARTY-LICENSES/futures-util-0.3.32/LICENSE-APACHE`](THIRD-PARTY-LICENSES/futures-util-0.3.32/LICENSE-APACHE) (SHA-256 `275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427`; 10874 bytes).
+- `futures-util 0.3.33`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/futures-util/0.3.33/download) -> [`.ahcl/THIRD-PARTY-LICENSES/futures-util-0.3.33/LICENSE-APACHE`](THIRD-PARTY-LICENSES/futures-util-0.3.33/LICENSE-APACHE) (SHA-256 `275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427`; 10874 bytes).
+- `futures 0.3.32`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/futures/0.3.32/download) -> [`.ahcl/THIRD-PARTY-LICENSES/futures-0.3.32/LICENSE-MIT`](THIRD-PARTY-LICENSES/futures-0.3.32/LICENSE-MIT) (SHA-256 `6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd`; 1094 bytes).
+- `futures-channel 0.3.32`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/futures-channel/0.3.32/download) -> [`.ahcl/THIRD-PARTY-LICENSES/futures-channel-0.3.32/LICENSE-MIT`](THIRD-PARTY-LICENSES/futures-channel-0.3.32/LICENSE-MIT) (SHA-256 `6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd`; 1094 bytes).
+- `futures-channel 0.3.33`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/futures-channel/0.3.33/download) -> [`.ahcl/THIRD-PARTY-LICENSES/futures-channel-0.3.33/LICENSE-MIT`](THIRD-PARTY-LICENSES/futures-channel-0.3.33/LICENSE-MIT) (SHA-256 `6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd`; 1094 bytes).
+- `futures-core 0.3.33`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/futures-core/0.3.33/download) -> [`.ahcl/THIRD-PARTY-LICENSES/futures-core-0.3.33/LICENSE-MIT`](THIRD-PARTY-LICENSES/futures-core-0.3.33/LICENSE-MIT) (SHA-256 `6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd`; 1094 bytes).
+- `futures-io 0.3.32`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/futures-io/0.3.32/download) -> [`.ahcl/THIRD-PARTY-LICENSES/futures-io-0.3.32/LICENSE-MIT`](THIRD-PARTY-LICENSES/futures-io-0.3.32/LICENSE-MIT) (SHA-256 `6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd`; 1094 bytes).
+- `futures-macro 0.3.33`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/futures-macro/0.3.33/download) -> [`.ahcl/THIRD-PARTY-LICENSES/futures-macro-0.3.33/LICENSE-MIT`](THIRD-PARTY-LICENSES/futures-macro-0.3.33/LICENSE-MIT) (SHA-256 `6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd`; 1094 bytes).
+- `futures-sink 0.3.32`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/futures-sink/0.3.32/download) -> [`.ahcl/THIRD-PARTY-LICENSES/futures-sink-0.3.32/LICENSE-MIT`](THIRD-PARTY-LICENSES/futures-sink-0.3.32/LICENSE-MIT) (SHA-256 `6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd`; 1094 bytes).
+- `futures-task 0.3.32`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/futures-task/0.3.32/download) -> [`.ahcl/THIRD-PARTY-LICENSES/futures-task-0.3.32/LICENSE-MIT`](THIRD-PARTY-LICENSES/futures-task-0.3.32/LICENSE-MIT) (SHA-256 `6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd`; 1094 bytes).
+- `futures-task 0.3.33`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/futures-task/0.3.33/download) -> [`.ahcl/THIRD-PARTY-LICENSES/futures-task-0.3.33/LICENSE-MIT`](THIRD-PARTY-LICENSES/futures-task-0.3.33/LICENSE-MIT) (SHA-256 `6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd`; 1094 bytes).
+- `futures-util 0.3.32`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/futures-util/0.3.32/download) -> [`.ahcl/THIRD-PARTY-LICENSES/futures-util-0.3.32/LICENSE-MIT`](THIRD-PARTY-LICENSES/futures-util-0.3.32/LICENSE-MIT) (SHA-256 `6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd`; 1094 bytes).
+- `futures-util 0.3.33`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/futures-util/0.3.33/download) -> [`.ahcl/THIRD-PARTY-LICENSES/futures-util-0.3.33/LICENSE-MIT`](THIRD-PARTY-LICENSES/futures-util-0.3.33/LICENSE-MIT) (SHA-256 `6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd`; 1094 bytes).
 
 ### generic-array
 
@@ -518,7 +518,7 @@ Canonical upstream: <https://github.com/fizyk20/generic-array>
 
 License evidence:
 
-- `generic-array 0.14.7`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/generic-array/0.14.7/download) -> [`AHCL/THIRD-PARTY-LICENSES/generic-array-0.14.7/LICENSE`](THIRD-PARTY-LICENSES/generic-array-0.14.7/LICENSE) (SHA-256 `c09aae9d3c77b531f56351a9947bc7446511d6b025b3255312d3e3442a9a7583`; 1107 bytes).
+- `generic-array 0.14.7`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/generic-array/0.14.7/download) -> [`.ahcl/THIRD-PARTY-LICENSES/generic-array-0.14.7/LICENSE`](THIRD-PARTY-LICENSES/generic-array-0.14.7/LICENSE) (SHA-256 `c09aae9d3c77b531f56351a9947bc7446511d6b025b3255312d3e3442a9a7583`; 1107 bytes).
 
 ### getrandom
 
@@ -531,10 +531,10 @@ Canonical upstream: <https://github.com/rust-random/getrandom>
 
 License evidence:
 
-- `getrandom 0.2.17`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/getrandom/0.2.17/download) -> [`AHCL/THIRD-PARTY-LICENSES/getrandom-0.2.17/LICENSE-MIT`](THIRD-PARTY-LICENSES/getrandom-0.2.17/LICENSE-MIT) (SHA-256 `42fa16951ce7f24b5a467a40e5b449a1d41e662f97ca779864f053f39e097737`; 1130 bytes).
-- `getrandom 0.4.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/getrandom/0.4.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/getrandom-0.4.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/getrandom-0.4.3/LICENSE-MIT) (SHA-256 `523a42c25d245dde9c015f882cec7f4555aad883382a6cf19b4b7d9b2cd5419b`; 1130 bytes).
-- `getrandom 0.2.17`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/getrandom/0.2.17/download) -> [`AHCL/THIRD-PARTY-LICENSES/getrandom-0.2.17/LICENSE-APACHE`](THIRD-PARTY-LICENSES/getrandom-0.2.17/LICENSE-APACHE) (SHA-256 `aaff376532ea30a0cd5330b9502ad4a4c8bf769c539c87ffe78819d188a18ebf`; 10849 bytes).
-- `getrandom 0.4.3`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/getrandom/0.4.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/getrandom-0.4.3/LICENSE-APACHE`](THIRD-PARTY-LICENSES/getrandom-0.4.3/LICENSE-APACHE) (SHA-256 `aaff376532ea30a0cd5330b9502ad4a4c8bf769c539c87ffe78819d188a18ebf`; 10849 bytes).
+- `getrandom 0.2.17`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/getrandom/0.2.17/download) -> [`.ahcl/THIRD-PARTY-LICENSES/getrandom-0.2.17/LICENSE-MIT`](THIRD-PARTY-LICENSES/getrandom-0.2.17/LICENSE-MIT) (SHA-256 `42fa16951ce7f24b5a467a40e5b449a1d41e662f97ca779864f053f39e097737`; 1130 bytes).
+- `getrandom 0.4.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/getrandom/0.4.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/getrandom-0.4.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/getrandom-0.4.3/LICENSE-MIT) (SHA-256 `523a42c25d245dde9c015f882cec7f4555aad883382a6cf19b4b7d9b2cd5419b`; 1130 bytes).
+- `getrandom 0.2.17`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/getrandom/0.2.17/download) -> [`.ahcl/THIRD-PARTY-LICENSES/getrandom-0.2.17/LICENSE-APACHE`](THIRD-PARTY-LICENSES/getrandom-0.2.17/LICENSE-APACHE) (SHA-256 `aaff376532ea30a0cd5330b9502ad4a4c8bf769c539c87ffe78819d188a18ebf`; 10849 bytes).
+- `getrandom 0.4.3`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/getrandom/0.4.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/getrandom-0.4.3/LICENSE-APACHE`](THIRD-PARTY-LICENSES/getrandom-0.4.3/LICENSE-APACHE) (SHA-256 `aaff376532ea30a0cd5330b9502ad4a4c8bf769c539c87ffe78819d188a18ebf`; 10849 bytes).
 
 ### gimli
 
@@ -546,8 +546,8 @@ Canonical upstream: <https://github.com/gimli-rs/gimli>
 
 License evidence:
 
-- `gimli 0.33.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/gimli/0.33.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/gimli-0.33.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/gimli-0.33.0/LICENSE-MIT) (SHA-256 `7b63ecd5f1902af1b63729947373683c32745c16a10e8e6292e2e2dcd7e90ae0`; 1071 bytes).
-- `gimli 0.33.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/gimli/0.33.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/gimli-0.33.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/gimli-0.33.0/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `gimli 0.33.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/gimli/0.33.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/gimli-0.33.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/gimli-0.33.0/LICENSE-MIT) (SHA-256 `7b63ecd5f1902af1b63729947373683c32745c16a10e8e6292e2e2dcd7e90ae0`; 1071 bytes).
+- `gimli 0.33.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/gimli/0.33.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/gimli-0.33.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/gimli-0.33.0/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### hashbrown
 
@@ -560,10 +560,10 @@ Canonical upstream: <https://github.com/rust-lang/hashbrown>
 
 License evidence:
 
-- `hashbrown 0.16.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/hashbrown/0.16.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/hashbrown-0.16.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/hashbrown-0.16.1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
-- `hashbrown 0.17.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/hashbrown/0.17.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/hashbrown-0.17.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/hashbrown-0.17.1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
-- `hashbrown 0.16.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/hashbrown/0.16.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/hashbrown-0.16.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/hashbrown-0.16.1/LICENSE-MIT) (SHA-256 `ff8f68cb076caf8cefe7a6430d4ac086ce6af2ca8ce2c4e5a2004d4552ef52a2`; 1060 bytes).
-- `hashbrown 0.17.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/hashbrown/0.17.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/hashbrown-0.17.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/hashbrown-0.17.1/LICENSE-MIT) (SHA-256 `ff8f68cb076caf8cefe7a6430d4ac086ce6af2ca8ce2c4e5a2004d4552ef52a2`; 1060 bytes).
+- `hashbrown 0.16.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/hashbrown/0.16.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/hashbrown-0.16.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/hashbrown-0.16.1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `hashbrown 0.17.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/hashbrown/0.17.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/hashbrown-0.17.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/hashbrown-0.17.1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `hashbrown 0.16.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/hashbrown/0.16.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/hashbrown-0.16.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/hashbrown-0.16.1/LICENSE-MIT) (SHA-256 `ff8f68cb076caf8cefe7a6430d4ac086ce6af2ca8ce2c4e5a2004d4552ef52a2`; 1060 bytes).
+- `hashbrown 0.17.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/hashbrown/0.17.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/hashbrown-0.17.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/hashbrown-0.17.1/LICENSE-MIT) (SHA-256 `ff8f68cb076caf8cefe7a6430d4ac086ce6af2ca8ce2c4e5a2004d4552ef52a2`; 1060 bytes).
 
 ### hashes
 
@@ -577,12 +577,12 @@ Canonical upstream: <https://github.com/RustCrypto/hashes>
 
 License evidence:
 
-- `sha2 0.11.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/sha2/0.11.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/sha2-0.11.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/sha2-0.11.0/LICENSE-MIT) (SHA-256 `831e0f43ad0bf014c1c4fec5767aae470434c1d66d6e671be2d823e729063e25`; 1196 bytes).
-- `blake2 0.10.6`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/blake2/0.10.6/download) -> [`AHCL/THIRD-PARTY-LICENSES/blake2-0.10.6/LICENSE-MIT`](THIRD-PARTY-LICENSES/blake2-0.10.6/LICENSE-MIT) (SHA-256 `9c768944eb4a0422ca2efc25ea9fb2fb9e7fbd3fdb04e86b87366339cb7466db`; 1121 bytes).
-- `blake2 0.10.6`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/blake2/0.10.6/download) -> [`AHCL/THIRD-PARTY-LICENSES/blake2-0.10.6/LICENSE-APACHE`](THIRD-PARTY-LICENSES/blake2-0.10.6/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
-- `sha2 0.10.9`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/sha2/0.10.9/download) -> [`AHCL/THIRD-PARTY-LICENSES/sha2-0.10.9/LICENSE-APACHE`](THIRD-PARTY-LICENSES/sha2-0.10.9/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
-- `sha2 0.11.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/sha2/0.11.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/sha2-0.11.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/sha2-0.11.0/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
-- `sha2 0.10.9`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/sha2/0.10.9/download) -> [`AHCL/THIRD-PARTY-LICENSES/sha2-0.10.9/LICENSE-MIT`](THIRD-PARTY-LICENSES/sha2-0.10.9/LICENSE-MIT) (SHA-256 `b4eb00df6e2a4d22518fcaa6a2b4646f249b3a3c9814509b22bd2091f1392ff1`; 1138 bytes).
+- `sha2 0.11.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/sha2/0.11.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/sha2-0.11.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/sha2-0.11.0/LICENSE-MIT) (SHA-256 `831e0f43ad0bf014c1c4fec5767aae470434c1d66d6e671be2d823e729063e25`; 1196 bytes).
+- `blake2 0.10.6`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/blake2/0.10.6/download) -> [`.ahcl/THIRD-PARTY-LICENSES/blake2-0.10.6/LICENSE-MIT`](THIRD-PARTY-LICENSES/blake2-0.10.6/LICENSE-MIT) (SHA-256 `9c768944eb4a0422ca2efc25ea9fb2fb9e7fbd3fdb04e86b87366339cb7466db`; 1121 bytes).
+- `blake2 0.10.6`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/blake2/0.10.6/download) -> [`.ahcl/THIRD-PARTY-LICENSES/blake2-0.10.6/LICENSE-APACHE`](THIRD-PARTY-LICENSES/blake2-0.10.6/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
+- `sha2 0.10.9`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/sha2/0.10.9/download) -> [`.ahcl/THIRD-PARTY-LICENSES/sha2-0.10.9/LICENSE-APACHE`](THIRD-PARTY-LICENSES/sha2-0.10.9/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
+- `sha2 0.11.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/sha2/0.11.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/sha2-0.11.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/sha2-0.11.0/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
+- `sha2 0.10.9`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/sha2/0.10.9/download) -> [`.ahcl/THIRD-PARTY-LICENSES/sha2-0.10.9/LICENSE-MIT`](THIRD-PARTY-LICENSES/sha2-0.10.9/LICENSE-MIT) (SHA-256 `b4eb00df6e2a4d22518fcaa6a2b4646f249b3a3c9814509b22bd2091f1392ff1`; 1138 bytes).
 
 ### heck
 
@@ -594,8 +594,8 @@ Canonical upstream: <https://github.com/withoutboats/heck>
 
 License evidence:
 
-- `heck 0.5.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/heck/0.5.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/heck-0.5.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/heck-0.5.0/LICENSE-MIT) (SHA-256 `7b63ecd5f1902af1b63729947373683c32745c16a10e8e6292e2e2dcd7e90ae0`; 1071 bytes).
-- `heck 0.5.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/heck/0.5.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/heck-0.5.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/heck-0.5.0/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `heck 0.5.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/heck/0.5.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/heck-0.5.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/heck-0.5.0/LICENSE-MIT) (SHA-256 `7b63ecd5f1902af1b63729947373683c32745c16a10e8e6292e2e2dcd7e90ae0`; 1071 bytes).
+- `heck 0.5.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/heck/0.5.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/heck-0.5.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/heck-0.5.0/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### http
 
@@ -607,8 +607,8 @@ Canonical upstream: <https://github.com/hyperium/http>
 
 License evidence:
 
-- `http 1.5.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/http/1.5.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/http-1.5.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/http-1.5.0/LICENSE-APACHE) (SHA-256 `8bb1b50b0e5c9399ae33bd35fab2769010fa6c14e8860c729a52295d84896b7a`; 10835 bytes).
-- `http 1.5.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/http/1.5.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/http-1.5.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/http-1.5.0/LICENSE-MIT) (SHA-256 `dc91f8200e4b2a1f9261035d4c18c33c246911a6c0f7b543d75347e61b249cff`; 1059 bytes).
+- `http 1.5.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/http/1.5.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/http-1.5.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/http-1.5.0/LICENSE-APACHE) (SHA-256 `8bb1b50b0e5c9399ae33bd35fab2769010fa6c14e8860c729a52295d84896b7a`; 10835 bytes).
+- `http 1.5.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/http/1.5.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/http-1.5.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/http-1.5.0/LICENSE-MIT) (SHA-256 `dc91f8200e4b2a1f9261035d4c18c33c246911a6c0f7b543d75347e61b249cff`; 1059 bytes).
 
 ### http-body
 
@@ -621,8 +621,8 @@ Canonical upstream: <https://github.com/hyperium/http-body>
 
 License evidence:
 
-- `http-body 1.1.0`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/http-body/1.1.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/http-body-1.1.0/LICENSE`](THIRD-PARTY-LICENSES/http-body-1.1.0/LICENSE) (SHA-256 `248378d0a3383c173fb925f17141b88e71580b3ba17ddc6ac3d2a344683232ab`; 1083 bytes).
-- `http-body-util 0.1.4`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/http-body-util/0.1.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/http-body-util-0.1.4/LICENSE`](THIRD-PARTY-LICENSES/http-body-util-0.1.4/LICENSE) (SHA-256 `248378d0a3383c173fb925f17141b88e71580b3ba17ddc6ac3d2a344683232ab`; 1083 bytes).
+- `http-body 1.1.0`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/http-body/1.1.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/http-body-1.1.0/LICENSE`](THIRD-PARTY-LICENSES/http-body-1.1.0/LICENSE) (SHA-256 `248378d0a3383c173fb925f17141b88e71580b3ba17ddc6ac3d2a344683232ab`; 1083 bytes).
+- `http-body-util 0.1.4`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/http-body-util/0.1.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/http-body-util-0.1.4/LICENSE`](THIRD-PARTY-LICENSES/http-body-util-0.1.4/LICENSE) (SHA-256 `248378d0a3383c173fb925f17141b88e71580b3ba17ddc6ac3d2a344683232ab`; 1083 bytes).
 
 ### httparse
 
@@ -634,8 +634,8 @@ Canonical upstream: <https://github.com/seanmonstar/httparse>
 
 License evidence:
 
-- `httparse 1.10.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/httparse/1.10.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/httparse-1.10.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/httparse-1.10.1/LICENSE-MIT) (SHA-256 `391a5396cec6230bfabd4ef4eb2350eb895bc5efce377a2218f5702ed020d3e3`; 1063 bytes).
-- `httparse 1.10.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/httparse/1.10.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/httparse-1.10.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/httparse-1.10.1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `httparse 1.10.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/httparse/1.10.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/httparse-1.10.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/httparse-1.10.1/LICENSE-MIT) (SHA-256 `391a5396cec6230bfabd4ef4eb2350eb895bc5efce377a2218f5702ed020d3e3`; 1063 bytes).
+- `httparse 1.10.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/httparse/1.10.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/httparse-1.10.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/httparse-1.10.1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### hybrid-array
 
@@ -647,8 +647,8 @@ Canonical upstream: <https://github.com/RustCrypto/hybrid-array>
 
 License evidence:
 
-- `hybrid-array 0.4.13`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/hybrid-array/0.4.13/download) -> [`AHCL/THIRD-PARTY-LICENSES/hybrid-array-0.4.13/LICENSE-MIT`](THIRD-PARTY-LICENSES/hybrid-array-0.4.13/LICENSE-MIT) (SHA-256 `70c9d40f1f9545c3f133b8a67206e89da850f6468eed072281bb3701514114a9`; 1082 bytes).
-- `hybrid-array 0.4.13`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/hybrid-array/0.4.13/download) -> [`AHCL/THIRD-PARTY-LICENSES/hybrid-array-0.4.13/LICENSE-APACHE`](THIRD-PARTY-LICENSES/hybrid-array-0.4.13/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
+- `hybrid-array 0.4.13`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/hybrid-array/0.4.13/download) -> [`.ahcl/THIRD-PARTY-LICENSES/hybrid-array-0.4.13/LICENSE-MIT`](THIRD-PARTY-LICENSES/hybrid-array-0.4.13/LICENSE-MIT) (SHA-256 `70c9d40f1f9545c3f133b8a67206e89da850f6468eed072281bb3701514114a9`; 1082 bytes).
+- `hybrid-array 0.4.13`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/hybrid-array/0.4.13/download) -> [`.ahcl/THIRD-PARTY-LICENSES/hybrid-array-0.4.13/LICENSE-APACHE`](THIRD-PARTY-LICENSES/hybrid-array-0.4.13/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
 
 ### hyper
 
@@ -660,7 +660,7 @@ Canonical upstream: <https://github.com/hyperium/hyper>
 
 License evidence:
 
-- `hyper 1.11.0`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/hyper/1.11.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/hyper-1.11.0/LICENSE`](THIRD-PARTY-LICENSES/hyper-1.11.0/LICENSE) (SHA-256 `2d01890414494742ba4a509fcec8efa40f6d8be22cbd72be7cff08d6fda4ec89`; 1062 bytes).
+- `hyper 1.11.0`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/hyper/1.11.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/hyper-1.11.0/LICENSE`](THIRD-PARTY-LICENSES/hyper-1.11.0/LICENSE) (SHA-256 `2d01890414494742ba4a509fcec8efa40f6d8be22cbd72be7cff08d6fda4ec89`; 1062 bytes).
 
 ### hyper-util
 
@@ -672,7 +672,7 @@ Canonical upstream: <https://github.com/hyperium/hyper-util>
 
 License evidence:
 
-- `hyper-util 0.1.20`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/hyper-util/0.1.20/download) -> [`AHCL/THIRD-PARTY-LICENSES/hyper-util-0.1.20/LICENSE`](THIRD-PARTY-LICENSES/hyper-util-0.1.20/LICENSE) (SHA-256 `9e0a97848ea543aef745c98e84fde696a9a3e0735538f6daefdd3cb1942effc1`; 1062 bytes).
+- `hyper-util 0.1.20`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/hyper-util/0.1.20/download) -> [`.ahcl/THIRD-PARTY-LICENSES/hyper-util-0.1.20/LICENSE`](THIRD-PARTY-LICENSES/hyper-util-0.1.20/LICENSE) (SHA-256 `9e0a97848ea543aef745c98e84fde696a9a3e0735538f6daefdd3cb1942effc1`; 1062 bytes).
 
 ### indexmap
 
@@ -684,8 +684,8 @@ Canonical upstream: <https://github.com/indexmap-rs/indexmap>
 
 License evidence:
 
-- `indexmap 2.14.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/indexmap/2.14.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/indexmap-2.14.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/indexmap-2.14.0/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
-- `indexmap 2.14.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/indexmap/2.14.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/indexmap-2.14.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/indexmap-2.14.0/LICENSE-MIT) (SHA-256 `ecc269ef87fd38a1d98e30bfac9ba964a9dbd9315c3770fed98d4d7cb5882055`; 1049 bytes).
+- `indexmap 2.14.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/indexmap/2.14.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/indexmap-2.14.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/indexmap-2.14.0/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `indexmap 2.14.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/indexmap/2.14.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/indexmap-2.14.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/indexmap-2.14.0/LICENSE-MIT) (SHA-256 `ecc269ef87fd38a1d98e30bfac9ba964a9dbd9315c3770fed98d4d7cb5882055`; 1049 bytes).
 
 ### io-extras
 
@@ -697,10 +697,10 @@ Canonical upstream: <https://github.com/sunfishcode/io-extras>
 
 License evidence:
 
-- `io-extras 0.19.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/io-extras/0.19.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/io-extras-0.19.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/io-extras-0.19.0/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `io-extras 0.19.0`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/io-extras/0.19.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/io-extras-0.19.0/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/io-extras-0.19.0/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `io-extras 0.19.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/io-extras/0.19.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/io-extras-0.19.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/io-extras-0.19.0/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
-- `io-extras 0.19.0`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/io-extras/0.19.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/io-extras-0.19.0/COPYRIGHT`](THIRD-PARTY-LICENSES/io-extras-0.19.0/COPYRIGHT) (SHA-256 `f0c1d22de8bd3b776a40f2691f08b84e91c7bafc78b72a51150e231002b88db3`; 865 bytes).
+- `io-extras 0.19.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/io-extras/0.19.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/io-extras-0.19.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/io-extras-0.19.0/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `io-extras 0.19.0`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/io-extras/0.19.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/io-extras-0.19.0/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/io-extras-0.19.0/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `io-extras 0.19.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/io-extras/0.19.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/io-extras-0.19.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/io-extras-0.19.0/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `io-extras 0.19.0`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/io-extras/0.19.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/io-extras-0.19.0/COPYRIGHT`](THIRD-PARTY-LICENSES/io-extras-0.19.0/COPYRIGHT) (SHA-256 `f0c1d22de8bd3b776a40f2691f08b84e91c7bafc78b72a51150e231002b88db3`; 865 bytes).
 
 ### io-lifetimes
 
@@ -713,14 +713,14 @@ Canonical upstream: <https://github.com/sunfishcode/io-lifetimes>
 
 License evidence:
 
-- `io-lifetimes 2.0.4`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/io-lifetimes/2.0.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/io-lifetimes-2.0.4/LICENSE-MIT`](THIRD-PARTY-LICENSES/io-lifetimes-2.0.4/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `io-lifetimes 3.0.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/io-lifetimes/3.0.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/io-lifetimes-3.0.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/io-lifetimes-3.0.1/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `io-lifetimes 2.0.4`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/io-lifetimes/2.0.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/io-lifetimes-2.0.4/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/io-lifetimes-2.0.4/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `io-lifetimes 3.0.1`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/io-lifetimes/3.0.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/io-lifetimes-3.0.1/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/io-lifetimes-3.0.1/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `io-lifetimes 2.0.4`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/io-lifetimes/2.0.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/io-lifetimes-2.0.4/COPYRIGHT`](THIRD-PARTY-LICENSES/io-lifetimes-2.0.4/COPYRIGHT) (SHA-256 `495c30b45120f8af07cfa26eb9cb1ebfe8324560dca2b3b1e76cad1b9b6b489a`; 877 bytes).
-- `io-lifetimes 3.0.1`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/io-lifetimes/3.0.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/io-lifetimes-3.0.1/COPYRIGHT`](THIRD-PARTY-LICENSES/io-lifetimes-3.0.1/COPYRIGHT) (SHA-256 `495c30b45120f8af07cfa26eb9cb1ebfe8324560dca2b3b1e76cad1b9b6b489a`; 877 bytes).
-- `io-lifetimes 2.0.4`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/io-lifetimes/2.0.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/io-lifetimes-2.0.4/LICENSE-APACHE`](THIRD-PARTY-LICENSES/io-lifetimes-2.0.4/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
-- `io-lifetimes 3.0.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/io-lifetimes/3.0.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/io-lifetimes-3.0.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/io-lifetimes-3.0.1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `io-lifetimes 2.0.4`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/io-lifetimes/2.0.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/io-lifetimes-2.0.4/LICENSE-MIT`](THIRD-PARTY-LICENSES/io-lifetimes-2.0.4/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `io-lifetimes 3.0.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/io-lifetimes/3.0.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/io-lifetimes-3.0.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/io-lifetimes-3.0.1/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `io-lifetimes 2.0.4`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/io-lifetimes/2.0.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/io-lifetimes-2.0.4/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/io-lifetimes-2.0.4/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `io-lifetimes 3.0.1`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/io-lifetimes/3.0.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/io-lifetimes-3.0.1/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/io-lifetimes-3.0.1/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `io-lifetimes 2.0.4`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/io-lifetimes/2.0.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/io-lifetimes-2.0.4/COPYRIGHT`](THIRD-PARTY-LICENSES/io-lifetimes-2.0.4/COPYRIGHT) (SHA-256 `495c30b45120f8af07cfa26eb9cb1ebfe8324560dca2b3b1e76cad1b9b6b489a`; 877 bytes).
+- `io-lifetimes 3.0.1`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/io-lifetimes/3.0.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/io-lifetimes-3.0.1/COPYRIGHT`](THIRD-PARTY-LICENSES/io-lifetimes-3.0.1/COPYRIGHT) (SHA-256 `495c30b45120f8af07cfa26eb9cb1ebfe8324560dca2b3b1e76cad1b9b6b489a`; 877 bytes).
+- `io-lifetimes 2.0.4`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/io-lifetimes/2.0.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/io-lifetimes-2.0.4/LICENSE-APACHE`](THIRD-PARTY-LICENSES/io-lifetimes-2.0.4/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `io-lifetimes 3.0.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/io-lifetimes/3.0.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/io-lifetimes-3.0.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/io-lifetimes-3.0.1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### ipnet
 
@@ -732,8 +732,8 @@ Canonical upstream: <https://github.com/krisprice/ipnet>
 
 License evidence:
 
-- `ipnet 2.12.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/ipnet/2.12.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/ipnet-2.12.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/ipnet-2.12.1/LICENSE-MIT) (SHA-256 `47dc9ff29128ddfb4d6a0435383c9f89120bc374dbcc1dd00b933a0b28aa7865`; 1062 bytes).
-- `ipnet 2.12.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/ipnet/2.12.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/ipnet-2.12.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/ipnet-2.12.1/LICENSE-APACHE) (SHA-256 `87d9feb9238c6bd8e0024fc4733b06cff036f89f36d93b7df1c8a0549bbb7a5b`; 11352 bytes).
+- `ipnet 2.12.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/ipnet/2.12.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/ipnet-2.12.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/ipnet-2.12.1/LICENSE-MIT) (SHA-256 `47dc9ff29128ddfb4d6a0435383c9f89120bc374dbcc1dd00b933a0b28aa7865`; 1062 bytes).
+- `ipnet 2.12.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/ipnet/2.12.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/ipnet-2.12.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/ipnet-2.12.1/LICENSE-APACHE) (SHA-256 `87d9feb9238c6bd8e0024fc4733b06cff036f89f36d93b7df1c8a0549bbb7a5b`; 11352 bytes).
 
 ### itertools
 
@@ -745,8 +745,8 @@ Canonical upstream: <https://github.com/rust-itertools/itertools>
 
 License evidence:
 
-- `itertools 0.14.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/itertools/0.14.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/itertools-0.14.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/itertools-0.14.0/LICENSE-MIT) (SHA-256 `7576269ea71f767b99297934c0b2367532690f8c4badc695edf8e04ab6a1e545`; 1043 bytes).
-- `itertools 0.14.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/itertools/0.14.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/itertools-0.14.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/itertools-0.14.0/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `itertools 0.14.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/itertools/0.14.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/itertools-0.14.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/itertools-0.14.0/LICENSE-MIT) (SHA-256 `7576269ea71f767b99297934c0b2367532690f8c4badc695edf8e04ab6a1e545`; 1043 bytes).
+- `itertools 0.14.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/itertools/0.14.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/itertools-0.14.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/itertools-0.14.0/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### itoa
 
@@ -758,8 +758,8 @@ Canonical upstream: <https://github.com/dtolnay/itoa>
 
 License evidence:
 
-- `itoa 1.0.18`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/itoa/1.0.18/download) -> [`AHCL/THIRD-PARTY-LICENSES/itoa-1.0.18/LICENSE-MIT`](THIRD-PARTY-LICENSES/itoa-1.0.18/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `itoa 1.0.18`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/itoa/1.0.18/download) -> [`AHCL/THIRD-PARTY-LICENSES/itoa-1.0.18/LICENSE-APACHE`](THIRD-PARTY-LICENSES/itoa-1.0.18/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
+- `itoa 1.0.18`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/itoa/1.0.18/download) -> [`.ahcl/THIRD-PARTY-LICENSES/itoa-1.0.18/LICENSE-MIT`](THIRD-PARTY-LICENSES/itoa-1.0.18/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `itoa 1.0.18`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/itoa/1.0.18/download) -> [`.ahcl/THIRD-PARTY-LICENSES/itoa-1.0.18/LICENSE-APACHE`](THIRD-PARTY-LICENSES/itoa-1.0.18/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
 
 ### json
 
@@ -771,8 +771,8 @@ Canonical upstream: <https://github.com/serde-rs/json>
 
 License evidence:
 
-- `serde_json 1.0.150`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/serde_json/1.0.150/download) -> [`AHCL/THIRD-PARTY-LICENSES/serde_json-1.0.150/LICENSE-MIT`](THIRD-PARTY-LICENSES/serde_json-1.0.150/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `serde_json 1.0.150`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/serde_json/1.0.150/download) -> [`AHCL/THIRD-PARTY-LICENSES/serde_json-1.0.150/LICENSE-APACHE`](THIRD-PARTY-LICENSES/serde_json-1.0.150/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
+- `serde_json 1.0.150`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/serde_json/1.0.150/download) -> [`.ahcl/THIRD-PARTY-LICENSES/serde_json-1.0.150/LICENSE-MIT`](THIRD-PARTY-LICENSES/serde_json-1.0.150/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `serde_json 1.0.150`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/serde_json/1.0.150/download) -> [`.ahcl/THIRD-PARTY-LICENSES/serde_json-1.0.150/LICENSE-APACHE`](THIRD-PARTY-LICENSES/serde_json-1.0.150/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
 
 ### leb128fmt
 
@@ -784,8 +784,8 @@ Canonical upstream: <https://github.com/bluk/leb128fmt>
 
 License evidence:
 
-- `leb128fmt 0.1.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/leb128fmt/0.1.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/leb128fmt-0.1.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/leb128fmt-0.1.0/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `leb128fmt 0.1.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/leb128fmt/0.1.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/leb128fmt-0.1.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/leb128fmt-0.1.0/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `leb128fmt 0.1.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/leb128fmt/0.1.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/leb128fmt-0.1.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/leb128fmt-0.1.0/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `leb128fmt 0.1.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/leb128fmt/0.1.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/leb128fmt-0.1.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/leb128fmt-0.1.0/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### libc
 
@@ -799,12 +799,12 @@ Canonical upstream: <https://github.com/rust-lang/libc>
 
 License evidence:
 
-- `libc 0.2.186`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/libc/0.2.186/download) -> [`AHCL/THIRD-PARTY-LICENSES/libc-0.2.186/LICENSE-MIT`](THIRD-PARTY-LICENSES/libc-0.2.186/LICENSE-MIT) (SHA-256 `123a331b5dbf04c30097fa43b8f858bc85df671fe776de498d01f3d6b7c1f69e`; 1066 bytes).
-- `libc 0.2.188`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/libc/0.2.188/download) -> [`AHCL/THIRD-PARTY-LICENSES/libc-0.2.188/LICENSE-MIT`](THIRD-PARTY-LICENSES/libc-0.2.188/LICENSE-MIT) (SHA-256 `123a331b5dbf04c30097fa43b8f858bc85df671fe776de498d01f3d6b7c1f69e`; 1066 bytes).
-- `libc 0.2.189`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/libc/0.2.189/download) -> [`AHCL/THIRD-PARTY-LICENSES/libc-0.2.189/LICENSE-MIT`](THIRD-PARTY-LICENSES/libc-0.2.189/LICENSE-MIT) (SHA-256 `123a331b5dbf04c30097fa43b8f858bc85df671fe776de498d01f3d6b7c1f69e`; 1066 bytes).
-- `libc 0.2.186`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/libc/0.2.186/download) -> [`AHCL/THIRD-PARTY-LICENSES/libc-0.2.186/LICENSE-APACHE`](THIRD-PARTY-LICENSES/libc-0.2.186/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
-- `libc 0.2.188`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/libc/0.2.188/download) -> [`AHCL/THIRD-PARTY-LICENSES/libc-0.2.188/LICENSE-APACHE`](THIRD-PARTY-LICENSES/libc-0.2.188/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
-- `libc 0.2.189`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/libc/0.2.189/download) -> [`AHCL/THIRD-PARTY-LICENSES/libc-0.2.189/LICENSE-APACHE`](THIRD-PARTY-LICENSES/libc-0.2.189/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
+- `libc 0.2.186`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/libc/0.2.186/download) -> [`.ahcl/THIRD-PARTY-LICENSES/libc-0.2.186/LICENSE-MIT`](THIRD-PARTY-LICENSES/libc-0.2.186/LICENSE-MIT) (SHA-256 `123a331b5dbf04c30097fa43b8f858bc85df671fe776de498d01f3d6b7c1f69e`; 1066 bytes).
+- `libc 0.2.188`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/libc/0.2.188/download) -> [`.ahcl/THIRD-PARTY-LICENSES/libc-0.2.188/LICENSE-MIT`](THIRD-PARTY-LICENSES/libc-0.2.188/LICENSE-MIT) (SHA-256 `123a331b5dbf04c30097fa43b8f858bc85df671fe776de498d01f3d6b7c1f69e`; 1066 bytes).
+- `libc 0.2.189`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/libc/0.2.189/download) -> [`.ahcl/THIRD-PARTY-LICENSES/libc-0.2.189/LICENSE-MIT`](THIRD-PARTY-LICENSES/libc-0.2.189/LICENSE-MIT) (SHA-256 `123a331b5dbf04c30097fa43b8f858bc85df671fe776de498d01f3d6b7c1f69e`; 1066 bytes).
+- `libc 0.2.186`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/libc/0.2.186/download) -> [`.ahcl/THIRD-PARTY-LICENSES/libc-0.2.186/LICENSE-APACHE`](THIRD-PARTY-LICENSES/libc-0.2.186/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
+- `libc 0.2.188`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/libc/0.2.188/download) -> [`.ahcl/THIRD-PARTY-LICENSES/libc-0.2.188/LICENSE-APACHE`](THIRD-PARTY-LICENSES/libc-0.2.188/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
+- `libc 0.2.189`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/libc/0.2.189/download) -> [`.ahcl/THIRD-PARTY-LICENSES/libc-0.2.189/LICENSE-APACHE`](THIRD-PARTY-LICENSES/libc-0.2.189/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
 
 ### linux-raw-sys
 
@@ -816,10 +816,10 @@ Canonical upstream: <https://github.com/sunfishcode/linux-raw-sys>
 
 License evidence:
 
-- `linux-raw-sys 0.12.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/linux-raw-sys/0.12.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/linux-raw-sys-0.12.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/linux-raw-sys-0.12.1/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `linux-raw-sys 0.12.1`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/linux-raw-sys/0.12.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/linux-raw-sys-0.12.1/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/linux-raw-sys-0.12.1/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `linux-raw-sys 0.12.1`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/linux-raw-sys/0.12.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/linux-raw-sys-0.12.1/COPYRIGHT`](THIRD-PARTY-LICENSES/linux-raw-sys-0.12.1/COPYRIGHT) (SHA-256 `3290ae0fbc9ddb77d2239121d710f0bb9d31b3b4744e6d97fe01e652b4c1870b`; 881 bytes).
-- `linux-raw-sys 0.12.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/linux-raw-sys/0.12.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/linux-raw-sys-0.12.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/linux-raw-sys-0.12.1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `linux-raw-sys 0.12.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/linux-raw-sys/0.12.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/linux-raw-sys-0.12.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/linux-raw-sys-0.12.1/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `linux-raw-sys 0.12.1`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/linux-raw-sys/0.12.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/linux-raw-sys-0.12.1/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/linux-raw-sys-0.12.1/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `linux-raw-sys 0.12.1`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/linux-raw-sys/0.12.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/linux-raw-sys-0.12.1/COPYRIGHT`](THIRD-PARTY-LICENSES/linux-raw-sys-0.12.1/COPYRIGHT) (SHA-256 `3290ae0fbc9ddb77d2239121d710f0bb9d31b3b4744e6d97fe01e652b4c1870b`; 881 bytes).
+- `linux-raw-sys 0.12.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/linux-raw-sys/0.12.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/linux-raw-sys-0.12.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/linux-raw-sys-0.12.1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### log
 
@@ -831,8 +831,8 @@ Canonical upstream: <https://github.com/rust-lang/log>
 
 License evidence:
 
-- `log 0.4.33`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/log/0.4.33/download) -> [`AHCL/THIRD-PARTY-LICENSES/log-0.4.33/LICENSE-MIT`](THIRD-PARTY-LICENSES/log-0.4.33/LICENSE-MIT) (SHA-256 `6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb`; 1071 bytes).
-- `log 0.4.33`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/log/0.4.33/download) -> [`AHCL/THIRD-PARTY-LICENSES/log-0.4.33/LICENSE-APACHE`](THIRD-PARTY-LICENSES/log-0.4.33/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `log 0.4.33`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/log/0.4.33/download) -> [`.ahcl/THIRD-PARTY-LICENSES/log-0.4.33/LICENSE-MIT`](THIRD-PARTY-LICENSES/log-0.4.33/LICENSE-MIT) (SHA-256 `6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb`; 1071 bytes).
+- `log 0.4.33`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/log/0.4.33/download) -> [`.ahcl/THIRD-PARTY-LICENSES/log-0.4.33/LICENSE-APACHE`](THIRD-PARTY-LICENSES/log-0.4.33/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### mach2
 
@@ -844,9 +844,9 @@ Canonical upstream: <https://github.com/JohnTitor/mach2>
 
 License evidence:
 
-- `mach2 0.6.0`: crate archive member [`LICENSE-BSD`](https://crates.io/api/v1/crates/mach2/0.6.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/mach2-0.6.0/LICENSE-BSD`](THIRD-PARTY-LICENSES/mach2-0.6.0/LICENSE-BSD) (SHA-256 `044983df14c97f2f9570766aaf977b3cdfc4a06cf1f36b776331c5ff89b4fb89`; 1320 bytes).
-- `mach2 0.6.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/mach2/0.6.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/mach2-0.6.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/mach2-0.6.0/LICENSE-MIT) (SHA-256 `3f9f0f7e5a5911a8042e32c83ff5d061ce1ffd02e8a207ec2135a44ad73b4191`; 1077 bytes).
-- `mach2 0.6.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/mach2/0.6.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/mach2-0.6.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/mach2-0.6.0/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
+- `mach2 0.6.0`: crate archive member [`LICENSE-BSD`](https://crates.io/api/v1/crates/mach2/0.6.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/mach2-0.6.0/LICENSE-BSD`](THIRD-PARTY-LICENSES/mach2-0.6.0/LICENSE-BSD) (SHA-256 `044983df14c97f2f9570766aaf977b3cdfc4a06cf1f36b776331c5ff89b4fb89`; 1320 bytes).
+- `mach2 0.6.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/mach2/0.6.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/mach2-0.6.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/mach2-0.6.0/LICENSE-MIT) (SHA-256 `3f9f0f7e5a5911a8042e32c83ff5d061ce1ffd02e8a207ec2135a44ad73b4191`; 1077 bytes).
+- `mach2 0.6.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/mach2/0.6.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/mach2-0.6.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/mach2-0.6.0/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
 
 ### MACs
 
@@ -859,10 +859,10 @@ Canonical upstream: <https://github.com/RustCrypto/MACs>
 
 License evidence:
 
-- `hmac 0.12.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/hmac/0.12.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/hmac-0.12.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/hmac-0.12.1/LICENSE-MIT) (SHA-256 `9e0dfd2dd4173a530e238cb6adb37aa78c34c6bc7444e0e10c1ab5d8881f63ba`; 1057 bytes).
-- `hmac 0.13.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/hmac/0.13.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/hmac-0.13.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/hmac-0.13.0/LICENSE-MIT) (SHA-256 `9e0dfd2dd4173a530e238cb6adb37aa78c34c6bc7444e0e10c1ab5d8881f63ba`; 1057 bytes).
-- `hmac 0.12.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/hmac/0.12.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/hmac-0.12.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/hmac-0.12.1/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
-- `hmac 0.13.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/hmac/0.13.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/hmac-0.13.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/hmac-0.13.0/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
+- `hmac 0.12.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/hmac/0.12.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/hmac-0.12.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/hmac-0.12.1/LICENSE-MIT) (SHA-256 `9e0dfd2dd4173a530e238cb6adb37aa78c34c6bc7444e0e10c1ab5d8881f63ba`; 1057 bytes).
+- `hmac 0.13.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/hmac/0.13.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/hmac-0.13.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/hmac-0.13.0/LICENSE-MIT) (SHA-256 `9e0dfd2dd4173a530e238cb6adb37aa78c34c6bc7444e0e10c1ab5d8881f63ba`; 1057 bytes).
+- `hmac 0.12.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/hmac/0.12.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/hmac-0.12.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/hmac-0.12.1/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
+- `hmac 0.13.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/hmac/0.13.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/hmac-0.13.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/hmac-0.13.0/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
 
 ### matchit
 
@@ -874,8 +874,8 @@ Canonical upstream: <https://github.com/ibraheemdev/matchit>
 
 License evidence:
 
-- `matchit 0.8.4`: crate archive member [`LICENSE.httprouter`](https://crates.io/api/v1/crates/matchit/0.8.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/matchit-0.8.4/LICENSE.httprouter`](THIRD-PARTY-LICENSES/matchit-0.8.4/LICENSE.httprouter) (SHA-256 `162ce11ad71338d0a0c6ebaf5c48af72c6ae237b468859d3656fe2d9ed3f3a85`; 1522 bytes).
-- `matchit 0.8.4`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/matchit/0.8.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/matchit-0.8.4/LICENSE`](THIRD-PARTY-LICENSES/matchit-0.8.4/LICENSE) (SHA-256 `de701d0618d694feb1af90f02181a1763d9b0bdeb70a3a592781e529077dba65`; 1071 bytes).
+- `matchit 0.8.4`: crate archive member [`LICENSE.httprouter`](https://crates.io/api/v1/crates/matchit/0.8.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/matchit-0.8.4/LICENSE.httprouter`](THIRD-PARTY-LICENSES/matchit-0.8.4/LICENSE.httprouter) (SHA-256 `162ce11ad71338d0a0c6ebaf5c48af72c6ae237b468859d3656fe2d9ed3f3a85`; 1522 bytes).
+- `matchit 0.8.4`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/matchit/0.8.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/matchit-0.8.4/LICENSE`](THIRD-PARTY-LICENSES/matchit-0.8.4/LICENSE) (SHA-256 `de701d0618d694feb1af90f02181a1763d9b0bdeb70a3a592781e529077dba65`; 1071 bytes).
 
 ### maybe-owned
 
@@ -887,8 +887,8 @@ Canonical upstream: <https://github.com/rustonaut/maybe-owned>
 
 License evidence:
 
-- `maybe-owned 0.3.4`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/maybe-owned/0.3.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/maybe-owned-0.3.4/LICENSE-APACHE`](THIRD-PARTY-LICENSES/maybe-owned-0.3.4/LICENSE-APACHE) (SHA-256 `aecc100d0547aa3bcbe04bcf5cb87c7db0be11004602adfa5056edf8bb847b35`; 10834 bytes).
-- `maybe-owned 0.3.4`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/maybe-owned/0.3.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/maybe-owned-0.3.4/LICENSE-MIT`](THIRD-PARTY-LICENSES/maybe-owned-0.3.4/LICENSE-MIT) (SHA-256 `ef2b3bbd7b718a7881253226313f103e89b379e1279681a3c1ebcb65a27d209d`; 1058 bytes).
+- `maybe-owned 0.3.4`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/maybe-owned/0.3.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/maybe-owned-0.3.4/LICENSE-APACHE`](THIRD-PARTY-LICENSES/maybe-owned-0.3.4/LICENSE-APACHE) (SHA-256 `aecc100d0547aa3bcbe04bcf5cb87c7db0be11004602adfa5056edf8bb847b35`; 10834 bytes).
+- `maybe-owned 0.3.4`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/maybe-owned/0.3.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/maybe-owned-0.3.4/LICENSE-MIT`](THIRD-PARTY-LICENSES/maybe-owned-0.3.4/LICENSE-MIT) (SHA-256 `ef2b3bbd7b718a7881253226313f103e89b379e1279681a3c1ebcb65a27d209d`; 1058 bytes).
 
 ### memchr
 
@@ -900,9 +900,9 @@ Canonical upstream: <https://github.com/BurntSushi/memchr>
 
 License evidence:
 
-- `memchr 2.8.3`: crate archive member [`COPYING`](https://crates.io/api/v1/crates/memchr/2.8.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/memchr-2.8.3/COPYING`](THIRD-PARTY-LICENSES/memchr-2.8.3/COPYING) (SHA-256 `01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f`; 126 bytes).
-- `memchr 2.8.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/memchr/2.8.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/memchr-2.8.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/memchr-2.8.3/LICENSE-MIT) (SHA-256 `0f96a83840e146e43c0ec96a22ec1f392e0680e6c1226e6f3ba87e0740af850f`; 1081 bytes).
-- `memchr 2.8.3`: crate archive member [`UNLICENSE`](https://crates.io/api/v1/crates/memchr/2.8.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/memchr-2.8.3/UNLICENSE`](THIRD-PARTY-LICENSES/memchr-2.8.3/UNLICENSE) (SHA-256 `7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c`; 1211 bytes).
+- `memchr 2.8.3`: crate archive member [`COPYING`](https://crates.io/api/v1/crates/memchr/2.8.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/memchr-2.8.3/COPYING`](THIRD-PARTY-LICENSES/memchr-2.8.3/COPYING) (SHA-256 `01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f`; 126 bytes).
+- `memchr 2.8.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/memchr/2.8.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/memchr-2.8.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/memchr-2.8.3/LICENSE-MIT) (SHA-256 `0f96a83840e146e43c0ec96a22ec1f392e0680e6c1226e6f3ba87e0740af850f`; 1081 bytes).
+- `memchr 2.8.3`: crate archive member [`UNLICENSE`](https://crates.io/api/v1/crates/memchr/2.8.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/memchr-2.8.3/UNLICENSE`](THIRD-PARTY-LICENSES/memchr-2.8.3/UNLICENSE) (SHA-256 `7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c`; 1211 bytes).
 
 ### memfd-rs
 
@@ -914,8 +914,8 @@ Canonical upstream: <https://github.com/lucab/memfd-rs>
 
 License evidence:
 
-- `memfd 0.6.5`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/memfd/0.6.5/download) -> [`AHCL/THIRD-PARTY-LICENSES/memfd-0.6.5/LICENSE-APACHE`](THIRD-PARTY-LICENSES/memfd-0.6.5/LICENSE-APACHE) (SHA-256 `c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4`; 11357 bytes).
-- `memfd 0.6.5`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/memfd/0.6.5/download) -> [`AHCL/THIRD-PARTY-LICENSES/memfd-0.6.5/LICENSE-MIT`](THIRD-PARTY-LICENSES/memfd-0.6.5/LICENSE-MIT) (SHA-256 `e5d8f26c5b92d382e7ab2826500e5099a40a7751e92a55bc51c6770933411f9e`; 1060 bytes).
+- `memfd 0.6.5`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/memfd/0.6.5/download) -> [`.ahcl/THIRD-PARTY-LICENSES/memfd-0.6.5/LICENSE-APACHE`](THIRD-PARTY-LICENSES/memfd-0.6.5/LICENSE-APACHE) (SHA-256 `c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4`; 11357 bytes).
+- `memfd 0.6.5`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/memfd/0.6.5/download) -> [`.ahcl/THIRD-PARTY-LICENSES/memfd-0.6.5/LICENSE-MIT`](THIRD-PARTY-LICENSES/memfd-0.6.5/LICENSE-MIT) (SHA-256 `e5d8f26c5b92d382e7ab2826500e5099a40a7751e92a55bc51c6770933411f9e`; 1060 bytes).
 
 ### mime
 
@@ -927,8 +927,8 @@ Canonical upstream: <https://github.com/hyperium/mime>
 
 License evidence:
 
-- `mime 0.3.17`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/mime/0.3.17/download) -> [`AHCL/THIRD-PARTY-LICENSES/mime-0.3.17/LICENSE-APACHE`](THIRD-PARTY-LICENSES/mime-0.3.17/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
-- `mime 0.3.17`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/mime/0.3.17/download) -> [`AHCL/THIRD-PARTY-LICENSES/mime-0.3.17/LICENSE-MIT`](THIRD-PARTY-LICENSES/mime-0.3.17/LICENSE-MIT) (SHA-256 `df9cfd06d8a44d9a671eadd39ffd97f166481da015a30f45dfd27886209c5922`; 1058 bytes).
+- `mime 0.3.17`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/mime/0.3.17/download) -> [`.ahcl/THIRD-PARTY-LICENSES/mime-0.3.17/LICENSE-APACHE`](THIRD-PARTY-LICENSES/mime-0.3.17/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `mime 0.3.17`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/mime/0.3.17/download) -> [`.ahcl/THIRD-PARTY-LICENSES/mime-0.3.17/LICENSE-MIT`](THIRD-PARTY-LICENSES/mime-0.3.17/LICENSE-MIT) (SHA-256 `df9cfd06d8a44d9a671eadd39ffd97f166481da015a30f45dfd27886209c5922`; 1058 bytes).
 
 ### mio
 
@@ -940,7 +940,7 @@ Canonical upstream: <https://github.com/tokio-rs/mio>
 
 License evidence:
 
-- `mio 1.2.2`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/mio/1.2.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/mio-1.2.2/LICENSE`](THIRD-PARTY-LICENSES/mio-1.2.2/LICENSE) (SHA-256 `07919255c7e04793d8ea760d6c2ce32d19f9ff02bdbdde3ce90b1e1880929a9b`; 1082 bytes).
+- `mio 1.2.2`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/mio/1.2.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/mio-1.2.2/LICENSE`](THIRD-PARTY-LICENSES/mio-1.2.2/LICENSE) (SHA-256 `07919255c7e04793d8ea760d6c2ce32d19f9ff02bdbdde3ce90b1e1880929a9b`; 1082 bytes).
 
 ### nix
 
@@ -952,7 +952,7 @@ Canonical upstream: <https://github.com/nix-rust/nix>
 
 License evidence:
 
-- `nix 0.31.3`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/nix/0.31.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/nix-0.31.3/LICENSE`](THIRD-PARTY-LICENSES/nix-0.31.3/LICENSE) (SHA-256 `66e3ee1fa7f909ad3c612d556f2a0cdabcd809ad6e66f3b0605015ac64841b70`; 1097 bytes).
+- `nix 0.31.3`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/nix/0.31.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/nix-0.31.3/LICENSE`](THIRD-PARTY-LICENSES/nix-0.31.3/LICENSE) (SHA-256 `66e3ee1fa7f909ad3c612d556f2a0cdabcd809ad6e66f3b0605015ac64841b70`; 1097 bytes).
 
 ### objc2
 
@@ -967,10 +967,10 @@ Canonical upstream: <https://github.com/madsmtm/objc2>
 
 License evidence:
 
-- `block2 0.6.2`: immutable upstream file [`LICENSE.md`](https://raw.githubusercontent.com/madsmtm/objc2/b4167b582b2f75f9a1be75495c41b765344fd03c/LICENSE.md) -> [`AHCL/THIRD-PARTY-LICENSES/block2-0.6.2/LICENSE.md`](THIRD-PARTY-LICENSES/block2-0.6.2/LICENSE.md) (SHA-256 `7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54`; 1339 bytes).
-- `dispatch2 0.3.1`: immutable upstream file [`LICENSE.md`](https://raw.githubusercontent.com/madsmtm/objc2/8852b424193ca41602281b3d7540d7c8ed51e49a/LICENSE.md) -> [`AHCL/THIRD-PARTY-LICENSES/dispatch2-0.3.1/LICENSE.md`](THIRD-PARTY-LICENSES/dispatch2-0.3.1/LICENSE.md) (SHA-256 `7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54`; 1339 bytes).
-- `objc2 0.6.4`: immutable upstream file [`LICENSE.md`](https://raw.githubusercontent.com/madsmtm/objc2/8852b424193ca41602281b3d7540d7c8ed51e49a/LICENSE.md) -> [`AHCL/THIRD-PARTY-LICENSES/objc2-0.6.4/LICENSE.md`](THIRD-PARTY-LICENSES/objc2-0.6.4/LICENSE.md) (SHA-256 `7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54`; 1339 bytes).
-- `objc2-encode 4.1.0`: immutable upstream file [`LICENSE.md`](https://raw.githubusercontent.com/madsmtm/objc2/8d214f5477365ffcbcbb7de058c86ed9a518efb7/LICENSE.md) -> [`AHCL/THIRD-PARTY-LICENSES/objc2-encode-4.1.0/LICENSE.md`](THIRD-PARTY-LICENSES/objc2-encode-4.1.0/LICENSE.md) (SHA-256 `7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54`; 1339 bytes).
+- `block2 0.6.2`: immutable upstream file [`LICENSE.md`](https://raw.githubusercontent.com/madsmtm/objc2/b4167b582b2f75f9a1be75495c41b765344fd03c/LICENSE.md) -> [`.ahcl/THIRD-PARTY-LICENSES/block2-0.6.2/LICENSE.md`](THIRD-PARTY-LICENSES/block2-0.6.2/LICENSE.md) (SHA-256 `7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54`; 1339 bytes).
+- `dispatch2 0.3.1`: immutable upstream file [`LICENSE.md`](https://raw.githubusercontent.com/madsmtm/objc2/8852b424193ca41602281b3d7540d7c8ed51e49a/LICENSE.md) -> [`.ahcl/THIRD-PARTY-LICENSES/dispatch2-0.3.1/LICENSE.md`](THIRD-PARTY-LICENSES/dispatch2-0.3.1/LICENSE.md) (SHA-256 `7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54`; 1339 bytes).
+- `objc2 0.6.4`: immutable upstream file [`LICENSE.md`](https://raw.githubusercontent.com/madsmtm/objc2/8852b424193ca41602281b3d7540d7c8ed51e49a/LICENSE.md) -> [`.ahcl/THIRD-PARTY-LICENSES/objc2-0.6.4/LICENSE.md`](THIRD-PARTY-LICENSES/objc2-0.6.4/LICENSE.md) (SHA-256 `7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54`; 1339 bytes).
+- `objc2-encode 4.1.0`: immutable upstream file [`LICENSE.md`](https://raw.githubusercontent.com/madsmtm/objc2/8d214f5477365ffcbcbb7de058c86ed9a518efb7/LICENSE.md) -> [`.ahcl/THIRD-PARTY-LICENSES/objc2-encode-4.1.0/LICENSE.md`](THIRD-PARTY-LICENSES/objc2-encode-4.1.0/LICENSE.md) (SHA-256 `7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54`; 1339 bytes).
 
 ### object
 
@@ -982,8 +982,8 @@ Canonical upstream: <https://github.com/gimli-rs/object>
 
 License evidence:
 
-- `object 0.39.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/object/0.39.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/object-0.39.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/object-0.39.1/LICENSE-MIT) (SHA-256 `0b74dfa0bcee5c420c6b7f67b4b2658f9ab8388c97b8e733975f2cecbdd668a6`; 1064 bytes).
-- `object 0.39.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/object/0.39.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/object-0.39.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/object-0.39.1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `object 0.39.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/object/0.39.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/object-0.39.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/object-0.39.1/LICENSE-MIT) (SHA-256 `0b74dfa0bcee5c420c6b7f67b4b2658f9ab8388c97b8e733975f2cecbdd668a6`; 1064 bytes).
+- `object 0.39.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/object/0.39.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/object-0.39.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/object-0.39.1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### once_cell
 
@@ -995,8 +995,8 @@ Canonical upstream: <https://github.com/matklad/once_cell>
 
 License evidence:
 
-- `once_cell 1.21.4`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/once_cell/1.21.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/once_cell-1.21.4/LICENSE-MIT`](THIRD-PARTY-LICENSES/once_cell-1.21.4/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `once_cell 1.21.4`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/once_cell/1.21.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/once_cell-1.21.4/LICENSE-APACHE`](THIRD-PARTY-LICENSES/once_cell-1.21.4/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `once_cell 1.21.4`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/once_cell/1.21.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/once_cell-1.21.4/LICENSE-MIT`](THIRD-PARTY-LICENSES/once_cell-1.21.4/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `once_cell 1.21.4`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/once_cell/1.21.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/once_cell-1.21.4/LICENSE-APACHE`](THIRD-PARTY-LICENSES/once_cell-1.21.4/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### password-hash
 
@@ -1008,8 +1008,8 @@ Canonical upstream: <https://github.com/RustCrypto/traits/tree/master/password-h
 
 License evidence:
 
-- `password-hash 0.5.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/password-hash/0.5.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/password-hash-0.5.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/password-hash-0.5.0/LICENSE-MIT) (SHA-256 `233b95ccbf90dc67e32f3e8995c489f6312d9191ebd141a931c3b684f1e3be6d`; 1070 bytes).
-- `password-hash 0.5.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/password-hash/0.5.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/password-hash-0.5.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/password-hash-0.5.0/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
+- `password-hash 0.5.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/password-hash/0.5.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/password-hash-0.5.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/password-hash-0.5.0/LICENSE-MIT) (SHA-256 `233b95ccbf90dc67e32f3e8995c489f6312d9191ebd141a931c3b684f1e3be6d`; 1070 bytes).
+- `password-hash 0.5.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/password-hash/0.5.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/password-hash-0.5.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/password-hash-0.5.0/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
 
 ### path-to-error
 
@@ -1021,8 +1021,8 @@ Canonical upstream: <https://github.com/dtolnay/path-to-error>
 
 License evidence:
 
-- `serde_path_to_error 0.1.20`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/serde_path_to_error/0.1.20/download) -> [`AHCL/THIRD-PARTY-LICENSES/serde_path_to_error-0.1.20/LICENSE-MIT`](THIRD-PARTY-LICENSES/serde_path_to_error-0.1.20/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `serde_path_to_error 0.1.20`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/serde_path_to_error/0.1.20/download) -> [`AHCL/THIRD-PARTY-LICENSES/serde_path_to_error-0.1.20/LICENSE-APACHE`](THIRD-PARTY-LICENSES/serde_path_to_error-0.1.20/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
+- `serde_path_to_error 0.1.20`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/serde_path_to_error/0.1.20/download) -> [`.ahcl/THIRD-PARTY-LICENSES/serde_path_to_error-0.1.20/LICENSE-MIT`](THIRD-PARTY-LICENSES/serde_path_to_error-0.1.20/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `serde_path_to_error 0.1.20`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/serde_path_to_error/0.1.20/download) -> [`.ahcl/THIRD-PARTY-LICENSES/serde_path_to_error-0.1.20/LICENSE-APACHE`](THIRD-PARTY-LICENSES/serde_path_to_error-0.1.20/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
 
 ### pin-project-lite
 
@@ -1034,8 +1034,8 @@ Canonical upstream: <https://github.com/taiki-e/pin-project-lite>
 
 License evidence:
 
-- `pin-project-lite 0.2.17`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/pin-project-lite/0.2.17/download) -> [`AHCL/THIRD-PARTY-LICENSES/pin-project-lite-0.2.17/LICENSE-APACHE`](THIRD-PARTY-LICENSES/pin-project-lite-0.2.17/LICENSE-APACHE) (SHA-256 `0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594`; 10174 bytes).
-- `pin-project-lite 0.2.17`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/pin-project-lite/0.2.17/download) -> [`AHCL/THIRD-PARTY-LICENSES/pin-project-lite-0.2.17/LICENSE-MIT`](THIRD-PARTY-LICENSES/pin-project-lite-0.2.17/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `pin-project-lite 0.2.17`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/pin-project-lite/0.2.17/download) -> [`.ahcl/THIRD-PARTY-LICENSES/pin-project-lite-0.2.17/LICENSE-APACHE`](THIRD-PARTY-LICENSES/pin-project-lite-0.2.17/LICENSE-APACHE) (SHA-256 `0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594`; 10174 bytes).
+- `pin-project-lite 0.2.17`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/pin-project-lite/0.2.17/download) -> [`.ahcl/THIRD-PARTY-LICENSES/pin-project-lite-0.2.17/LICENSE-MIT`](THIRD-PARTY-LICENSES/pin-project-lite-0.2.17/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
 
 ### pki-types
 
@@ -1047,8 +1047,8 @@ Canonical upstream: <https://github.com/rustls/pki-types>
 
 License evidence:
 
-- `rustls-pki-types 1.15.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/rustls-pki-types/1.15.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/rustls-pki-types-1.15.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/rustls-pki-types-1.15.0/LICENSE-APACHE) (SHA-256 `45fd05c4865e7c350b98ad7ac50e1b15462d49af4a91e9b0c9dd933dc9a69742`; 10835 bytes).
-- `rustls-pki-types 1.15.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/rustls-pki-types/1.15.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/rustls-pki-types-1.15.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/rustls-pki-types-1.15.0/LICENSE-MIT) (SHA-256 `9117d922e667125508dde62b02c1f57ed22f5ad21eb536aa2e2d99e1c796e639`; 1080 bytes).
+- `rustls-pki-types 1.15.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/rustls-pki-types/1.15.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rustls-pki-types-1.15.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/rustls-pki-types-1.15.0/LICENSE-APACHE) (SHA-256 `45fd05c4865e7c350b98ad7ac50e1b15462d49af4a91e9b0c9dd933dc9a69742`; 10835 bytes).
+- `rustls-pki-types 1.15.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/rustls-pki-types/1.15.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rustls-pki-types-1.15.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/rustls-pki-types-1.15.0/LICENSE-MIT) (SHA-256 `9117d922e667125508dde62b02c1f57ed22f5ad21eb536aa2e2d99e1c796e639`; 1080 bytes).
 
 ### postcard
 
@@ -1060,8 +1060,8 @@ Canonical upstream: <https://github.com/jamesmunns/postcard>
 
 License evidence:
 
-- `postcard 1.1.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/postcard/1.1.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/postcard-1.1.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/postcard-1.1.3/LICENSE-MIT) (SHA-256 `177540cad091a40e8071db310bc3b6115c4e329a92a234609b60c154b008a888`; 1063 bytes).
-- `postcard 1.1.3`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/postcard/1.1.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/postcard-1.1.3/LICENSE-APACHE`](THIRD-PARTY-LICENSES/postcard-1.1.3/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `postcard 1.1.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/postcard/1.1.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/postcard-1.1.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/postcard-1.1.3/LICENSE-MIT) (SHA-256 `177540cad091a40e8071db310bc3b6115c4e329a92a234609b60c154b008a888`; 1063 bytes).
+- `postcard 1.1.3`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/postcard/1.1.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/postcard-1.1.3/LICENSE-APACHE`](THIRD-PARTY-LICENSES/postcard-1.1.3/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### proc-macro2
 
@@ -1074,10 +1074,10 @@ Canonical upstream: <https://github.com/dtolnay/proc-macro2>
 
 License evidence:
 
-- `proc-macro2 1.0.106`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/proc-macro2/1.0.106/download) -> [`AHCL/THIRD-PARTY-LICENSES/proc-macro2-1.0.106/LICENSE-MIT`](THIRD-PARTY-LICENSES/proc-macro2-1.0.106/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `proc-macro2 1.0.107`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/proc-macro2/1.0.107/download) -> [`AHCL/THIRD-PARTY-LICENSES/proc-macro2-1.0.107/LICENSE-MIT`](THIRD-PARTY-LICENSES/proc-macro2-1.0.107/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `proc-macro2 1.0.106`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/proc-macro2/1.0.106/download) -> [`AHCL/THIRD-PARTY-LICENSES/proc-macro2-1.0.106/LICENSE-APACHE`](THIRD-PARTY-LICENSES/proc-macro2-1.0.106/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
-- `proc-macro2 1.0.107`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/proc-macro2/1.0.107/download) -> [`AHCL/THIRD-PARTY-LICENSES/proc-macro2-1.0.107/LICENSE-APACHE`](THIRD-PARTY-LICENSES/proc-macro2-1.0.107/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
+- `proc-macro2 1.0.106`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/proc-macro2/1.0.106/download) -> [`.ahcl/THIRD-PARTY-LICENSES/proc-macro2-1.0.106/LICENSE-MIT`](THIRD-PARTY-LICENSES/proc-macro2-1.0.106/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `proc-macro2 1.0.107`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/proc-macro2/1.0.107/download) -> [`.ahcl/THIRD-PARTY-LICENSES/proc-macro2-1.0.107/LICENSE-MIT`](THIRD-PARTY-LICENSES/proc-macro2-1.0.107/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `proc-macro2 1.0.106`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/proc-macro2/1.0.106/download) -> [`.ahcl/THIRD-PARTY-LICENSES/proc-macro2-1.0.106/LICENSE-APACHE`](THIRD-PARTY-LICENSES/proc-macro2-1.0.106/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
+- `proc-macro2 1.0.107`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/proc-macro2/1.0.107/download) -> [`.ahcl/THIRD-PARTY-LICENSES/proc-macro2-1.0.107/LICENSE-APACHE`](THIRD-PARTY-LICENSES/proc-macro2-1.0.107/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
 
 ### quote
 
@@ -1090,10 +1090,10 @@ Canonical upstream: <https://github.com/dtolnay/quote>
 
 License evidence:
 
-- `quote 1.0.46`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/quote/1.0.46/download) -> [`AHCL/THIRD-PARTY-LICENSES/quote-1.0.46/LICENSE-MIT`](THIRD-PARTY-LICENSES/quote-1.0.46/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `quote 1.0.47`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/quote/1.0.47/download) -> [`AHCL/THIRD-PARTY-LICENSES/quote-1.0.47/LICENSE-MIT`](THIRD-PARTY-LICENSES/quote-1.0.47/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `quote 1.0.46`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/quote/1.0.46/download) -> [`AHCL/THIRD-PARTY-LICENSES/quote-1.0.46/LICENSE-APACHE`](THIRD-PARTY-LICENSES/quote-1.0.46/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
-- `quote 1.0.47`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/quote/1.0.47/download) -> [`AHCL/THIRD-PARTY-LICENSES/quote-1.0.47/LICENSE-APACHE`](THIRD-PARTY-LICENSES/quote-1.0.47/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
+- `quote 1.0.46`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/quote/1.0.46/download) -> [`.ahcl/THIRD-PARTY-LICENSES/quote-1.0.46/LICENSE-MIT`](THIRD-PARTY-LICENSES/quote-1.0.46/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `quote 1.0.47`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/quote/1.0.47/download) -> [`.ahcl/THIRD-PARTY-LICENSES/quote-1.0.47/LICENSE-MIT`](THIRD-PARTY-LICENSES/quote-1.0.47/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `quote 1.0.46`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/quote/1.0.46/download) -> [`.ahcl/THIRD-PARTY-LICENSES/quote-1.0.46/LICENSE-APACHE`](THIRD-PARTY-LICENSES/quote-1.0.46/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
+- `quote 1.0.47`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/quote/1.0.47/download) -> [`.ahcl/THIRD-PARTY-LICENSES/quote-1.0.47/LICENSE-APACHE`](THIRD-PARTY-LICENSES/quote-1.0.47/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
 
 ### r-efi
 
@@ -1105,7 +1105,7 @@ Canonical upstream: <https://github.com/r-efi/r-efi>
 
 License evidence:
 
-- `r-efi 6.0.0`: crate archive member [`AUTHORS`](https://crates.io/api/v1/crates/r-efi/6.0.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/r-efi-6.0.0/AUTHORS`](THIRD-PARTY-LICENSES/r-efi-6.0.0/AUTHORS) (SHA-256 `d027e91dbc9cdbb2f1190068e498bd6b61cff022b6a032b191021ba658d96111`; 3733 bytes).
+- `r-efi 6.0.0`: crate archive member [`AUTHORS`](https://crates.io/api/v1/crates/r-efi/6.0.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/r-efi-6.0.0/AUTHORS`](THIRD-PARTY-LICENSES/r-efi-6.0.0/AUTHORS) (SHA-256 `d027e91dbc9cdbb2f1190068e498bd6b61cff022b6a032b191021ba658d96111`; 3733 bytes).
 
 ### rand
 
@@ -1118,12 +1118,12 @@ Canonical upstream: <https://github.com/rust-random/rand>
 
 License evidence:
 
-- `rand 0.8.7`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/rand/0.8.7/download) -> [`AHCL/THIRD-PARTY-LICENSES/rand-0.8.7/LICENSE-MIT`](THIRD-PARTY-LICENSES/rand-0.8.7/LICENSE-MIT) (SHA-256 `209fbbe0ad52d9235e37badf9cadfe4dbdc87203179c0899e738b39ade42177b`; 1117 bytes).
-- `rand_core 0.6.4`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/rand_core/0.6.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/rand_core-0.6.4/LICENSE-MIT`](THIRD-PARTY-LICENSES/rand_core-0.6.4/LICENSE-MIT) (SHA-256 `209fbbe0ad52d9235e37badf9cadfe4dbdc87203179c0899e738b39ade42177b`; 1117 bytes).
-- `rand 0.8.7`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/rand/0.8.7/download) -> [`AHCL/THIRD-PARTY-LICENSES/rand-0.8.7/LICENSE-APACHE`](THIRD-PARTY-LICENSES/rand-0.8.7/LICENSE-APACHE) (SHA-256 `35242e7a83f69875e6edeff02291e688c97caafe2f8902e4e19b49d3e78b4cab`; 9724 bytes).
-- `rand_core 0.6.4`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/rand_core/0.6.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/rand_core-0.6.4/LICENSE-APACHE`](THIRD-PARTY-LICENSES/rand_core-0.6.4/LICENSE-APACHE) (SHA-256 `6df43f6f4b5d4587f3d8d71e45532c688fd168afa5fe89d571cb32fa09c4ef51`; 10282 bytes).
-- `rand 0.8.7`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/rand/0.8.7/download) -> [`AHCL/THIRD-PARTY-LICENSES/rand-0.8.7/COPYRIGHT`](THIRD-PARTY-LICENSES/rand-0.8.7/COPYRIGHT) (SHA-256 `90eb64f0279b0d9432accfa6023ff803bc4965212383697eee27a0f426d5f8d5`; 569 bytes).
-- `rand_core 0.6.4`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/rand_core/0.6.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/rand_core-0.6.4/COPYRIGHT`](THIRD-PARTY-LICENSES/rand_core-0.6.4/COPYRIGHT) (SHA-256 `90eb64f0279b0d9432accfa6023ff803bc4965212383697eee27a0f426d5f8d5`; 569 bytes).
+- `rand 0.8.7`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/rand/0.8.7/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rand-0.8.7/LICENSE-MIT`](THIRD-PARTY-LICENSES/rand-0.8.7/LICENSE-MIT) (SHA-256 `209fbbe0ad52d9235e37badf9cadfe4dbdc87203179c0899e738b39ade42177b`; 1117 bytes).
+- `rand_core 0.6.4`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/rand_core/0.6.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rand_core-0.6.4/LICENSE-MIT`](THIRD-PARTY-LICENSES/rand_core-0.6.4/LICENSE-MIT) (SHA-256 `209fbbe0ad52d9235e37badf9cadfe4dbdc87203179c0899e738b39ade42177b`; 1117 bytes).
+- `rand 0.8.7`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/rand/0.8.7/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rand-0.8.7/LICENSE-APACHE`](THIRD-PARTY-LICENSES/rand-0.8.7/LICENSE-APACHE) (SHA-256 `35242e7a83f69875e6edeff02291e688c97caafe2f8902e4e19b49d3e78b4cab`; 9724 bytes).
+- `rand_core 0.6.4`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/rand_core/0.6.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rand_core-0.6.4/LICENSE-APACHE`](THIRD-PARTY-LICENSES/rand_core-0.6.4/LICENSE-APACHE) (SHA-256 `6df43f6f4b5d4587f3d8d71e45532c688fd168afa5fe89d571cb32fa09c4ef51`; 10282 bytes).
+- `rand 0.8.7`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/rand/0.8.7/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rand-0.8.7/COPYRIGHT`](THIRD-PARTY-LICENSES/rand-0.8.7/COPYRIGHT) (SHA-256 `90eb64f0279b0d9432accfa6023ff803bc4965212383697eee27a0f426d5f8d5`; 569 bytes).
+- `rand_core 0.6.4`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/rand_core/0.6.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rand_core-0.6.4/COPYRIGHT`](THIRD-PARTY-LICENSES/rand_core-0.6.4/COPYRIGHT) (SHA-256 `90eb64f0279b0d9432accfa6023ff803bc4965212383697eee27a0f426d5f8d5`; 569 bytes).
 
 ### rand_core
 
@@ -1135,9 +1135,9 @@ Canonical upstream: <https://github.com/rust-random/rand_core>
 
 License evidence:
 
-- `rand_core 0.10.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/rand_core/0.10.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/rand_core-0.10.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/rand_core-0.10.1/LICENSE-APACHE) (SHA-256 `6df43f6f4b5d4587f3d8d71e45532c688fd168afa5fe89d571cb32fa09c4ef51`; 10282 bytes).
-- `rand_core 0.10.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/rand_core/0.10.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/rand_core-0.10.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/rand_core-0.10.1/LICENSE-MIT) (SHA-256 `8b6e9feec03e7c9a5facb26855cecd31662bf989b636bcfe79521bdf8ac863f0`; 1076 bytes).
-- `rand_core 0.10.1`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/rand_core/0.10.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/rand_core-0.10.1/COPYRIGHT`](THIRD-PARTY-LICENSES/rand_core-0.10.1/COPYRIGHT) (SHA-256 `92b81db30f7ab6d693e0af5661a40d273ca1947e891123ed823924192c10cbc7`; 478 bytes).
+- `rand_core 0.10.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/rand_core/0.10.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rand_core-0.10.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/rand_core-0.10.1/LICENSE-APACHE) (SHA-256 `6df43f6f4b5d4587f3d8d71e45532c688fd168afa5fe89d571cb32fa09c4ef51`; 10282 bytes).
+- `rand_core 0.10.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/rand_core/0.10.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rand_core-0.10.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/rand_core-0.10.1/LICENSE-MIT) (SHA-256 `8b6e9feec03e7c9a5facb26855cecd31662bf989b636bcfe79521bdf8ac863f0`; 1076 bytes).
+- `rand_core 0.10.1`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/rand_core/0.10.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rand_core-0.10.1/COPYRIGHT`](THIRD-PARTY-LICENSES/rand_core-0.10.1/COPYRIGHT) (SHA-256 `92b81db30f7ab6d693e0af5661a40d273ca1947e891123ed823924192c10cbc7`; 478 bytes).
 
 ### regalloc2
 
@@ -1149,7 +1149,7 @@ Canonical upstream: <https://github.com/bytecodealliance/regalloc2>
 
 License evidence:
 
-- `regalloc2 0.15.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/regalloc2/0.15.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/regalloc2-0.15.1/LICENSE`](THIRD-PARTY-LICENSES/regalloc2-0.15.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `regalloc2 0.15.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/regalloc2/0.15.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/regalloc2-0.15.1/LICENSE`](THIRD-PARTY-LICENSES/regalloc2-0.15.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
 
 ### ring
 
@@ -1161,12 +1161,12 @@ Canonical upstream: <https://github.com/briansmith/ring>
 
 License evidence:
 
-- `ring 0.17.14`: crate archive member [`LICENSE-BoringSSL`](https://crates.io/api/v1/crates/ring/0.17.14/download) -> [`AHCL/THIRD-PARTY-LICENSES/ring-0.17.14/LICENSE-BoringSSL`](THIRD-PARTY-LICENSES/ring-0.17.14/LICENSE-BoringSSL) (SHA-256 `005fc765ddc5115da796cca915baa9557abae13ff35e0a47c47affc56f6c414d`; 14870 bytes).
-- `ring 0.17.14`: crate archive member [`src/polyfill/once_cell/LICENSE-MIT`](https://crates.io/api/v1/crates/ring/0.17.14/download) -> [`AHCL/THIRD-PARTY-LICENSES/ring-0.17.14/src__polyfill__once_cell__LICENSE-MIT`](THIRD-PARTY-LICENSES/ring-0.17.14/src__polyfill__once_cell__LICENSE-MIT) (SHA-256 `6ee2ed6c77710de911761acd5fc1ad1da00f476beb1a7ef27e78c2d1858deafc`; 1022 bytes).
-- `ring 0.17.14`: crate archive member [`third_party/fiat/LICENSE`](https://crates.io/api/v1/crates/ring/0.17.14/download) -> [`AHCL/THIRD-PARTY-LICENSES/ring-0.17.14/third_party__fiat__LICENSE`](THIRD-PARTY-LICENSES/ring-0.17.14/third_party__fiat__LICENSE) (SHA-256 `9eacbcb81be660840c714a560a9d65ba07913db98dd4baf969f78dd499fdd60f`; 638 bytes).
-- `ring 0.17.14`: crate archive member [`src/polyfill/once_cell/LICENSE-APACHE`](https://crates.io/api/v1/crates/ring/0.17.14/download) -> [`AHCL/THIRD-PARTY-LICENSES/ring-0.17.14/src__polyfill__once_cell__LICENSE-APACHE`](THIRD-PARTY-LICENSES/ring-0.17.14/src__polyfill__once_cell__LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
-- `ring 0.17.14`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/ring/0.17.14/download) -> [`AHCL/THIRD-PARTY-LICENSES/ring-0.17.14/LICENSE`](THIRD-PARTY-LICENSES/ring-0.17.14/LICENSE) (SHA-256 `b3d734001a94efff3579978d953391aa7115f877657d25eb54037a43875d078a`; 499 bytes).
-- `ring 0.17.14`: crate archive member [`LICENSE-other-bits`](https://crates.io/api/v1/crates/ring/0.17.14/download) -> [`AHCL/THIRD-PARTY-LICENSES/ring-0.17.14/LICENSE-other-bits`](THIRD-PARTY-LICENSES/ring-0.17.14/LICENSE-other-bits) (SHA-256 `f025ccfb7dfb6bdfedc75ca0f67acc69e6fb4998143d834f7c2f38a29989680f`; 731 bytes).
+- `ring 0.17.14`: crate archive member [`LICENSE-BoringSSL`](https://crates.io/api/v1/crates/ring/0.17.14/download) -> [`.ahcl/THIRD-PARTY-LICENSES/ring-0.17.14/LICENSE-BoringSSL`](THIRD-PARTY-LICENSES/ring-0.17.14/LICENSE-BoringSSL) (SHA-256 `005fc765ddc5115da796cca915baa9557abae13ff35e0a47c47affc56f6c414d`; 14870 bytes).
+- `ring 0.17.14`: crate archive member [`src/polyfill/once_cell/LICENSE-MIT`](https://crates.io/api/v1/crates/ring/0.17.14/download) -> [`.ahcl/THIRD-PARTY-LICENSES/ring-0.17.14/src__polyfill__once_cell__LICENSE-MIT`](THIRD-PARTY-LICENSES/ring-0.17.14/src__polyfill__once_cell__LICENSE-MIT) (SHA-256 `6ee2ed6c77710de911761acd5fc1ad1da00f476beb1a7ef27e78c2d1858deafc`; 1022 bytes).
+- `ring 0.17.14`: crate archive member [`third_party/fiat/LICENSE`](https://crates.io/api/v1/crates/ring/0.17.14/download) -> [`.ahcl/THIRD-PARTY-LICENSES/ring-0.17.14/third_party__fiat__LICENSE`](THIRD-PARTY-LICENSES/ring-0.17.14/third_party__fiat__LICENSE) (SHA-256 `9eacbcb81be660840c714a560a9d65ba07913db98dd4baf969f78dd499fdd60f`; 638 bytes).
+- `ring 0.17.14`: crate archive member [`src/polyfill/once_cell/LICENSE-APACHE`](https://crates.io/api/v1/crates/ring/0.17.14/download) -> [`.ahcl/THIRD-PARTY-LICENSES/ring-0.17.14/src__polyfill__once_cell__LICENSE-APACHE`](THIRD-PARTY-LICENSES/ring-0.17.14/src__polyfill__once_cell__LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `ring 0.17.14`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/ring/0.17.14/download) -> [`.ahcl/THIRD-PARTY-LICENSES/ring-0.17.14/LICENSE`](THIRD-PARTY-LICENSES/ring-0.17.14/LICENSE) (SHA-256 `b3d734001a94efff3579978d953391aa7115f877657d25eb54037a43875d078a`; 499 bytes).
+- `ring 0.17.14`: crate archive member [`LICENSE-other-bits`](https://crates.io/api/v1/crates/ring/0.17.14/download) -> [`.ahcl/THIRD-PARTY-LICENSES/ring-0.17.14/LICENSE-other-bits`](THIRD-PARTY-LICENSES/ring-0.17.14/LICENSE-other-bits) (SHA-256 `f025ccfb7dfb6bdfedc75ca0f67acc69e6fb4998143d834f7c2f38a29989680f`; 731 bytes).
 
 ### RNovModularDB
 
@@ -1190,26 +1190,26 @@ Canonical upstream: <https://github.com/czxieddan/RNovModularDB>
 | `rnmdb-types` | `0.1.0` | direct runtime; transitive | `git+https://github.com/czxieddan/RNovModularDB.git?rev=f20040a127a56ec8c37b3398283df36f024a1dd2#f20040a127a56ec8c37b3398283df36f024a1dd2` | `not applicable` | `validated internally; selected treatment shown` | `LicenseRef-AHCL-1.0` | dependency policy table [rnmdb_ahcl_dependency] | `bundles/complete/Cargo.lock`; `bundles/standard/Cargo.lock`; `crates/optional/ariadnion-storage-rnmdb/Cargo.lock` |
 | `rnmdb-udf` | `0.1.0` | direct runtime; transitive | `git+https://github.com/czxieddan/RNovModularDB.git?rev=f20040a127a56ec8c37b3398283df36f024a1dd2#f20040a127a56ec8c37b3398283df36f024a1dd2` | `not applicable` | `validated internally; selected treatment shown` | `LicenseRef-AHCL-1.0` | dependency policy table [rnmdb_ahcl_dependency] | `bundles/complete/Cargo.lock`; `bundles/standard/Cargo.lock`; `crates/optional/ariadnion-storage-rnmdb/Cargo.lock` |
 
-Selected license copy: `AHCL/AHCL-1.0.md`.
+Selected license copy: `.ahcl/AHCL-1.0.md`.
 Additional restrictions for this dependency selection: `none`.
 
 License evidence:
 
-- `rnmdb-catalog 0.1.0`: repository policy record `AHCL/AHCL-1.0.md` -> [`AHCL/THIRD-PARTY-LICENSES/rnmdb-catalog-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-catalog-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
-- `rnmdb-cli 0.1.0`: repository policy record `AHCL/AHCL-1.0.md` -> [`AHCL/THIRD-PARTY-LICENSES/rnmdb-cli-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-cli-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
-- `rnmdb-common 0.1.0`: repository policy record `AHCL/AHCL-1.0.md` -> [`AHCL/THIRD-PARTY-LICENSES/rnmdb-common-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-common-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
-- `rnmdb-executor 0.1.0`: repository policy record `AHCL/AHCL-1.0.md` -> [`AHCL/THIRD-PARTY-LICENSES/rnmdb-executor-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-executor-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
-- `rnmdb-fts 0.1.0`: repository policy record `AHCL/AHCL-1.0.md` -> [`AHCL/THIRD-PARTY-LICENSES/rnmdb-fts-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-fts-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
-- `rnmdb-index 0.1.0`: repository policy record `AHCL/AHCL-1.0.md` -> [`AHCL/THIRD-PARTY-LICENSES/rnmdb-index-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-index-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
-- `rnmdb-instance 0.1.0`: repository policy record `AHCL/AHCL-1.0.md` -> [`AHCL/THIRD-PARTY-LICENSES/rnmdb-instance-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-instance-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
-- `rnmdb-planner 0.1.0`: repository policy record `AHCL/AHCL-1.0.md` -> [`AHCL/THIRD-PARTY-LICENSES/rnmdb-planner-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-planner-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
-- `rnmdb-security 0.1.0`: repository policy record `AHCL/AHCL-1.0.md` -> [`AHCL/THIRD-PARTY-LICENSES/rnmdb-security-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-security-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
-- `rnmdb-server 0.1.0`: repository policy record `AHCL/AHCL-1.0.md` -> [`AHCL/THIRD-PARTY-LICENSES/rnmdb-server-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-server-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
-- `rnmdb-sql 0.1.0`: repository policy record `AHCL/AHCL-1.0.md` -> [`AHCL/THIRD-PARTY-LICENSES/rnmdb-sql-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-sql-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
-- `rnmdb-storage 0.1.0`: repository policy record `AHCL/AHCL-1.0.md` -> [`AHCL/THIRD-PARTY-LICENSES/rnmdb-storage-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-storage-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
-- `rnmdb-txn 0.1.0`: repository policy record `AHCL/AHCL-1.0.md` -> [`AHCL/THIRD-PARTY-LICENSES/rnmdb-txn-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-txn-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
-- `rnmdb-types 0.1.0`: repository policy record `AHCL/AHCL-1.0.md` -> [`AHCL/THIRD-PARTY-LICENSES/rnmdb-types-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-types-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
-- `rnmdb-udf 0.1.0`: repository policy record `AHCL/AHCL-1.0.md` -> [`AHCL/THIRD-PARTY-LICENSES/rnmdb-udf-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-udf-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
+- `rnmdb-catalog 0.1.0`: repository policy record `.ahcl/AHCL-1.0.md` -> [`.ahcl/THIRD-PARTY-LICENSES/rnmdb-catalog-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-catalog-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
+- `rnmdb-cli 0.1.0`: repository policy record `.ahcl/AHCL-1.0.md` -> [`.ahcl/THIRD-PARTY-LICENSES/rnmdb-cli-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-cli-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
+- `rnmdb-common 0.1.0`: repository policy record `.ahcl/AHCL-1.0.md` -> [`.ahcl/THIRD-PARTY-LICENSES/rnmdb-common-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-common-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
+- `rnmdb-executor 0.1.0`: repository policy record `.ahcl/AHCL-1.0.md` -> [`.ahcl/THIRD-PARTY-LICENSES/rnmdb-executor-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-executor-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
+- `rnmdb-fts 0.1.0`: repository policy record `.ahcl/AHCL-1.0.md` -> [`.ahcl/THIRD-PARTY-LICENSES/rnmdb-fts-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-fts-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
+- `rnmdb-index 0.1.0`: repository policy record `.ahcl/AHCL-1.0.md` -> [`.ahcl/THIRD-PARTY-LICENSES/rnmdb-index-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-index-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
+- `rnmdb-instance 0.1.0`: repository policy record `.ahcl/AHCL-1.0.md` -> [`.ahcl/THIRD-PARTY-LICENSES/rnmdb-instance-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-instance-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
+- `rnmdb-planner 0.1.0`: repository policy record `.ahcl/AHCL-1.0.md` -> [`.ahcl/THIRD-PARTY-LICENSES/rnmdb-planner-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-planner-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
+- `rnmdb-security 0.1.0`: repository policy record `.ahcl/AHCL-1.0.md` -> [`.ahcl/THIRD-PARTY-LICENSES/rnmdb-security-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-security-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
+- `rnmdb-server 0.1.0`: repository policy record `.ahcl/AHCL-1.0.md` -> [`.ahcl/THIRD-PARTY-LICENSES/rnmdb-server-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-server-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
+- `rnmdb-sql 0.1.0`: repository policy record `.ahcl/AHCL-1.0.md` -> [`.ahcl/THIRD-PARTY-LICENSES/rnmdb-sql-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-sql-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
+- `rnmdb-storage 0.1.0`: repository policy record `.ahcl/AHCL-1.0.md` -> [`.ahcl/THIRD-PARTY-LICENSES/rnmdb-storage-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-storage-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
+- `rnmdb-txn 0.1.0`: repository policy record `.ahcl/AHCL-1.0.md` -> [`.ahcl/THIRD-PARTY-LICENSES/rnmdb-txn-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-txn-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
+- `rnmdb-types 0.1.0`: repository policy record `.ahcl/AHCL-1.0.md` -> [`.ahcl/THIRD-PARTY-LICENSES/rnmdb-types-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-types-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
+- `rnmdb-udf 0.1.0`: repository policy record `.ahcl/AHCL-1.0.md` -> [`.ahcl/THIRD-PARTY-LICENSES/rnmdb-udf-0.1.0/AHCL-1.0.md`](THIRD-PARTY-LICENSES/rnmdb-udf-0.1.0/AHCL-1.0.md) (SHA-256 `01c51c190a021cedcd072fdb2a7da1857bf5ef9a8770d26104aa472455ac003e`; 63907 bytes).
 
 ### rust-base64
 
@@ -1221,8 +1221,8 @@ Canonical upstream: <https://github.com/marshallpierce/rust-base64>
 
 License evidence:
 
-- `base64 0.22.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/base64/0.22.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/base64-0.22.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/base64-0.22.1/LICENSE-MIT) (SHA-256 `0dd882e53de11566d50f8e8e2d5a651bcf3fabee4987d70f306233cf39094ba7`; 1076 bytes).
-- `base64 0.22.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/base64/0.22.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/base64-0.22.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/base64-0.22.1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `base64 0.22.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/base64/0.22.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/base64-0.22.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/base64-0.22.1/LICENSE-MIT) (SHA-256 `0dd882e53de11566d50f8e8e2d5a651bcf3fabee4987d70f306233cf39094ba7`; 1076 bytes).
+- `base64 0.22.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/base64/0.22.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/base64-0.22.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/base64-0.22.1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### rust-crc32fast
 
@@ -1234,8 +1234,8 @@ Canonical upstream: <https://github.com/srijs/rust-crc32fast>
 
 License evidence:
 
-- `crc32fast 1.5.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/crc32fast/1.5.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/crc32fast-1.5.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/crc32fast-1.5.0/LICENSE-MIT) (SHA-256 `61d383b05b87d78f94d2937e2580cce47226d17823c0430fbcad09596537efcf`; 1097 bytes).
-- `crc32fast 1.5.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/crc32fast/1.5.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/crc32fast-1.5.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/crc32fast-1.5.0/LICENSE-APACHE) (SHA-256 `c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08`; 11358 bytes).
+- `crc32fast 1.5.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/crc32fast/1.5.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/crc32fast-1.5.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/crc32fast-1.5.0/LICENSE-MIT) (SHA-256 `61d383b05b87d78f94d2937e2580cce47226d17823c0430fbcad09596537efcf`; 1097 bytes).
+- `crc32fast 1.5.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/crc32fast/1.5.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/crc32fast-1.5.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/crc32fast-1.5.0/LICENSE-APACHE) (SHA-256 `c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08`; 11358 bytes).
 
 ### rust-ctrlc
 
@@ -1247,8 +1247,8 @@ Canonical upstream: <https://github.com/Detegr/rust-ctrlc>
 
 License evidence:
 
-- `ctrlc 3.5.2`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/ctrlc/3.5.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/ctrlc-3.5.2/LICENSE-MIT`](THIRD-PARTY-LICENSES/ctrlc-3.5.2/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `ctrlc 3.5.2`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/ctrlc/3.5.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/ctrlc-3.5.2/LICENSE-APACHE`](THIRD-PARTY-LICENSES/ctrlc-3.5.2/LICENSE-APACHE) (SHA-256 `3481c338b8e2760b5a58e129339501c01e640f7597767f91d1a84e25e68fbdb4`; 10836 bytes).
+- `ctrlc 3.5.2`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/ctrlc/3.5.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/ctrlc-3.5.2/LICENSE-MIT`](THIRD-PARTY-LICENSES/ctrlc-3.5.2/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `ctrlc 3.5.2`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/ctrlc/3.5.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/ctrlc-3.5.2/LICENSE-APACHE`](THIRD-PARTY-LICENSES/ctrlc-3.5.2/LICENSE-APACHE) (SHA-256 `3481c338b8e2760b5a58e129339501c01e640f7597767f91d1a84e25e68fbdb4`; 10836 bytes).
 
 ### rust-errno
 
@@ -1260,8 +1260,8 @@ Canonical upstream: <https://github.com/lambda-fairy/rust-errno>
 
 License evidence:
 
-- `errno 0.3.14`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/errno/0.3.14/download) -> [`AHCL/THIRD-PARTY-LICENSES/errno-0.3.14/LICENSE-MIT`](THIRD-PARTY-LICENSES/errno-0.3.14/LICENSE-MIT) (SHA-256 `8764a597675778ddfd4e25f81b08a05dbcf089ac05662df7613fe67f150e3aa2`; 1054 bytes).
-- `errno 0.3.14`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/errno/0.3.14/download) -> [`AHCL/THIRD-PARTY-LICENSES/errno-0.3.14/LICENSE-APACHE`](THIRD-PARTY-LICENSES/errno-0.3.14/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `errno 0.3.14`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/errno/0.3.14/download) -> [`.ahcl/THIRD-PARTY-LICENSES/errno-0.3.14/LICENSE-MIT`](THIRD-PARTY-LICENSES/errno-0.3.14/LICENSE-MIT) (SHA-256 `8764a597675778ddfd4e25f81b08a05dbcf089ac05662df7613fe67f150e3aa2`; 1054 bytes).
+- `errno 0.3.14`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/errno/0.3.14/download) -> [`.ahcl/THIRD-PARTY-LICENSES/errno-0.3.14/LICENSE-APACHE`](THIRD-PARTY-LICENSES/errno-0.3.14/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### rust-fnv
 
@@ -1273,8 +1273,8 @@ Canonical upstream: <https://github.com/servo/rust-fnv>
 
 License evidence:
 
-- `fnv 1.0.7`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/fnv/1.0.7/download) -> [`AHCL/THIRD-PARTY-LICENSES/fnv-1.0.7/LICENSE-MIT`](THIRD-PARTY-LICENSES/fnv-1.0.7/LICENSE-MIT) (SHA-256 `65fdb6c76cd61612070c066eec9ecdb30ee74fb27859d0d9af58b9f499fd0c3e`; 1056 bytes).
-- `fnv 1.0.7`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/fnv/1.0.7/download) -> [`AHCL/THIRD-PARTY-LICENSES/fnv-1.0.7/LICENSE-APACHE`](THIRD-PARTY-LICENSES/fnv-1.0.7/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `fnv 1.0.7`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/fnv/1.0.7/download) -> [`.ahcl/THIRD-PARTY-LICENSES/fnv-1.0.7/LICENSE-MIT`](THIRD-PARTY-LICENSES/fnv-1.0.7/LICENSE-MIT) (SHA-256 `65fdb6c76cd61612070c066eec9ecdb30ee74fb27859d0d9af58b9f499fd0c3e`; 1056 bytes).
+- `fnv 1.0.7`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/fnv/1.0.7/download) -> [`.ahcl/THIRD-PARTY-LICENSES/fnv-1.0.7/LICENSE-APACHE`](THIRD-PARTY-LICENSES/fnv-1.0.7/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### rust-phf
 
@@ -1289,10 +1289,10 @@ Canonical upstream: <https://github.com/rust-phf/rust-phf>
 
 License evidence:
 
-- `phf 0.11.3`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/phf/0.11.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/phf-0.11.3/LICENSE`](THIRD-PARTY-LICENSES/phf-0.11.3/LICENSE) (SHA-256 `0ab4d106b6faac07fb6a051815fd1b4d862d730895e2d7d7358c2f13565e7a38`; 1099 bytes).
-- `phf_generator 0.11.3`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/phf_generator/0.11.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/phf_generator-0.11.3/LICENSE`](THIRD-PARTY-LICENSES/phf_generator-0.11.3/LICENSE) (SHA-256 `0ab4d106b6faac07fb6a051815fd1b4d862d730895e2d7d7358c2f13565e7a38`; 1099 bytes).
-- `phf_macros 0.11.3`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/phf_macros/0.11.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/phf_macros-0.11.3/LICENSE`](THIRD-PARTY-LICENSES/phf_macros-0.11.3/LICENSE) (SHA-256 `0ab4d106b6faac07fb6a051815fd1b4d862d730895e2d7d7358c2f13565e7a38`; 1099 bytes).
-- `phf_shared 0.11.3`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/phf_shared/0.11.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/phf_shared-0.11.3/LICENSE`](THIRD-PARTY-LICENSES/phf_shared-0.11.3/LICENSE) (SHA-256 `0ab4d106b6faac07fb6a051815fd1b4d862d730895e2d7d7358c2f13565e7a38`; 1099 bytes).
+- `phf 0.11.3`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/phf/0.11.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/phf-0.11.3/LICENSE`](THIRD-PARTY-LICENSES/phf-0.11.3/LICENSE) (SHA-256 `0ab4d106b6faac07fb6a051815fd1b4d862d730895e2d7d7358c2f13565e7a38`; 1099 bytes).
+- `phf_generator 0.11.3`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/phf_generator/0.11.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/phf_generator-0.11.3/LICENSE`](THIRD-PARTY-LICENSES/phf_generator-0.11.3/LICENSE) (SHA-256 `0ab4d106b6faac07fb6a051815fd1b4d862d730895e2d7d7358c2f13565e7a38`; 1099 bytes).
+- `phf_macros 0.11.3`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/phf_macros/0.11.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/phf_macros-0.11.3/LICENSE`](THIRD-PARTY-LICENSES/phf_macros-0.11.3/LICENSE) (SHA-256 `0ab4d106b6faac07fb6a051815fd1b4d862d730895e2d7d7358c2f13565e7a38`; 1099 bytes).
+- `phf_shared 0.11.3`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/phf_shared/0.11.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/phf_shared-0.11.3/LICENSE`](THIRD-PARTY-LICENSES/phf_shared-0.11.3/LICENSE) (SHA-256 `0ab4d106b6faac07fb6a051815fd1b4d862d730895e2d7d7358c2f13565e7a38`; 1099 bytes).
 
 ### rust-shlex
 
@@ -1304,8 +1304,8 @@ Canonical upstream: <https://github.com/comex/rust-shlex>
 
 License evidence:
 
-- `shlex 2.0.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/shlex/2.0.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/shlex-2.0.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/shlex-2.0.1/LICENSE-MIT) (SHA-256 `4455bf75a91154108304cb283e0fea9948c14f13e20d60887cf2552449dea3b1`; 1092 bytes).
-- `shlex 2.0.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/shlex/2.0.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/shlex-2.0.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/shlex-2.0.1/LICENSE-APACHE) (SHA-256 `553fffcd9b1cb158bc3e9edc35da85ca5c3b3d7d2e61c883ebcfa8a65814b583`; 566 bytes).
+- `shlex 2.0.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/shlex/2.0.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/shlex-2.0.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/shlex-2.0.1/LICENSE-MIT) (SHA-256 `4455bf75a91154108304cb283e0fea9948c14f13e20d60887cf2552449dea3b1`; 1092 bytes).
+- `shlex 2.0.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/shlex/2.0.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/shlex-2.0.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/shlex-2.0.1/LICENSE-APACHE) (SHA-256 `553fffcd9b1cb158bc3e9edc35da85ca5c3b3d7d2e61c883ebcfa8a65814b583`; 566 bytes).
 
 ### rust-siphash
 
@@ -1317,7 +1317,7 @@ Canonical upstream: <https://github.com/jedisct1/rust-siphash>
 
 License evidence:
 
-- `siphasher 1.0.3`: crate archive member [`COPYING`](https://crates.io/api/v1/crates/siphasher/1.0.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/siphasher-1.0.3/COPYING`](THIRD-PARTY-LICENSES/siphasher-1.0.3/COPYING) (SHA-256 `c962ee4d1d05ddc138b202b2540219ebc57893fcf97b364852094a9a94ce1365`; 281 bytes).
+- `siphasher 1.0.3`: crate archive member [`COPYING`](https://crates.io/api/v1/crates/siphasher/1.0.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/siphasher-1.0.3/COPYING`](THIRD-PARTY-LICENSES/siphasher-1.0.3/COPYING) (SHA-256 `c962ee4d1d05ddc138b202b2540219ebc57893fcf97b364852094a9a94ce1365`; 281 bytes).
 
 ### rust-smallvec
 
@@ -1329,8 +1329,8 @@ Canonical upstream: <https://github.com/servo/rust-smallvec>
 
 License evidence:
 
-- `smallvec 1.15.2`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/smallvec/1.15.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/smallvec-1.15.2/LICENSE-MIT`](THIRD-PARTY-LICENSES/smallvec-1.15.2/LICENSE-MIT) (SHA-256 `0b28172679e0009b655da42797c03fd163a3379d5cfa67ba1f1655e974a2a1a9`; 1072 bytes).
-- `smallvec 1.15.2`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/smallvec/1.15.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/smallvec-1.15.2/LICENSE-APACHE`](THIRD-PARTY-LICENSES/smallvec-1.15.2/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `smallvec 1.15.2`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/smallvec/1.15.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/smallvec-1.15.2/LICENSE-MIT`](THIRD-PARTY-LICENSES/smallvec-1.15.2/LICENSE-MIT) (SHA-256 `0b28172679e0009b655da42797c03fd163a3379d5cfa67ba1f1655e974a2a1a9`; 1072 bytes).
+- `smallvec 1.15.2`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/smallvec/1.15.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/smallvec-1.15.2/LICENSE-APACHE`](THIRD-PARTY-LICENSES/smallvec-1.15.2/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### rust-url
 
@@ -1342,8 +1342,8 @@ Canonical upstream: <https://github.com/servo/rust-url>
 
 License evidence:
 
-- `percent-encoding 2.3.2`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/percent-encoding/2.3.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/percent-encoding-2.3.2/LICENSE-APACHE`](THIRD-PARTY-LICENSES/percent-encoding-2.3.2/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
-- `percent-encoding 2.3.2`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/percent-encoding/2.3.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/percent-encoding-2.3.2/LICENSE-MIT`](THIRD-PARTY-LICENSES/percent-encoding-2.3.2/LICENSE-MIT) (SHA-256 `b38f11f6096706e6de553dabe2a7ed142d59b6fa8c97e290c67496154745cdd5`; 1072 bytes).
+- `percent-encoding 2.3.2`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/percent-encoding/2.3.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/percent-encoding-2.3.2/LICENSE-APACHE`](THIRD-PARTY-LICENSES/percent-encoding-2.3.2/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `percent-encoding 2.3.2`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/percent-encoding/2.3.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/percent-encoding-2.3.2/LICENSE-MIT`](THIRD-PARTY-LICENSES/percent-encoding-2.3.2/LICENSE-MIT) (SHA-256 `b38f11f6096706e6de553dabe2a7ed142d59b6fa8c97e290c67496154745cdd5`; 1072 bytes).
 
 ### rustc-demangle
 
@@ -1355,8 +1355,8 @@ Canonical upstream: <https://github.com/rust-lang/rustc-demangle>
 
 License evidence:
 
-- `rustc-demangle 0.1.28`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/rustc-demangle/0.1.28/download) -> [`AHCL/THIRD-PARTY-LICENSES/rustc-demangle-0.1.28/LICENSE-MIT`](THIRD-PARTY-LICENSES/rustc-demangle-0.1.28/LICENSE-MIT) (SHA-256 `378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397`; 1057 bytes).
-- `rustc-demangle 0.1.28`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/rustc-demangle/0.1.28/download) -> [`AHCL/THIRD-PARTY-LICENSES/rustc-demangle-0.1.28/LICENSE-APACHE`](THIRD-PARTY-LICENSES/rustc-demangle-0.1.28/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `rustc-demangle 0.1.28`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/rustc-demangle/0.1.28/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rustc-demangle-0.1.28/LICENSE-MIT`](THIRD-PARTY-LICENSES/rustc-demangle-0.1.28/LICENSE-MIT) (SHA-256 `378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397`; 1057 bytes).
+- `rustc-demangle 0.1.28`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/rustc-demangle/0.1.28/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rustc-demangle-0.1.28/LICENSE-APACHE`](THIRD-PARTY-LICENSES/rustc-demangle-0.1.28/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### rustc-hash
 
@@ -1368,8 +1368,8 @@ Canonical upstream: <https://github.com/rust-lang/rustc-hash>
 
 License evidence:
 
-- `rustc-hash 2.1.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/rustc-hash/2.1.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/rustc-hash-2.1.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/rustc-hash-2.1.3/LICENSE-MIT) (SHA-256 `30fefc3a7d6a0041541858293bcbea2dde4caa4c0a5802f996a7f7e8c0085652`; 1022 bytes).
-- `rustc-hash 2.1.3`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/rustc-hash/2.1.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/rustc-hash-2.1.3/LICENSE-APACHE`](THIRD-PARTY-LICENSES/rustc-hash-2.1.3/LICENSE-APACHE) (SHA-256 `95bd3988beee069fa2848f648dab43cc6e0b2add2ad6bcb17360caf749802bcc`; 9722 bytes).
+- `rustc-hash 2.1.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/rustc-hash/2.1.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rustc-hash-2.1.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/rustc-hash-2.1.3/LICENSE-MIT) (SHA-256 `30fefc3a7d6a0041541858293bcbea2dde4caa4c0a5802f996a7f7e8c0085652`; 1022 bytes).
+- `rustc-hash 2.1.3`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/rustc-hash/2.1.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rustc-hash-2.1.3/LICENSE-APACHE`](THIRD-PARTY-LICENSES/rustc-hash-2.1.3/LICENSE-APACHE) (SHA-256 `95bd3988beee069fa2848f648dab43cc6e0b2add2ad6bcb17360caf749802bcc`; 9722 bytes).
 
 ### rustix
 
@@ -1381,10 +1381,10 @@ Canonical upstream: <https://github.com/bytecodealliance/rustix>
 
 License evidence:
 
-- `rustix 1.1.4`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/rustix/1.1.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/rustix-1.1.4/LICENSE-MIT`](THIRD-PARTY-LICENSES/rustix-1.1.4/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `rustix 1.1.4`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/rustix/1.1.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/rustix-1.1.4/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/rustix-1.1.4/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `rustix 1.1.4`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/rustix/1.1.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/rustix-1.1.4/COPYRIGHT`](THIRD-PARTY-LICENSES/rustix-1.1.4/COPYRIGHT) (SHA-256 `377c2e7c53250cc5905c0b0532d35973392af16ffb9596a41d99d202cf3617c9`; 853 bytes).
-- `rustix 1.1.4`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/rustix/1.1.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/rustix-1.1.4/LICENSE-APACHE`](THIRD-PARTY-LICENSES/rustix-1.1.4/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `rustix 1.1.4`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/rustix/1.1.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rustix-1.1.4/LICENSE-MIT`](THIRD-PARTY-LICENSES/rustix-1.1.4/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `rustix 1.1.4`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/rustix/1.1.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rustix-1.1.4/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/rustix-1.1.4/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `rustix 1.1.4`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/rustix/1.1.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rustix-1.1.4/COPYRIGHT`](THIRD-PARTY-LICENSES/rustix-1.1.4/COPYRIGHT) (SHA-256 `377c2e7c53250cc5905c0b0532d35973392af16ffb9596a41d99d202cf3617c9`; 853 bytes).
+- `rustix 1.1.4`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/rustix/1.1.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rustix-1.1.4/LICENSE-APACHE`](THIRD-PARTY-LICENSES/rustix-1.1.4/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### rustix-linux-procfs
 
@@ -1396,10 +1396,10 @@ Canonical upstream: <https://github.com/sunfishcode/rustix-linux-procfs>
 
 License evidence:
 
-- `rustix-linux-procfs 0.1.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/rustix-linux-procfs/0.1.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/rustix-linux-procfs-0.1.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/rustix-linux-procfs-0.1.1/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `rustix-linux-procfs 0.1.1`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/rustix-linux-procfs/0.1.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/rustix-linux-procfs-0.1.1/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/rustix-linux-procfs-0.1.1/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `rustix-linux-procfs 0.1.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/rustix-linux-procfs/0.1.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/rustix-linux-procfs-0.1.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/rustix-linux-procfs-0.1.1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
-- `rustix-linux-procfs 0.1.1`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/rustix-linux-procfs/0.1.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/rustix-linux-procfs-0.1.1/COPYRIGHT`](THIRD-PARTY-LICENSES/rustix-linux-procfs-0.1.1/COPYRIGHT) (SHA-256 `d415a86ccfd794129666247cbbadebee7a6d0ac3ff701c76c07b0f9424f0307d`; 905 bytes).
+- `rustix-linux-procfs 0.1.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/rustix-linux-procfs/0.1.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rustix-linux-procfs-0.1.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/rustix-linux-procfs-0.1.1/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `rustix-linux-procfs 0.1.1`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/rustix-linux-procfs/0.1.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rustix-linux-procfs-0.1.1/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/rustix-linux-procfs-0.1.1/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `rustix-linux-procfs 0.1.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/rustix-linux-procfs/0.1.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rustix-linux-procfs-0.1.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/rustix-linux-procfs-0.1.1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `rustix-linux-procfs 0.1.1`: crate archive member [`COPYRIGHT`](https://crates.io/api/v1/crates/rustix-linux-procfs/0.1.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rustix-linux-procfs-0.1.1/COPYRIGHT`](THIRD-PARTY-LICENSES/rustix-linux-procfs-0.1.1/COPYRIGHT) (SHA-256 `d415a86ccfd794129666247cbbadebee7a6d0ac3ff701c76c07b0f9424f0307d`; 905 bytes).
 
 ### rustls
 
@@ -1411,9 +1411,9 @@ Canonical upstream: <https://github.com/rustls/rustls>
 
 License evidence:
 
-- `rustls 0.23.41`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/rustls/0.23.41/download) -> [`AHCL/THIRD-PARTY-LICENSES/rustls-0.23.41/LICENSE-MIT`](THIRD-PARTY-LICENSES/rustls-0.23.41/LICENSE-MIT) (SHA-256 `709e3175b4212f7b13aa93971c9f62ff8c69ec45ad8c6532a7e0c41d7a7d6f8c`; 1082 bytes).
-- `rustls 0.23.41`: crate archive member [`LICENSE-ISC`](https://crates.io/api/v1/crates/rustls/0.23.41/download) -> [`AHCL/THIRD-PARTY-LICENSES/rustls-0.23.41/LICENSE-ISC`](THIRD-PARTY-LICENSES/rustls-0.23.41/LICENSE-ISC) (SHA-256 `7cfafc877eccc46c0e346ccbaa5c51bb6b894d2b818e617d970211e232785ad4`; 775 bytes).
-- `rustls 0.23.41`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/rustls/0.23.41/download) -> [`AHCL/THIRD-PARTY-LICENSES/rustls-0.23.41/LICENSE-APACHE`](THIRD-PARTY-LICENSES/rustls-0.23.41/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `rustls 0.23.41`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/rustls/0.23.41/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rustls-0.23.41/LICENSE-MIT`](THIRD-PARTY-LICENSES/rustls-0.23.41/LICENSE-MIT) (SHA-256 `709e3175b4212f7b13aa93971c9f62ff8c69ec45ad8c6532a7e0c41d7a7d6f8c`; 1082 bytes).
+- `rustls 0.23.41`: crate archive member [`LICENSE-ISC`](https://crates.io/api/v1/crates/rustls/0.23.41/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rustls-0.23.41/LICENSE-ISC`](THIRD-PARTY-LICENSES/rustls-0.23.41/LICENSE-ISC) (SHA-256 `7cfafc877eccc46c0e346ccbaa5c51bb6b894d2b818e617d970211e232785ad4`; 775 bytes).
+- `rustls 0.23.41`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/rustls/0.23.41/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rustls-0.23.41/LICENSE-APACHE`](THIRD-PARTY-LICENSES/rustls-0.23.41/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### semver
 
@@ -1425,8 +1425,8 @@ Canonical upstream: <https://github.com/dtolnay/semver>
 
 License evidence:
 
-- `semver 1.0.28`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/semver/1.0.28/download) -> [`AHCL/THIRD-PARTY-LICENSES/semver-1.0.28/LICENSE-MIT`](THIRD-PARTY-LICENSES/semver-1.0.28/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `semver 1.0.28`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/semver/1.0.28/download) -> [`AHCL/THIRD-PARTY-LICENSES/semver-1.0.28/LICENSE-APACHE`](THIRD-PARTY-LICENSES/semver-1.0.28/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
+- `semver 1.0.28`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/semver/1.0.28/download) -> [`.ahcl/THIRD-PARTY-LICENSES/semver-1.0.28/LICENSE-MIT`](THIRD-PARTY-LICENSES/semver-1.0.28/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `semver 1.0.28`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/semver/1.0.28/download) -> [`.ahcl/THIRD-PARTY-LICENSES/semver-1.0.28/LICENSE-APACHE`](THIRD-PARTY-LICENSES/semver-1.0.28/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
 
 ### serde
 
@@ -1440,12 +1440,12 @@ Canonical upstream: <https://github.com/serde-rs/serde>
 
 License evidence:
 
-- `serde 1.0.228`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/serde/1.0.228/download) -> [`AHCL/THIRD-PARTY-LICENSES/serde-1.0.228/LICENSE-MIT`](THIRD-PARTY-LICENSES/serde-1.0.228/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `serde_core 1.0.228`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/serde_core/1.0.228/download) -> [`AHCL/THIRD-PARTY-LICENSES/serde_core-1.0.228/LICENSE-MIT`](THIRD-PARTY-LICENSES/serde_core-1.0.228/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `serde_derive 1.0.228`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/serde_derive/1.0.228/download) -> [`AHCL/THIRD-PARTY-LICENSES/serde_derive-1.0.228/LICENSE-MIT`](THIRD-PARTY-LICENSES/serde_derive-1.0.228/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `serde 1.0.228`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/serde/1.0.228/download) -> [`AHCL/THIRD-PARTY-LICENSES/serde-1.0.228/LICENSE-APACHE`](THIRD-PARTY-LICENSES/serde-1.0.228/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
-- `serde_core 1.0.228`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/serde_core/1.0.228/download) -> [`AHCL/THIRD-PARTY-LICENSES/serde_core-1.0.228/LICENSE-APACHE`](THIRD-PARTY-LICENSES/serde_core-1.0.228/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
-- `serde_derive 1.0.228`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/serde_derive/1.0.228/download) -> [`AHCL/THIRD-PARTY-LICENSES/serde_derive-1.0.228/LICENSE-APACHE`](THIRD-PARTY-LICENSES/serde_derive-1.0.228/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
+- `serde 1.0.228`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/serde/1.0.228/download) -> [`.ahcl/THIRD-PARTY-LICENSES/serde-1.0.228/LICENSE-MIT`](THIRD-PARTY-LICENSES/serde-1.0.228/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `serde_core 1.0.228`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/serde_core/1.0.228/download) -> [`.ahcl/THIRD-PARTY-LICENSES/serde_core-1.0.228/LICENSE-MIT`](THIRD-PARTY-LICENSES/serde_core-1.0.228/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `serde_derive 1.0.228`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/serde_derive/1.0.228/download) -> [`.ahcl/THIRD-PARTY-LICENSES/serde_derive-1.0.228/LICENSE-MIT`](THIRD-PARTY-LICENSES/serde_derive-1.0.228/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `serde 1.0.228`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/serde/1.0.228/download) -> [`.ahcl/THIRD-PARTY-LICENSES/serde-1.0.228/LICENSE-APACHE`](THIRD-PARTY-LICENSES/serde-1.0.228/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
+- `serde_core 1.0.228`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/serde_core/1.0.228/download) -> [`.ahcl/THIRD-PARTY-LICENSES/serde_core-1.0.228/LICENSE-APACHE`](THIRD-PARTY-LICENSES/serde_core-1.0.228/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
+- `serde_derive 1.0.228`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/serde_derive/1.0.228/download) -> [`.ahcl/THIRD-PARTY-LICENSES/serde_derive-1.0.228/LICENSE-APACHE`](THIRD-PARTY-LICENSES/serde_derive-1.0.228/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
 
 ### slab
 
@@ -1457,7 +1457,7 @@ Canonical upstream: <https://github.com/tokio-rs/slab>
 
 License evidence:
 
-- `slab 0.4.12`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/slab/0.4.12/download) -> [`AHCL/THIRD-PARTY-LICENSES/slab-0.4.12/LICENSE`](THIRD-PARTY-LICENSES/slab-0.4.12/LICENSE) (SHA-256 `8ce0830173fdac609dfb4ea603fdc002c2f4af0dc9b1a005653f5da9cf534b18`; 1055 bytes).
+- `slab 0.4.12`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/slab/0.4.12/download) -> [`.ahcl/THIRD-PARTY-LICENSES/slab-0.4.12/LICENSE`](THIRD-PARTY-LICENSES/slab-0.4.12/LICENSE) (SHA-256 `8ce0830173fdac609dfb4ea603fdc002c2f4af0dc9b1a005653f5da9cf534b18`; 1055 bytes).
 
 ### socket2
 
@@ -1469,8 +1469,8 @@ Canonical upstream: <https://github.com/rust-lang/socket2>
 
 License evidence:
 
-- `socket2 0.6.5`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/socket2/0.6.5/download) -> [`AHCL/THIRD-PARTY-LICENSES/socket2-0.6.5/LICENSE-MIT`](THIRD-PARTY-LICENSES/socket2-0.6.5/LICENSE-MIT) (SHA-256 `378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397`; 1057 bytes).
-- `socket2 0.6.5`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/socket2/0.6.5/download) -> [`AHCL/THIRD-PARTY-LICENSES/socket2-0.6.5/LICENSE-APACHE`](THIRD-PARTY-LICENSES/socket2-0.6.5/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `socket2 0.6.5`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/socket2/0.6.5/download) -> [`.ahcl/THIRD-PARTY-LICENSES/socket2-0.6.5/LICENSE-MIT`](THIRD-PARTY-LICENSES/socket2-0.6.5/LICENSE-MIT) (SHA-256 `378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397`; 1057 bytes).
+- `socket2 0.6.5`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/socket2/0.6.5/download) -> [`.ahcl/THIRD-PARTY-LICENSES/socket2-0.6.5/LICENSE-APACHE`](THIRD-PARTY-LICENSES/socket2-0.6.5/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### stable_deref_trait
 
@@ -1482,8 +1482,8 @@ Canonical upstream: <https://github.com/storyyeller/stable_deref_trait>
 
 License evidence:
 
-- `stable_deref_trait 1.2.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/stable_deref_trait/1.2.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/stable_deref_trait-1.2.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/stable_deref_trait-1.2.1/LICENSE-MIT) (SHA-256 `5e05b024f653a5ce199e77cbbbd42fb5553562ec714b819421ed0c3e552a75d7`; 1056 bytes).
-- `stable_deref_trait 1.2.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/stable_deref_trait/1.2.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/stable_deref_trait-1.2.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/stable_deref_trait-1.2.1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `stable_deref_trait 1.2.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/stable_deref_trait/1.2.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/stable_deref_trait-1.2.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/stable_deref_trait-1.2.1/LICENSE-MIT) (SHA-256 `5e05b024f653a5ce199e77cbbbd42fb5553562ec714b819421ed0c3e552a75d7`; 1056 bytes).
+- `stable_deref_trait 1.2.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/stable_deref_trait/1.2.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/stable_deref_trait-1.2.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/stable_deref_trait-1.2.1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### stream-ciphers
 
@@ -1495,8 +1495,8 @@ Canonical upstream: <https://github.com/RustCrypto/stream-ciphers>
 
 License evidence:
 
-- `chacha20 0.10.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/chacha20/0.10.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/chacha20-0.10.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/chacha20-0.10.1/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
-- `chacha20 0.10.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/chacha20/0.10.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/chacha20-0.10.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/chacha20-0.10.1/LICENSE-MIT) (SHA-256 `b8c6939380a400f53e11923d50fcc4dd2fa1ba8339fd9d04cda38a0251b6c9b0`; 1082 bytes).
+- `chacha20 0.10.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/chacha20/0.10.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/chacha20-0.10.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/chacha20-0.10.1/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
+- `chacha20 0.10.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/chacha20/0.10.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/chacha20-0.10.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/chacha20-0.10.1/LICENSE-MIT) (SHA-256 `b8c6939380a400f53e11923d50fcc4dd2fa1ba8339fd9d04cda38a0251b6c9b0`; 1082 bytes).
 
 ### subtle
 
@@ -1508,7 +1508,7 @@ Canonical upstream: <https://github.com/dalek-cryptography/subtle>
 
 License evidence:
 
-- `subtle 2.6.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/subtle/2.6.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/subtle-2.6.1/LICENSE`](THIRD-PARTY-LICENSES/subtle-2.6.1/LICENSE) (SHA-256 `d1fc1bc0d155df60b2e7705b6b2ae02a05c96f948e1cec6e2fb86360b09f346b`; 1582 bytes).
+- `subtle 2.6.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/subtle/2.6.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/subtle-2.6.1/LICENSE`](THIRD-PARTY-LICENSES/subtle-2.6.1/LICENSE) (SHA-256 `d1fc1bc0d155df60b2e7705b6b2ae02a05c96f948e1cec6e2fb86360b09f346b`; 1582 bytes).
 
 ### syn
 
@@ -1521,10 +1521,10 @@ Canonical upstream: <https://github.com/dtolnay/syn>
 
 License evidence:
 
-- `syn 2.0.119`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/syn/2.0.119/download) -> [`AHCL/THIRD-PARTY-LICENSES/syn-2.0.119/LICENSE-MIT`](THIRD-PARTY-LICENSES/syn-2.0.119/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `syn 3.0.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/syn/3.0.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/syn-3.0.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/syn-3.0.3/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `syn 2.0.119`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/syn/2.0.119/download) -> [`AHCL/THIRD-PARTY-LICENSES/syn-2.0.119/LICENSE-APACHE`](THIRD-PARTY-LICENSES/syn-2.0.119/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
-- `syn 3.0.3`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/syn/3.0.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/syn-3.0.3/LICENSE-APACHE`](THIRD-PARTY-LICENSES/syn-3.0.3/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
+- `syn 2.0.119`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/syn/2.0.119/download) -> [`.ahcl/THIRD-PARTY-LICENSES/syn-2.0.119/LICENSE-MIT`](THIRD-PARTY-LICENSES/syn-2.0.119/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `syn 3.0.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/syn/3.0.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/syn-3.0.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/syn-3.0.3/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `syn 2.0.119`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/syn/2.0.119/download) -> [`.ahcl/THIRD-PARTY-LICENSES/syn-2.0.119/LICENSE-APACHE`](THIRD-PARTY-LICENSES/syn-2.0.119/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
+- `syn 3.0.3`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/syn/3.0.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/syn-3.0.3/LICENSE-APACHE`](THIRD-PARTY-LICENSES/syn-3.0.3/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
 
 ### sync_wrapper
 
@@ -1536,7 +1536,7 @@ Canonical upstream: <https://github.com/Actyx/sync_wrapper>
 
 License evidence:
 
-- `sync_wrapper 1.0.2`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/sync_wrapper/1.0.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/sync_wrapper-1.0.2/LICENSE`](THIRD-PARTY-LICENSES/sync_wrapper-1.0.2/LICENSE) (SHA-256 `0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594`; 10174 bytes).
+- `sync_wrapper 1.0.2`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/sync_wrapper/1.0.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/sync_wrapper-1.0.2/LICENSE`](THIRD-PARTY-LICENSES/sync_wrapper-1.0.2/LICENSE) (SHA-256 `0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594`; 10174 bytes).
 
 ### target-lexicon
 
@@ -1548,7 +1548,7 @@ Canonical upstream: <https://github.com/bytecodealliance/target-lexicon>
 
 License evidence:
 
-- `target-lexicon 0.13.5`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/target-lexicon/0.13.5/download) -> [`AHCL/THIRD-PARTY-LICENSES/target-lexicon-0.13.5/LICENSE`](THIRD-PARTY-LICENSES/target-lexicon-0.13.5/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `target-lexicon 0.13.5`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/target-lexicon/0.13.5/download) -> [`.ahcl/THIRD-PARTY-LICENSES/target-lexicon-0.13.5/LICENSE`](THIRD-PARTY-LICENSES/target-lexicon-0.13.5/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
 
 ### termcolor
 
@@ -1560,9 +1560,9 @@ Canonical upstream: <https://github.com/BurntSushi/termcolor>
 
 License evidence:
 
-- `termcolor 1.4.1`: crate archive member [`COPYING`](https://crates.io/api/v1/crates/termcolor/1.4.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/termcolor-1.4.1/COPYING`](THIRD-PARTY-LICENSES/termcolor-1.4.1/COPYING) (SHA-256 `01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f`; 126 bytes).
-- `termcolor 1.4.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/termcolor/1.4.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/termcolor-1.4.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/termcolor-1.4.1/LICENSE-MIT) (SHA-256 `0f96a83840e146e43c0ec96a22ec1f392e0680e6c1226e6f3ba87e0740af850f`; 1081 bytes).
-- `termcolor 1.4.1`: crate archive member [`UNLICENSE`](https://crates.io/api/v1/crates/termcolor/1.4.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/termcolor-1.4.1/UNLICENSE`](THIRD-PARTY-LICENSES/termcolor-1.4.1/UNLICENSE) (SHA-256 `7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c`; 1211 bytes).
+- `termcolor 1.4.1`: crate archive member [`COPYING`](https://crates.io/api/v1/crates/termcolor/1.4.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/termcolor-1.4.1/COPYING`](THIRD-PARTY-LICENSES/termcolor-1.4.1/COPYING) (SHA-256 `01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f`; 126 bytes).
+- `termcolor 1.4.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/termcolor/1.4.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/termcolor-1.4.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/termcolor-1.4.1/LICENSE-MIT) (SHA-256 `0f96a83840e146e43c0ec96a22ec1f392e0680e6c1226e6f3ba87e0740af850f`; 1081 bytes).
+- `termcolor 1.4.1`: crate archive member [`UNLICENSE`](https://crates.io/api/v1/crates/termcolor/1.4.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/termcolor-1.4.1/UNLICENSE`](THIRD-PARTY-LICENSES/termcolor-1.4.1/UNLICENSE) (SHA-256 `7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c`; 1211 bytes).
 
 ### thiserror
 
@@ -1575,10 +1575,10 @@ Canonical upstream: <https://github.com/dtolnay/thiserror>
 
 License evidence:
 
-- `thiserror 2.0.18`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/thiserror/2.0.18/download) -> [`AHCL/THIRD-PARTY-LICENSES/thiserror-2.0.18/LICENSE-MIT`](THIRD-PARTY-LICENSES/thiserror-2.0.18/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `thiserror-impl 2.0.18`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/thiserror-impl/2.0.18/download) -> [`AHCL/THIRD-PARTY-LICENSES/thiserror-impl-2.0.18/LICENSE-MIT`](THIRD-PARTY-LICENSES/thiserror-impl-2.0.18/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `thiserror 2.0.18`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/thiserror/2.0.18/download) -> [`AHCL/THIRD-PARTY-LICENSES/thiserror-2.0.18/LICENSE-APACHE`](THIRD-PARTY-LICENSES/thiserror-2.0.18/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
-- `thiserror-impl 2.0.18`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/thiserror-impl/2.0.18/download) -> [`AHCL/THIRD-PARTY-LICENSES/thiserror-impl-2.0.18/LICENSE-APACHE`](THIRD-PARTY-LICENSES/thiserror-impl-2.0.18/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
+- `thiserror 2.0.18`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/thiserror/2.0.18/download) -> [`.ahcl/THIRD-PARTY-LICENSES/thiserror-2.0.18/LICENSE-MIT`](THIRD-PARTY-LICENSES/thiserror-2.0.18/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `thiserror-impl 2.0.18`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/thiserror-impl/2.0.18/download) -> [`.ahcl/THIRD-PARTY-LICENSES/thiserror-impl-2.0.18/LICENSE-MIT`](THIRD-PARTY-LICENSES/thiserror-impl-2.0.18/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `thiserror 2.0.18`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/thiserror/2.0.18/download) -> [`.ahcl/THIRD-PARTY-LICENSES/thiserror-2.0.18/LICENSE-APACHE`](THIRD-PARTY-LICENSES/thiserror-2.0.18/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
+- `thiserror-impl 2.0.18`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/thiserror-impl/2.0.18/download) -> [`.ahcl/THIRD-PARTY-LICENSES/thiserror-impl-2.0.18/LICENSE-APACHE`](THIRD-PARTY-LICENSES/thiserror-impl-2.0.18/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
 
 ### tokio
 
@@ -1591,8 +1591,8 @@ Canonical upstream: <https://github.com/tokio-rs/tokio>
 
 License evidence:
 
-- `tokio-macros 2.7.2`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/tokio-macros/2.7.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/tokio-macros-2.7.2/LICENSE`](THIRD-PARTY-LICENSES/tokio-macros-2.7.2/LICENSE) (SHA-256 `0b83dc40cba89b9922bb84b0a9c7d2768ce37c1d7e138b7424fd4549915778c9`; 1102 bytes).
-- `tokio 1.52.3`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/tokio/1.52.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/tokio-1.52.3/LICENSE`](THIRD-PARTY-LICENSES/tokio-1.52.3/LICENSE) (SHA-256 `253cd04c6714889df2d32f3f64d669179a1c95c76ac43c40882c52eb06bc3552`; 1070 bytes).
+- `tokio-macros 2.7.2`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/tokio-macros/2.7.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/tokio-macros-2.7.2/LICENSE`](THIRD-PARTY-LICENSES/tokio-macros-2.7.2/LICENSE) (SHA-256 `0b83dc40cba89b9922bb84b0a9c7d2768ce37c1d7e138b7424fd4549915778c9`; 1102 bytes).
+- `tokio 1.52.3`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/tokio/1.52.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/tokio-1.52.3/LICENSE`](THIRD-PARTY-LICENSES/tokio-1.52.3/LICENSE) (SHA-256 `253cd04c6714889df2d32f3f64d669179a1c95c76ac43c40882c52eb06bc3552`; 1070 bytes).
 
 ### tokio-rustls
 
@@ -1604,8 +1604,8 @@ Canonical upstream: <https://github.com/rustls/tokio-rustls>
 
 License evidence:
 
-- `tokio-rustls 0.26.4`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/tokio-rustls/0.26.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/tokio-rustls-0.26.4/LICENSE-APACHE`](THIRD-PARTY-LICENSES/tokio-rustls-0.26.4/LICENSE-APACHE) (SHA-256 `cc117d90b498b32b11a886f279b359da16a73c3b01efbb2f5cc004b20262334e`; 10832 bytes).
-- `tokio-rustls 0.26.4`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/tokio-rustls/0.26.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/tokio-rustls-0.26.4/LICENSE-MIT`](THIRD-PARTY-LICENSES/tokio-rustls-0.26.4/LICENSE-MIT) (SHA-256 `e20fa2b8e0a2565f24a792b94b4bf4b6c2b9d36f781d8a9516e218a036e6677a`; 1056 bytes).
+- `tokio-rustls 0.26.4`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/tokio-rustls/0.26.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/tokio-rustls-0.26.4/LICENSE-APACHE`](THIRD-PARTY-LICENSES/tokio-rustls-0.26.4/LICENSE-APACHE) (SHA-256 `cc117d90b498b32b11a886f279b359da16a73c3b01efbb2f5cc004b20262334e`; 10832 bytes).
+- `tokio-rustls 0.26.4`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/tokio-rustls/0.26.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/tokio-rustls-0.26.4/LICENSE-MIT`](THIRD-PARTY-LICENSES/tokio-rustls-0.26.4/LICENSE-MIT) (SHA-256 `e20fa2b8e0a2565f24a792b94b4bf4b6c2b9d36f781d8a9516e218a036e6677a`; 1056 bytes).
 
 ### tower
 
@@ -1619,9 +1619,9 @@ Canonical upstream: <https://github.com/tower-rs/tower>
 
 License evidence:
 
-- `tower 0.5.3`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/tower/0.5.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/tower-0.5.3/LICENSE`](THIRD-PARTY-LICENSES/tower-0.5.3/LICENSE) (SHA-256 `4249c8e6c5ebb85f97c77e6457c6fafc1066406eb8f1ef61e796fbdc5ff18482`; 1062 bytes).
-- `tower-layer 0.3.3`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/tower-layer/0.3.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/tower-layer-0.3.3/LICENSE`](THIRD-PARTY-LICENSES/tower-layer-0.3.3/LICENSE) (SHA-256 `4249c8e6c5ebb85f97c77e6457c6fafc1066406eb8f1ef61e796fbdc5ff18482`; 1062 bytes).
-- `tower-service 0.3.3`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/tower-service/0.3.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/tower-service-0.3.3/LICENSE`](THIRD-PARTY-LICENSES/tower-service-0.3.3/LICENSE) (SHA-256 `4249c8e6c5ebb85f97c77e6457c6fafc1066406eb8f1ef61e796fbdc5ff18482`; 1062 bytes).
+- `tower 0.5.3`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/tower/0.5.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/tower-0.5.3/LICENSE`](THIRD-PARTY-LICENSES/tower-0.5.3/LICENSE) (SHA-256 `4249c8e6c5ebb85f97c77e6457c6fafc1066406eb8f1ef61e796fbdc5ff18482`; 1062 bytes).
+- `tower-layer 0.3.3`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/tower-layer/0.3.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/tower-layer-0.3.3/LICENSE`](THIRD-PARTY-LICENSES/tower-layer-0.3.3/LICENSE) (SHA-256 `4249c8e6c5ebb85f97c77e6457c6fafc1066406eb8f1ef61e796fbdc5ff18482`; 1062 bytes).
+- `tower-service 0.3.3`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/tower-service/0.3.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/tower-service-0.3.3/LICENSE`](THIRD-PARTY-LICENSES/tower-service-0.3.3/LICENSE) (SHA-256 `4249c8e6c5ebb85f97c77e6457c6fafc1066406eb8f1ef61e796fbdc5ff18482`; 1062 bytes).
 
 ### traits
 
@@ -1639,20 +1639,20 @@ Canonical upstream: <https://github.com/RustCrypto/traits>
 
 License evidence:
 
-- `aead 0.6.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/aead/0.6.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/aead-0.6.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/aead-0.6.1/LICENSE-MIT) (SHA-256 `33b32a251d445c5c03a634e64c53314c55540fc367fabdd45d9b6c8f260c028c`; 1117 bytes).
-- `crypto-common 0.1.7`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/crypto-common/0.1.7/download) -> [`AHCL/THIRD-PARTY-LICENSES/crypto-common-0.1.7/LICENSE-MIT`](THIRD-PARTY-LICENSES/crypto-common-0.1.7/LICENSE-MIT) (SHA-256 `3521672491a3479422d5fe1aca6645dd2984090f85da6e5205abfb18fb7a6897`; 1065 bytes).
-- `cipher 0.5.2`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/cipher/0.5.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/cipher-0.5.2/LICENSE-MIT`](THIRD-PARTY-LICENSES/cipher-0.5.2/LICENSE-MIT) (SHA-256 `950d712c518a02fcb7cff96950aee304a1cc5283361712c980ea21e8d6d669a5`; 1070 bytes).
-- `digest 0.10.7`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/digest/0.10.7/download) -> [`AHCL/THIRD-PARTY-LICENSES/digest-0.10.7/LICENSE-MIT`](THIRD-PARTY-LICENSES/digest-0.10.7/LICENSE-MIT) (SHA-256 `9e0dfd2dd4173a530e238cb6adb37aa78c34c6bc7444e0e10c1ab5d8881f63ba`; 1057 bytes).
-- `cipher 0.5.2`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/cipher/0.5.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/cipher-0.5.2/LICENSE-APACHE`](THIRD-PARTY-LICENSES/cipher-0.5.2/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
-- `crypto-common 0.1.7`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/crypto-common/0.1.7/download) -> [`AHCL/THIRD-PARTY-LICENSES/crypto-common-0.1.7/LICENSE-APACHE`](THIRD-PARTY-LICENSES/crypto-common-0.1.7/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
-- `crypto-common 0.2.2`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/crypto-common/0.2.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/crypto-common-0.2.2/LICENSE-APACHE`](THIRD-PARTY-LICENSES/crypto-common-0.2.2/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
-- `digest 0.10.7`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/digest/0.10.7/download) -> [`AHCL/THIRD-PARTY-LICENSES/digest-0.10.7/LICENSE-APACHE`](THIRD-PARTY-LICENSES/digest-0.10.7/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
-- `digest 0.11.3`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/digest/0.11.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/digest-0.11.3/LICENSE-APACHE`](THIRD-PARTY-LICENSES/digest-0.11.3/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
-- `universal-hash 0.6.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/universal-hash/0.6.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/universal-hash-0.6.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/universal-hash-0.6.1/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
-- `digest 0.11.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/digest/0.11.3/download) -> [`AHCL/THIRD-PARTY-LICENSES/digest-0.11.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/digest-0.11.3/LICENSE-MIT) (SHA-256 `af59cea35d7f5e2777a713b8d155d65efa2c339eb43f3c14e868c6ac8506edad`; 1103 bytes).
-- `aead 0.6.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/aead/0.6.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/aead-0.6.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/aead-0.6.1/LICENSE-APACHE) (SHA-256 `b1cf9a3333ca78152b859012cd4a804156e5243e9ca20ad1df7327ba5ea7405c`; 10850 bytes).
-- `crypto-common 0.2.2`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/crypto-common/0.2.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/crypto-common-0.2.2/LICENSE-MIT`](THIRD-PARTY-LICENSES/crypto-common-0.2.2/LICENSE-MIT) (SHA-256 `d2e7ec5355c96eeade56b09187ceb48a6a30299da3ce7531a66d3d11405ab963`; 1070 bytes).
-- `universal-hash 0.6.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/universal-hash/0.6.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/universal-hash-0.6.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/universal-hash-0.6.1/LICENSE-MIT) (SHA-256 `efa52eb70a774b62c50cf50f5e57e2625c29d375d09b91132f4f020e47b9944e`; 1070 bytes).
+- `aead 0.6.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/aead/0.6.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/aead-0.6.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/aead-0.6.1/LICENSE-MIT) (SHA-256 `33b32a251d445c5c03a634e64c53314c55540fc367fabdd45d9b6c8f260c028c`; 1117 bytes).
+- `crypto-common 0.1.7`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/crypto-common/0.1.7/download) -> [`.ahcl/THIRD-PARTY-LICENSES/crypto-common-0.1.7/LICENSE-MIT`](THIRD-PARTY-LICENSES/crypto-common-0.1.7/LICENSE-MIT) (SHA-256 `3521672491a3479422d5fe1aca6645dd2984090f85da6e5205abfb18fb7a6897`; 1065 bytes).
+- `cipher 0.5.2`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/cipher/0.5.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cipher-0.5.2/LICENSE-MIT`](THIRD-PARTY-LICENSES/cipher-0.5.2/LICENSE-MIT) (SHA-256 `950d712c518a02fcb7cff96950aee304a1cc5283361712c980ea21e8d6d669a5`; 1070 bytes).
+- `digest 0.10.7`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/digest/0.10.7/download) -> [`.ahcl/THIRD-PARTY-LICENSES/digest-0.10.7/LICENSE-MIT`](THIRD-PARTY-LICENSES/digest-0.10.7/LICENSE-MIT) (SHA-256 `9e0dfd2dd4173a530e238cb6adb37aa78c34c6bc7444e0e10c1ab5d8881f63ba`; 1057 bytes).
+- `cipher 0.5.2`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/cipher/0.5.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cipher-0.5.2/LICENSE-APACHE`](THIRD-PARTY-LICENSES/cipher-0.5.2/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
+- `crypto-common 0.1.7`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/crypto-common/0.1.7/download) -> [`.ahcl/THIRD-PARTY-LICENSES/crypto-common-0.1.7/LICENSE-APACHE`](THIRD-PARTY-LICENSES/crypto-common-0.1.7/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
+- `crypto-common 0.2.2`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/crypto-common/0.2.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/crypto-common-0.2.2/LICENSE-APACHE`](THIRD-PARTY-LICENSES/crypto-common-0.2.2/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
+- `digest 0.10.7`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/digest/0.10.7/download) -> [`.ahcl/THIRD-PARTY-LICENSES/digest-0.10.7/LICENSE-APACHE`](THIRD-PARTY-LICENSES/digest-0.10.7/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
+- `digest 0.11.3`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/digest/0.11.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/digest-0.11.3/LICENSE-APACHE`](THIRD-PARTY-LICENSES/digest-0.11.3/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
+- `universal-hash 0.6.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/universal-hash/0.6.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/universal-hash-0.6.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/universal-hash-0.6.1/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
+- `digest 0.11.3`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/digest/0.11.3/download) -> [`.ahcl/THIRD-PARTY-LICENSES/digest-0.11.3/LICENSE-MIT`](THIRD-PARTY-LICENSES/digest-0.11.3/LICENSE-MIT) (SHA-256 `af59cea35d7f5e2777a713b8d155d65efa2c339eb43f3c14e868c6ac8506edad`; 1103 bytes).
+- `aead 0.6.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/aead/0.6.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/aead-0.6.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/aead-0.6.1/LICENSE-APACHE) (SHA-256 `b1cf9a3333ca78152b859012cd4a804156e5243e9ca20ad1df7327ba5ea7405c`; 10850 bytes).
+- `crypto-common 0.2.2`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/crypto-common/0.2.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/crypto-common-0.2.2/LICENSE-MIT`](THIRD-PARTY-LICENSES/crypto-common-0.2.2/LICENSE-MIT) (SHA-256 `d2e7ec5355c96eeade56b09187ceb48a6a30299da3ce7531a66d3d11405ab963`; 1070 bytes).
+- `universal-hash 0.6.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/universal-hash/0.6.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/universal-hash-0.6.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/universal-hash-0.6.1/LICENSE-MIT) (SHA-256 `efa52eb70a774b62c50cf50f5e57e2625c29d375d09b91132f4f020e47b9944e`; 1070 bytes).
 
 ### try-lock
 
@@ -1664,7 +1664,7 @@ Canonical upstream: <https://github.com/seanmonstar/try-lock>
 
 License evidence:
 
-- `try-lock 0.2.5`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/try-lock/0.2.5/download) -> [`AHCL/THIRD-PARTY-LICENSES/try-lock-0.2.5/LICENSE`](THIRD-PARTY-LICENSES/try-lock-0.2.5/LICENSE) (SHA-256 `c816a0749cdc6bf062a5111c159723de51b2bfac66a1dac2655abd9e6b1583eb`; 1096 bytes).
+- `try-lock 0.2.5`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/try-lock/0.2.5/download) -> [`.ahcl/THIRD-PARTY-LICENSES/try-lock-0.2.5/LICENSE`](THIRD-PARTY-LICENSES/try-lock-0.2.5/LICENSE) (SHA-256 `c816a0749cdc6bf062a5111c159723de51b2bfac66a1dac2655abd9e6b1583eb`; 1096 bytes).
 
 ### typenum
 
@@ -1676,9 +1676,9 @@ Canonical upstream: <https://github.com/paholg/typenum>
 
 License evidence:
 
-- `typenum 1.20.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/typenum/1.20.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/typenum-1.20.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/typenum-1.20.1/LICENSE-APACHE) (SHA-256 `516b24e051bf5630880ebbd55c40a25ce9552ebaf8970a53e8976eb70e522406`; 10835 bytes).
-- `typenum 1.20.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/typenum/1.20.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/typenum-1.20.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/typenum-1.20.1/LICENSE-MIT) (SHA-256 `a825bd853ab71619a4923d7b4311221427848070ff44d990da39b0b274c1683f`; 1083 bytes).
-- `typenum 1.20.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/typenum/1.20.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/typenum-1.20.1/LICENSE`](THIRD-PARTY-LICENSES/typenum-1.20.1/LICENSE) (SHA-256 `db11fec9946737df39ca3898d9cd8c10ec6f6c3a884a6802b0ad0b81b4e8f23a`; 17 bytes).
+- `typenum 1.20.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/typenum/1.20.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/typenum-1.20.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/typenum-1.20.1/LICENSE-APACHE) (SHA-256 `516b24e051bf5630880ebbd55c40a25ce9552ebaf8970a53e8976eb70e522406`; 10835 bytes).
+- `typenum 1.20.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/typenum/1.20.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/typenum-1.20.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/typenum-1.20.1/LICENSE-MIT) (SHA-256 `a825bd853ab71619a4923d7b4311221427848070ff44d990da39b0b274c1683f`; 1083 bytes).
+- `typenum 1.20.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/typenum/1.20.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/typenum-1.20.1/LICENSE`](THIRD-PARTY-LICENSES/typenum-1.20.1/LICENSE) (SHA-256 `db11fec9946737df39ca3898d9cd8c10ec6f6c3a884a6802b0ad0b81b4e8f23a`; 17 bytes).
 
 ### unicode-ident
 
@@ -1690,9 +1690,9 @@ Canonical upstream: <https://github.com/dtolnay/unicode-ident>
 
 License evidence:
 
-- `unicode-ident 1.0.24`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/unicode-ident/1.0.24/download) -> [`AHCL/THIRD-PARTY-LICENSES/unicode-ident-1.0.24/LICENSE-MIT`](THIRD-PARTY-LICENSES/unicode-ident-1.0.24/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `unicode-ident 1.0.24`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/unicode-ident/1.0.24/download) -> [`AHCL/THIRD-PARTY-LICENSES/unicode-ident-1.0.24/LICENSE-APACHE`](THIRD-PARTY-LICENSES/unicode-ident-1.0.24/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
-- `unicode-ident 1.0.24`: crate archive member [`LICENSE-UNICODE`](https://crates.io/api/v1/crates/unicode-ident/1.0.24/download) -> [`AHCL/THIRD-PARTY-LICENSES/unicode-ident-1.0.24/LICENSE-UNICODE`](THIRD-PARTY-LICENSES/unicode-ident-1.0.24/LICENSE-UNICODE) (SHA-256 `f7db81051789b729fea528a63ec4c938fdcb93d9d61d97dc8cc2e9df6d47f2a1`; 1995 bytes).
+- `unicode-ident 1.0.24`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/unicode-ident/1.0.24/download) -> [`.ahcl/THIRD-PARTY-LICENSES/unicode-ident-1.0.24/LICENSE-MIT`](THIRD-PARTY-LICENSES/unicode-ident-1.0.24/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `unicode-ident 1.0.24`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/unicode-ident/1.0.24/download) -> [`.ahcl/THIRD-PARTY-LICENSES/unicode-ident-1.0.24/LICENSE-APACHE`](THIRD-PARTY-LICENSES/unicode-ident-1.0.24/LICENSE-APACHE) (SHA-256 `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`; 9723 bytes).
+- `unicode-ident 1.0.24`: crate archive member [`LICENSE-UNICODE`](https://crates.io/api/v1/crates/unicode-ident/1.0.24/download) -> [`.ahcl/THIRD-PARTY-LICENSES/unicode-ident-1.0.24/LICENSE-UNICODE`](THIRD-PARTY-LICENSES/unicode-ident-1.0.24/LICENSE-UNICODE) (SHA-256 `f7db81051789b729fea528a63ec4c938fdcb93d9d61d97dc8cc2e9df6d47f2a1`; 1995 bytes).
 
 ### universal-hashes
 
@@ -1704,8 +1704,8 @@ Canonical upstream: <https://github.com/RustCrypto/universal-hashes>
 
 License evidence:
 
-- `poly1305 0.9.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/poly1305/0.9.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/poly1305-0.9.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/poly1305-0.9.1/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
-- `poly1305 0.9.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/poly1305/0.9.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/poly1305-0.9.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/poly1305-0.9.1/LICENSE-MIT) (SHA-256 `b67acfaaf787b346e1d3bf7654b4fabfd20360fdeb4351cc5e9d624147824527`; 1082 bytes).
+- `poly1305 0.9.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/poly1305/0.9.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/poly1305-0.9.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/poly1305-0.9.1/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
+- `poly1305 0.9.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/poly1305/0.9.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/poly1305-0.9.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/poly1305-0.9.1/LICENSE-MIT) (SHA-256 `b67acfaaf787b346e1d3bf7654b4fabfd20360fdeb4351cc5e9d624147824527`; 1082 bytes).
 
 ### untrusted
 
@@ -1717,7 +1717,7 @@ Canonical upstream: <https://github.com/briansmith/untrusted>
 
 License evidence:
 
-- `untrusted 0.9.0`: crate archive member [`LICENSE.txt`](https://crates.io/api/v1/crates/untrusted/0.9.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/untrusted-0.9.0/LICENSE.txt`](THIRD-PARTY-LICENSES/untrusted-0.9.0/LICENSE.txt) (SHA-256 `7abd9b6960dcf7d4d0a48606a5b71bfe37d472db68d70637f3a58a56785f1621`; 769 bytes).
+- `untrusted 0.9.0`: crate archive member [`LICENSE.txt`](https://crates.io/api/v1/crates/untrusted/0.9.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/untrusted-0.9.0/LICENSE.txt`](THIRD-PARTY-LICENSES/untrusted-0.9.0/LICENSE.txt) (SHA-256 `7abd9b6960dcf7d4d0a48606a5b71bfe37d472db68d70637f3a58a56785f1621`; 769 bytes).
 
 ### utils
 
@@ -1736,22 +1736,22 @@ Canonical upstream: <https://github.com/RustCrypto/utils>
 
 License evidence:
 
-- `cmov 0.5.4`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/cmov/0.5.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/cmov-0.5.4/LICENSE-MIT`](THIRD-PARTY-LICENSES/cmov-0.5.4/LICENSE-MIT) (SHA-256 `70c9d40f1f9545c3f133b8a67206e89da850f6468eed072281bb3701514114a9`; 1082 bytes).
-- `zeroize 1.9.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/zeroize/1.9.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/zeroize-1.9.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/zeroize-1.9.0/LICENSE-MIT) (SHA-256 `8c7516d4b27b1e495be5e38b612298b63de48d05f49cdac94f70f3cd70f8864b`; 1082 bytes).
-- `ctutils 0.4.2`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/ctutils/0.4.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/ctutils-0.4.2/LICENSE-MIT`](THIRD-PARTY-LICENSES/ctutils-0.4.2/LICENSE-MIT) (SHA-256 `91585c36e4fb9ab4ca0d3dfac5d66d3c0c62cc51f640a0e1196542daf2267eae`; 1082 bytes).
-- `block-buffer 0.12.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/block-buffer/0.12.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/block-buffer-0.12.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/block-buffer-0.12.1/LICENSE-MIT) (SHA-256 `98181e7249d0c01737645ec982499ce99a0f07eb8f7d625b8840d799d10dbc01`; 1082 bytes).
-- `inout 0.2.2`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/inout/0.2.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/inout-0.2.2/LICENSE-MIT`](THIRD-PARTY-LICENSES/inout-0.2.2/LICENSE-MIT) (SHA-256 `a07fcacc3c60de4dc0fab10ac9d6aaba7379974e28451c99da7f7df09c25b28c`; 1115 bytes).
-- `block-buffer 0.10.4`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/block-buffer/0.10.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/block-buffer-0.10.4/LICENSE-APACHE`](THIRD-PARTY-LICENSES/block-buffer-0.10.4/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
-- `block-buffer 0.12.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/block-buffer/0.12.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/block-buffer-0.12.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/block-buffer-0.12.1/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
-- `cpufeatures 0.2.17`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/cpufeatures/0.2.17/download) -> [`AHCL/THIRD-PARTY-LICENSES/cpufeatures-0.2.17/LICENSE-APACHE`](THIRD-PARTY-LICENSES/cpufeatures-0.2.17/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
-- `cpufeatures 0.3.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/cpufeatures/0.3.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/cpufeatures-0.3.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/cpufeatures-0.3.0/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
-- `inout 0.2.2`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/inout/0.2.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/inout-0.2.2/LICENSE-APACHE`](THIRD-PARTY-LICENSES/inout-0.2.2/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
-- `cpufeatures 0.2.17`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/cpufeatures/0.2.17/download) -> [`AHCL/THIRD-PARTY-LICENSES/cpufeatures-0.2.17/LICENSE-MIT`](THIRD-PARTY-LICENSES/cpufeatures-0.2.17/LICENSE-MIT) (SHA-256 `ae9baa7beea910273c2f384c2a6b721fb7bd02bda3436074a1072e4ee689f985`; 1082 bytes).
-- `cpufeatures 0.3.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/cpufeatures/0.3.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/cpufeatures-0.3.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/cpufeatures-0.3.0/LICENSE-MIT) (SHA-256 `ae9baa7beea910273c2f384c2a6b721fb7bd02bda3436074a1072e4ee689f985`; 1082 bytes).
-- `cmov 0.5.4`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/cmov/0.5.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/cmov-0.5.4/LICENSE-APACHE`](THIRD-PARTY-LICENSES/cmov-0.5.4/LICENSE-APACHE) (SHA-256 `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`; 11358 bytes).
-- `ctutils 0.4.2`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/ctutils/0.4.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/ctutils-0.4.2/LICENSE-APACHE`](THIRD-PARTY-LICENSES/ctutils-0.4.2/LICENSE-APACHE) (SHA-256 `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`; 11358 bytes).
-- `zeroize 1.9.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/zeroize/1.9.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/zeroize-1.9.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/zeroize-1.9.0/LICENSE-APACHE) (SHA-256 `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`; 11358 bytes).
-- `block-buffer 0.10.4`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/block-buffer/0.10.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/block-buffer-0.10.4/LICENSE-MIT`](THIRD-PARTY-LICENSES/block-buffer-0.10.4/LICENSE-MIT) (SHA-256 `d5c22aa3118d240e877ad41c5d9fa232f9c77d757d4aac0c2f943afc0a95e0ef`; 1082 bytes).
+- `cmov 0.5.4`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/cmov/0.5.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cmov-0.5.4/LICENSE-MIT`](THIRD-PARTY-LICENSES/cmov-0.5.4/LICENSE-MIT) (SHA-256 `70c9d40f1f9545c3f133b8a67206e89da850f6468eed072281bb3701514114a9`; 1082 bytes).
+- `zeroize 1.9.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/zeroize/1.9.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/zeroize-1.9.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/zeroize-1.9.0/LICENSE-MIT) (SHA-256 `8c7516d4b27b1e495be5e38b612298b63de48d05f49cdac94f70f3cd70f8864b`; 1082 bytes).
+- `ctutils 0.4.2`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/ctutils/0.4.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/ctutils-0.4.2/LICENSE-MIT`](THIRD-PARTY-LICENSES/ctutils-0.4.2/LICENSE-MIT) (SHA-256 `91585c36e4fb9ab4ca0d3dfac5d66d3c0c62cc51f640a0e1196542daf2267eae`; 1082 bytes).
+- `block-buffer 0.12.1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/block-buffer/0.12.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/block-buffer-0.12.1/LICENSE-MIT`](THIRD-PARTY-LICENSES/block-buffer-0.12.1/LICENSE-MIT) (SHA-256 `98181e7249d0c01737645ec982499ce99a0f07eb8f7d625b8840d799d10dbc01`; 1082 bytes).
+- `inout 0.2.2`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/inout/0.2.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/inout-0.2.2/LICENSE-MIT`](THIRD-PARTY-LICENSES/inout-0.2.2/LICENSE-MIT) (SHA-256 `a07fcacc3c60de4dc0fab10ac9d6aaba7379974e28451c99da7f7df09c25b28c`; 1115 bytes).
+- `block-buffer 0.10.4`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/block-buffer/0.10.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/block-buffer-0.10.4/LICENSE-APACHE`](THIRD-PARTY-LICENSES/block-buffer-0.10.4/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
+- `block-buffer 0.12.1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/block-buffer/0.12.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/block-buffer-0.12.1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/block-buffer-0.12.1/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
+- `cpufeatures 0.2.17`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/cpufeatures/0.2.17/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cpufeatures-0.2.17/LICENSE-APACHE`](THIRD-PARTY-LICENSES/cpufeatures-0.2.17/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
+- `cpufeatures 0.3.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/cpufeatures/0.3.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cpufeatures-0.3.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/cpufeatures-0.3.0/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
+- `inout 0.2.2`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/inout/0.2.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/inout-0.2.2/LICENSE-APACHE`](THIRD-PARTY-LICENSES/inout-0.2.2/LICENSE-APACHE) (SHA-256 `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`; 10849 bytes).
+- `cpufeatures 0.2.17`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/cpufeatures/0.2.17/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cpufeatures-0.2.17/LICENSE-MIT`](THIRD-PARTY-LICENSES/cpufeatures-0.2.17/LICENSE-MIT) (SHA-256 `ae9baa7beea910273c2f384c2a6b721fb7bd02bda3436074a1072e4ee689f985`; 1082 bytes).
+- `cpufeatures 0.3.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/cpufeatures/0.3.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cpufeatures-0.3.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/cpufeatures-0.3.0/LICENSE-MIT) (SHA-256 `ae9baa7beea910273c2f384c2a6b721fb7bd02bda3436074a1072e4ee689f985`; 1082 bytes).
+- `cmov 0.5.4`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/cmov/0.5.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cmov-0.5.4/LICENSE-APACHE`](THIRD-PARTY-LICENSES/cmov-0.5.4/LICENSE-APACHE) (SHA-256 `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`; 11358 bytes).
+- `ctutils 0.4.2`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/ctutils/0.4.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/ctutils-0.4.2/LICENSE-APACHE`](THIRD-PARTY-LICENSES/ctutils-0.4.2/LICENSE-APACHE) (SHA-256 `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`; 11358 bytes).
+- `zeroize 1.9.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/zeroize/1.9.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/zeroize-1.9.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/zeroize-1.9.0/LICENSE-APACHE) (SHA-256 `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`; 11358 bytes).
+- `block-buffer 0.10.4`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/block-buffer/0.10.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/block-buffer-0.10.4/LICENSE-MIT`](THIRD-PARTY-LICENSES/block-buffer-0.10.4/LICENSE-MIT) (SHA-256 `d5c22aa3118d240e877ad41c5d9fa232f9c77d757d4aac0c2f943afc0a95e0ef`; 1082 bytes).
 
 ### version_check
 
@@ -1763,8 +1763,8 @@ Canonical upstream: <https://github.com/SergioBenitez/version_check>
 
 License evidence:
 
-- `version_check 0.9.5`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/version_check/0.9.5/download) -> [`AHCL/THIRD-PARTY-LICENSES/version_check-0.9.5/LICENSE-APACHE`](THIRD-PARTY-LICENSES/version_check-0.9.5/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
-- `version_check 0.9.5`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/version_check/0.9.5/download) -> [`AHCL/THIRD-PARTY-LICENSES/version_check-0.9.5/LICENSE-MIT`](THIRD-PARTY-LICENSES/version_check-0.9.5/LICENSE-MIT) (SHA-256 `b7e650f3fce5c53249d1cdc608b54df156a97edd636cf9d23498d0cfe7aec63e`; 1085 bytes).
+- `version_check 0.9.5`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/version_check/0.9.5/download) -> [`.ahcl/THIRD-PARTY-LICENSES/version_check-0.9.5/LICENSE-APACHE`](THIRD-PARTY-LICENSES/version_check-0.9.5/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `version_check 0.9.5`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/version_check/0.9.5/download) -> [`.ahcl/THIRD-PARTY-LICENSES/version_check-0.9.5/LICENSE-MIT`](THIRD-PARTY-LICENSES/version_check-0.9.5/LICENSE-MIT) (SHA-256 `b7e650f3fce5c53249d1cdc608b54df156a97edd636cf9d23498d0cfe7aec63e`; 1085 bytes).
 
 ### want
 
@@ -1776,7 +1776,7 @@ Canonical upstream: <https://github.com/seanmonstar/want>
 
 License evidence:
 
-- `want 0.3.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/want/0.3.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/want-0.3.1/LICENSE`](THIRD-PARTY-LICENSES/want-0.3.1/LICENSE) (SHA-256 `a65f5d0a945d267751344c95665945b90c030ea107faf5c85d518929886187da`; 1063 bytes).
+- `want 0.3.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/want/0.3.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/want-0.3.1/LICENSE`](THIRD-PARTY-LICENSES/want-0.3.1/LICENSE) (SHA-256 `a65f5d0a945d267751344c95665945b90c030ea107faf5c85d518929886187da`; 1063 bytes).
 
 ### wasi
 
@@ -1788,9 +1788,9 @@ Canonical upstream: <https://github.com/bytecodealliance/wasi>
 
 License evidence:
 
-- `wasi 0.11.1+wasi-snapshot-preview1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/wasi/0.11.1+wasi-snapshot-preview1/download) -> [`AHCL/THIRD-PARTY-LICENSES/wasi-0.11.1+wasi-snapshot-preview1/LICENSE-MIT`](THIRD-PARTY-LICENSES/wasi-0.11.1+wasi-snapshot-preview1/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `wasi 0.11.1+wasi-snapshot-preview1`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/wasi/0.11.1+wasi-snapshot-preview1/download) -> [`AHCL/THIRD-PARTY-LICENSES/wasi-0.11.1+wasi-snapshot-preview1/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/wasi-0.11.1+wasi-snapshot-preview1/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `wasi 0.11.1+wasi-snapshot-preview1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/wasi/0.11.1+wasi-snapshot-preview1/download) -> [`AHCL/THIRD-PARTY-LICENSES/wasi-0.11.1+wasi-snapshot-preview1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/wasi-0.11.1+wasi-snapshot-preview1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `wasi 0.11.1+wasi-snapshot-preview1`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/wasi/0.11.1+wasi-snapshot-preview1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/wasi-0.11.1+wasi-snapshot-preview1/LICENSE-MIT`](THIRD-PARTY-LICENSES/wasi-0.11.1+wasi-snapshot-preview1/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `wasi 0.11.1+wasi-snapshot-preview1`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/wasi/0.11.1+wasi-snapshot-preview1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/wasi-0.11.1+wasi-snapshot-preview1/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/wasi-0.11.1+wasi-snapshot-preview1/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `wasi 0.11.1+wasi-snapshot-preview1`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/wasi/0.11.1+wasi-snapshot-preview1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/wasi-0.11.1+wasi-snapshot-preview1/LICENSE-APACHE`](THIRD-PARTY-LICENSES/wasi-0.11.1+wasi-snapshot-preview1/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### wasm-encoder
 
@@ -1802,9 +1802,9 @@ Canonical upstream: <https://github.com/bytecodealliance/wasm-tools/tree/main/cr
 
 License evidence:
 
-- `wasm-encoder 0.251.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/wasm-encoder/0.251.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/wasm-encoder-0.251.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/wasm-encoder-0.251.0/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `wasm-encoder 0.251.0`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/wasm-encoder/0.251.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/wasm-encoder-0.251.0/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/wasm-encoder-0.251.0/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `wasm-encoder 0.251.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/wasm-encoder/0.251.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/wasm-encoder-0.251.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/wasm-encoder-0.251.0/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `wasm-encoder 0.251.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/wasm-encoder/0.251.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/wasm-encoder-0.251.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/wasm-encoder-0.251.0/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `wasm-encoder 0.251.0`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/wasm-encoder/0.251.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/wasm-encoder-0.251.0/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/wasm-encoder-0.251.0/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `wasm-encoder 0.251.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/wasm-encoder/0.251.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/wasm-encoder-0.251.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/wasm-encoder-0.251.0/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### wasmparser
 
@@ -1816,9 +1816,9 @@ Canonical upstream: <https://github.com/bytecodealliance/wasm-tools/tree/main/cr
 
 License evidence:
 
-- `wasmparser 0.251.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/wasmparser/0.251.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/wasmparser-0.251.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/wasmparser-0.251.0/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `wasmparser 0.251.0`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/wasmparser/0.251.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/wasmparser-0.251.0/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/wasmparser-0.251.0/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `wasmparser 0.251.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/wasmparser/0.251.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/wasmparser-0.251.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/wasmparser-0.251.0/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `wasmparser 0.251.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/wasmparser/0.251.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/wasmparser-0.251.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/wasmparser-0.251.0/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `wasmparser 0.251.0`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/wasmparser/0.251.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/wasmparser-0.251.0/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/wasmparser-0.251.0/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `wasmparser 0.251.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/wasmparser/0.251.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/wasmparser-0.251.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/wasmparser-0.251.0/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### wasmprinter
 
@@ -1830,9 +1830,9 @@ Canonical upstream: <https://github.com/bytecodealliance/wasm-tools/tree/main/cr
 
 License evidence:
 
-- `wasmprinter 0.251.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/wasmprinter/0.251.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/wasmprinter-0.251.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/wasmprinter-0.251.0/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
-- `wasmprinter 0.251.0`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/wasmprinter/0.251.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/wasmprinter-0.251.0/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/wasmprinter-0.251.0/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `wasmprinter 0.251.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/wasmprinter/0.251.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/wasmprinter-0.251.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/wasmprinter-0.251.0/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
+- `wasmprinter 0.251.0`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/wasmprinter/0.251.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/wasmprinter-0.251.0/LICENSE-MIT`](THIRD-PARTY-LICENSES/wasmprinter-0.251.0/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `wasmprinter 0.251.0`: crate archive member [`LICENSE-Apache-2.0_WITH_LLVM-exception`](https://crates.io/api/v1/crates/wasmprinter/0.251.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/wasmprinter-0.251.0/LICENSE-Apache-2.0_WITH_LLVM-exception`](THIRD-PARTY-LICENSES/wasmprinter-0.251.0/LICENSE-Apache-2.0_WITH_LLVM-exception) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `wasmprinter 0.251.0`: crate archive member [`LICENSE-APACHE`](https://crates.io/api/v1/crates/wasmprinter/0.251.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/wasmprinter-0.251.0/LICENSE-APACHE`](THIRD-PARTY-LICENSES/wasmprinter-0.251.0/LICENSE-APACHE) (SHA-256 `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`; 10847 bytes).
 
 ### Wasmtime
 
@@ -1868,31 +1868,31 @@ Canonical upstream: <https://github.com/bytecodealliance/wasmtime>
 
 License evidence:
 
-- `cranelift-assembler-x64 0.133.1`: immutable upstream file [`LICENSE`](https://raw.githubusercontent.com/bytecodealliance/wasmtime/823d1b8f251494a06288194d0df746191f535ff7/LICENSE) -> [`AHCL/THIRD-PARTY-LICENSES/cranelift-assembler-x64-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-assembler-x64-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `cranelift-assembler-x64-meta 0.133.1`: immutable upstream file [`LICENSE`](https://raw.githubusercontent.com/bytecodealliance/wasmtime/823d1b8f251494a06288194d0df746191f535ff7/LICENSE) -> [`AHCL/THIRD-PARTY-LICENSES/cranelift-assembler-x64-meta-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-assembler-x64-meta-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `cranelift-bforest 0.133.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/cranelift-bforest/0.133.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/cranelift-bforest-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-bforest-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `cranelift-bitset 0.133.1`: immutable upstream file [`LICENSE`](https://raw.githubusercontent.com/bytecodealliance/wasmtime/823d1b8f251494a06288194d0df746191f535ff7/LICENSE) -> [`AHCL/THIRD-PARTY-LICENSES/cranelift-bitset-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-bitset-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `cranelift-codegen 0.133.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/cranelift-codegen/0.133.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/cranelift-codegen-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-codegen-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `cranelift-codegen-meta 0.133.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/cranelift-codegen-meta/0.133.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/cranelift-codegen-meta-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-codegen-meta-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `cranelift-codegen-shared 0.133.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/cranelift-codegen-shared/0.133.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/cranelift-codegen-shared-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-codegen-shared-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `cranelift-control 0.133.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/cranelift-control/0.133.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/cranelift-control-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-control-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `cranelift-entity 0.133.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/cranelift-entity/0.133.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/cranelift-entity-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-entity-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `cranelift-frontend 0.133.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/cranelift-frontend/0.133.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/cranelift-frontend-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-frontend-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `cranelift-isle 0.133.1`: immutable upstream file [`LICENSE`](https://raw.githubusercontent.com/bytecodealliance/wasmtime/823d1b8f251494a06288194d0df746191f535ff7/LICENSE) -> [`AHCL/THIRD-PARTY-LICENSES/cranelift-isle-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-isle-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `cranelift-native 0.133.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/cranelift-native/0.133.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/cranelift-native-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-native-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `cranelift-srcgen 0.133.1`: immutable upstream file [`LICENSE`](https://raw.githubusercontent.com/bytecodealliance/wasmtime/823d1b8f251494a06288194d0df746191f535ff7/LICENSE) -> [`AHCL/THIRD-PARTY-LICENSES/cranelift-srcgen-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-srcgen-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `pulley-interpreter 46.0.1`: immutable upstream file [`LICENSE`](https://raw.githubusercontent.com/bytecodealliance/wasmtime/823d1b8f251494a06288194d0df746191f535ff7/LICENSE) -> [`AHCL/THIRD-PARTY-LICENSES/pulley-interpreter-46.0.1/LICENSE`](THIRD-PARTY-LICENSES/pulley-interpreter-46.0.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `pulley-macros 46.0.1`: immutable upstream file [`LICENSE`](https://raw.githubusercontent.com/bytecodealliance/wasmtime/823d1b8f251494a06288194d0df746191f535ff7/LICENSE) -> [`AHCL/THIRD-PARTY-LICENSES/pulley-macros-46.0.1/LICENSE`](THIRD-PARTY-LICENSES/pulley-macros-46.0.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `wasmtime 46.0.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/wasmtime/46.0.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/wasmtime-46.0.1/LICENSE`](THIRD-PARTY-LICENSES/wasmtime-46.0.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `wasmtime-environ 46.0.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/wasmtime-environ/46.0.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/wasmtime-environ-46.0.1/LICENSE`](THIRD-PARTY-LICENSES/wasmtime-environ-46.0.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `wasmtime-internal-component-util 46.0.1`: immutable upstream file [`LICENSE`](https://raw.githubusercontent.com/bytecodealliance/wasmtime/823d1b8f251494a06288194d0df746191f535ff7/LICENSE) -> [`AHCL/THIRD-PARTY-LICENSES/wasmtime-internal-component-util-46.0.1/LICENSE`](THIRD-PARTY-LICENSES/wasmtime-internal-component-util-46.0.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `wasmtime-internal-core 46.0.1`: immutable upstream file [`LICENSE`](https://raw.githubusercontent.com/bytecodealliance/wasmtime/823d1b8f251494a06288194d0df746191f535ff7/LICENSE) -> [`AHCL/THIRD-PARTY-LICENSES/wasmtime-internal-core-46.0.1/LICENSE`](THIRD-PARTY-LICENSES/wasmtime-internal-core-46.0.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `wasmtime-internal-cranelift 46.0.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/wasmtime-internal-cranelift/46.0.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/wasmtime-internal-cranelift-46.0.1/LICENSE`](THIRD-PARTY-LICENSES/wasmtime-internal-cranelift-46.0.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `wasmtime-internal-fiber 46.0.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/wasmtime-internal-fiber/46.0.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/wasmtime-internal-fiber-46.0.1/LICENSE`](THIRD-PARTY-LICENSES/wasmtime-internal-fiber-46.0.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `wasmtime-internal-jit-debug 46.0.1`: immutable upstream file [`LICENSE`](https://raw.githubusercontent.com/bytecodealliance/wasmtime/823d1b8f251494a06288194d0df746191f535ff7/LICENSE) -> [`AHCL/THIRD-PARTY-LICENSES/wasmtime-internal-jit-debug-46.0.1/LICENSE`](THIRD-PARTY-LICENSES/wasmtime-internal-jit-debug-46.0.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `wasmtime-internal-jit-icache-coherence 46.0.1`: immutable upstream file [`LICENSE`](https://raw.githubusercontent.com/bytecodealliance/wasmtime/823d1b8f251494a06288194d0df746191f535ff7/LICENSE) -> [`AHCL/THIRD-PARTY-LICENSES/wasmtime-internal-jit-icache-coherence-46.0.1/LICENSE`](THIRD-PARTY-LICENSES/wasmtime-internal-jit-icache-coherence-46.0.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `wasmtime-internal-unwinder 46.0.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/wasmtime-internal-unwinder/46.0.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/wasmtime-internal-unwinder-46.0.1/LICENSE`](THIRD-PARTY-LICENSES/wasmtime-internal-unwinder-46.0.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
-- `wasmtime-internal-versioned-export-macros 46.0.1`: immutable upstream file [`LICENSE`](https://raw.githubusercontent.com/bytecodealliance/wasmtime/823d1b8f251494a06288194d0df746191f535ff7/LICENSE) -> [`AHCL/THIRD-PARTY-LICENSES/wasmtime-internal-versioned-export-macros-46.0.1/LICENSE`](THIRD-PARTY-LICENSES/wasmtime-internal-versioned-export-macros-46.0.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `cranelift-assembler-x64 0.133.1`: immutable upstream file [`LICENSE`](https://raw.githubusercontent.com/bytecodealliance/wasmtime/823d1b8f251494a06288194d0df746191f535ff7/LICENSE) -> [`.ahcl/THIRD-PARTY-LICENSES/cranelift-assembler-x64-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-assembler-x64-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `cranelift-assembler-x64-meta 0.133.1`: immutable upstream file [`LICENSE`](https://raw.githubusercontent.com/bytecodealliance/wasmtime/823d1b8f251494a06288194d0df746191f535ff7/LICENSE) -> [`.ahcl/THIRD-PARTY-LICENSES/cranelift-assembler-x64-meta-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-assembler-x64-meta-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `cranelift-bforest 0.133.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/cranelift-bforest/0.133.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cranelift-bforest-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-bforest-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `cranelift-bitset 0.133.1`: immutable upstream file [`LICENSE`](https://raw.githubusercontent.com/bytecodealliance/wasmtime/823d1b8f251494a06288194d0df746191f535ff7/LICENSE) -> [`.ahcl/THIRD-PARTY-LICENSES/cranelift-bitset-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-bitset-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `cranelift-codegen 0.133.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/cranelift-codegen/0.133.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cranelift-codegen-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-codegen-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `cranelift-codegen-meta 0.133.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/cranelift-codegen-meta/0.133.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cranelift-codegen-meta-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-codegen-meta-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `cranelift-codegen-shared 0.133.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/cranelift-codegen-shared/0.133.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cranelift-codegen-shared-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-codegen-shared-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `cranelift-control 0.133.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/cranelift-control/0.133.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cranelift-control-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-control-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `cranelift-entity 0.133.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/cranelift-entity/0.133.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cranelift-entity-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-entity-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `cranelift-frontend 0.133.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/cranelift-frontend/0.133.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cranelift-frontend-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-frontend-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `cranelift-isle 0.133.1`: immutable upstream file [`LICENSE`](https://raw.githubusercontent.com/bytecodealliance/wasmtime/823d1b8f251494a06288194d0df746191f535ff7/LICENSE) -> [`.ahcl/THIRD-PARTY-LICENSES/cranelift-isle-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-isle-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `cranelift-native 0.133.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/cranelift-native/0.133.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/cranelift-native-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-native-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `cranelift-srcgen 0.133.1`: immutable upstream file [`LICENSE`](https://raw.githubusercontent.com/bytecodealliance/wasmtime/823d1b8f251494a06288194d0df746191f535ff7/LICENSE) -> [`.ahcl/THIRD-PARTY-LICENSES/cranelift-srcgen-0.133.1/LICENSE`](THIRD-PARTY-LICENSES/cranelift-srcgen-0.133.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `pulley-interpreter 46.0.1`: immutable upstream file [`LICENSE`](https://raw.githubusercontent.com/bytecodealliance/wasmtime/823d1b8f251494a06288194d0df746191f535ff7/LICENSE) -> [`.ahcl/THIRD-PARTY-LICENSES/pulley-interpreter-46.0.1/LICENSE`](THIRD-PARTY-LICENSES/pulley-interpreter-46.0.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `pulley-macros 46.0.1`: immutable upstream file [`LICENSE`](https://raw.githubusercontent.com/bytecodealliance/wasmtime/823d1b8f251494a06288194d0df746191f535ff7/LICENSE) -> [`.ahcl/THIRD-PARTY-LICENSES/pulley-macros-46.0.1/LICENSE`](THIRD-PARTY-LICENSES/pulley-macros-46.0.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `wasmtime 46.0.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/wasmtime/46.0.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/wasmtime-46.0.1/LICENSE`](THIRD-PARTY-LICENSES/wasmtime-46.0.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `wasmtime-environ 46.0.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/wasmtime-environ/46.0.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/wasmtime-environ-46.0.1/LICENSE`](THIRD-PARTY-LICENSES/wasmtime-environ-46.0.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `wasmtime-internal-component-util 46.0.1`: immutable upstream file [`LICENSE`](https://raw.githubusercontent.com/bytecodealliance/wasmtime/823d1b8f251494a06288194d0df746191f535ff7/LICENSE) -> [`.ahcl/THIRD-PARTY-LICENSES/wasmtime-internal-component-util-46.0.1/LICENSE`](THIRD-PARTY-LICENSES/wasmtime-internal-component-util-46.0.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `wasmtime-internal-core 46.0.1`: immutable upstream file [`LICENSE`](https://raw.githubusercontent.com/bytecodealliance/wasmtime/823d1b8f251494a06288194d0df746191f535ff7/LICENSE) -> [`.ahcl/THIRD-PARTY-LICENSES/wasmtime-internal-core-46.0.1/LICENSE`](THIRD-PARTY-LICENSES/wasmtime-internal-core-46.0.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `wasmtime-internal-cranelift 46.0.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/wasmtime-internal-cranelift/46.0.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/wasmtime-internal-cranelift-46.0.1/LICENSE`](THIRD-PARTY-LICENSES/wasmtime-internal-cranelift-46.0.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `wasmtime-internal-fiber 46.0.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/wasmtime-internal-fiber/46.0.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/wasmtime-internal-fiber-46.0.1/LICENSE`](THIRD-PARTY-LICENSES/wasmtime-internal-fiber-46.0.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `wasmtime-internal-jit-debug 46.0.1`: immutable upstream file [`LICENSE`](https://raw.githubusercontent.com/bytecodealliance/wasmtime/823d1b8f251494a06288194d0df746191f535ff7/LICENSE) -> [`.ahcl/THIRD-PARTY-LICENSES/wasmtime-internal-jit-debug-46.0.1/LICENSE`](THIRD-PARTY-LICENSES/wasmtime-internal-jit-debug-46.0.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `wasmtime-internal-jit-icache-coherence 46.0.1`: immutable upstream file [`LICENSE`](https://raw.githubusercontent.com/bytecodealliance/wasmtime/823d1b8f251494a06288194d0df746191f535ff7/LICENSE) -> [`.ahcl/THIRD-PARTY-LICENSES/wasmtime-internal-jit-icache-coherence-46.0.1/LICENSE`](THIRD-PARTY-LICENSES/wasmtime-internal-jit-icache-coherence-46.0.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `wasmtime-internal-unwinder 46.0.1`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/wasmtime-internal-unwinder/46.0.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/wasmtime-internal-unwinder-46.0.1/LICENSE`](THIRD-PARTY-LICENSES/wasmtime-internal-unwinder-46.0.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `wasmtime-internal-versioned-export-macros 46.0.1`: immutable upstream file [`LICENSE`](https://raw.githubusercontent.com/bytecodealliance/wasmtime/823d1b8f251494a06288194d0df746191f535ff7/LICENSE) -> [`.ahcl/THIRD-PARTY-LICENSES/wasmtime-internal-versioned-export-macros-46.0.1/LICENSE`](THIRD-PARTY-LICENSES/wasmtime-internal-versioned-export-macros-46.0.1/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
 
 ### webpki
 
@@ -1904,7 +1904,7 @@ Canonical upstream: <https://github.com/rustls/webpki>
 
 License evidence:
 
-- `rustls-webpki 0.103.13`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/rustls-webpki/0.103.13/download) -> [`AHCL/THIRD-PARTY-LICENSES/rustls-webpki-0.103.13/LICENSE`](THIRD-PARTY-LICENSES/rustls-webpki-0.103.13/LICENSE) (SHA-256 `5b698ca13897be3afdb7174256fa1574f8c6892b8bea1a66dd6469d3fe27885a`; 916 bytes).
+- `rustls-webpki 0.103.13`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/rustls-webpki/0.103.13/download) -> [`.ahcl/THIRD-PARTY-LICENSES/rustls-webpki-0.103.13/LICENSE`](THIRD-PARTY-LICENSES/rustls-webpki-0.103.13/LICENSE) (SHA-256 `5b698ca13897be3afdb7174256fa1574f8c6892b8bea1a66dd6469d3fe27885a`; 916 bytes).
 
 ### webpki-roots
 
@@ -1916,7 +1916,7 @@ Canonical upstream: <https://github.com/rustls/webpki-roots>
 
 License evidence:
 
-- `webpki-roots 1.0.8`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/webpki-roots/1.0.8/download) -> [`AHCL/THIRD-PARTY-LICENSES/webpki-roots-1.0.8/LICENSE`](THIRD-PARTY-LICENSES/webpki-roots-1.0.8/LICENSE) (SHA-256 `e271993808fec50ab29350b39539cdec611a9103f827e0aa26d61da70e2d33f8`; 2371 bytes).
+- `webpki-roots 1.0.8`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/webpki-roots/1.0.8/download) -> [`.ahcl/THIRD-PARTY-LICENSES/webpki-roots-1.0.8/LICENSE`](THIRD-PARTY-LICENSES/webpki-roots-1.0.8/LICENSE) (SHA-256 `e271993808fec50ab29350b39539cdec611a9103f827e0aa26d61da70e2d33f8`; 2371 bytes).
 
 ### winapi-util
 
@@ -1928,9 +1928,9 @@ Canonical upstream: <https://github.com/BurntSushi/winapi-util>
 
 License evidence:
 
-- `winapi-util 0.1.11`: crate archive member [`COPYING`](https://crates.io/api/v1/crates/winapi-util/0.1.11/download) -> [`AHCL/THIRD-PARTY-LICENSES/winapi-util-0.1.11/COPYING`](THIRD-PARTY-LICENSES/winapi-util-0.1.11/COPYING) (SHA-256 `01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f`; 126 bytes).
-- `winapi-util 0.1.11`: crate archive member [`UNLICENSE`](https://crates.io/api/v1/crates/winapi-util/0.1.11/download) -> [`AHCL/THIRD-PARTY-LICENSES/winapi-util-0.1.11/UNLICENSE`](THIRD-PARTY-LICENSES/winapi-util-0.1.11/UNLICENSE) (SHA-256 `7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c`; 1211 bytes).
-- `winapi-util 0.1.11`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/winapi-util/0.1.11/download) -> [`AHCL/THIRD-PARTY-LICENSES/winapi-util-0.1.11/LICENSE-MIT`](THIRD-PARTY-LICENSES/winapi-util-0.1.11/LICENSE-MIT) (SHA-256 `cb3c929a05e6cbc9de9ab06a4c57eeb60ca8c724bef6c138c87d3a577e27aa14`; 1081 bytes).
+- `winapi-util 0.1.11`: crate archive member [`COPYING`](https://crates.io/api/v1/crates/winapi-util/0.1.11/download) -> [`.ahcl/THIRD-PARTY-LICENSES/winapi-util-0.1.11/COPYING`](THIRD-PARTY-LICENSES/winapi-util-0.1.11/COPYING) (SHA-256 `01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f`; 126 bytes).
+- `winapi-util 0.1.11`: crate archive member [`UNLICENSE`](https://crates.io/api/v1/crates/winapi-util/0.1.11/download) -> [`.ahcl/THIRD-PARTY-LICENSES/winapi-util-0.1.11/UNLICENSE`](THIRD-PARTY-LICENSES/winapi-util-0.1.11/UNLICENSE) (SHA-256 `7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c`; 1211 bytes).
+- `winapi-util 0.1.11`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/winapi-util/0.1.11/download) -> [`.ahcl/THIRD-PARTY-LICENSES/winapi-util-0.1.11/LICENSE-MIT`](THIRD-PARTY-LICENSES/winapi-util-0.1.11/LICENSE-MIT) (SHA-256 `cb3c929a05e6cbc9de9ab06a4c57eeb60ca8c724bef6c138c87d3a577e27aa14`; 1081 bytes).
 
 ### windows-rs
 
@@ -1964,52 +1964,52 @@ Canonical upstream: <https://github.com/microsoft/windows-rs>
 
 License evidence:
 
-- `windows-link 0.2.1`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows-link/0.2.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows-link-0.2.1/license-apache-2.0`](THIRD-PARTY-LICENSES/windows-link-0.2.1/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
-- `windows-sys 0.52.0`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows-sys/0.52.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows-sys-0.52.0/license-apache-2.0`](THIRD-PARTY-LICENSES/windows-sys-0.52.0/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
-- `windows-sys 0.59.0`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows-sys/0.59.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows-sys-0.59.0/license-apache-2.0`](THIRD-PARTY-LICENSES/windows-sys-0.59.0/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
-- `windows-sys 0.60.2`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows-sys/0.60.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows-sys-0.60.2/license-apache-2.0`](THIRD-PARTY-LICENSES/windows-sys-0.60.2/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
-- `windows-sys 0.61.2`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows-sys/0.61.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows-sys-0.61.2/license-apache-2.0`](THIRD-PARTY-LICENSES/windows-sys-0.61.2/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
-- `windows-targets 0.52.6`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows-targets/0.52.6/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows-targets-0.52.6/license-apache-2.0`](THIRD-PARTY-LICENSES/windows-targets-0.52.6/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
-- `windows-targets 0.53.5`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows-targets/0.53.5/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows-targets-0.53.5/license-apache-2.0`](THIRD-PARTY-LICENSES/windows-targets-0.53.5/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
-- `windows_aarch64_gnullvm 0.52.6`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_aarch64_gnullvm/0.52.6/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_aarch64_gnullvm-0.52.6/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_aarch64_gnullvm-0.52.6/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
-- `windows_aarch64_gnullvm 0.53.1`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_aarch64_gnullvm/0.53.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_aarch64_gnullvm-0.53.1/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_aarch64_gnullvm-0.53.1/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
-- `windows_aarch64_msvc 0.52.6`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_aarch64_msvc/0.52.6/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_aarch64_msvc-0.52.6/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_aarch64_msvc-0.52.6/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
-- `windows_aarch64_msvc 0.53.1`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_aarch64_msvc/0.53.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_aarch64_msvc-0.53.1/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_aarch64_msvc-0.53.1/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
-- `windows_i686_gnu 0.52.6`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_i686_gnu/0.52.6/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_i686_gnu-0.52.6/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_i686_gnu-0.52.6/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
-- `windows_i686_gnu 0.53.1`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_i686_gnu/0.53.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_i686_gnu-0.53.1/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_i686_gnu-0.53.1/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
-- `windows_i686_gnullvm 0.52.6`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_i686_gnullvm/0.52.6/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_i686_gnullvm-0.52.6/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_i686_gnullvm-0.52.6/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
-- `windows_i686_gnullvm 0.53.1`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_i686_gnullvm/0.53.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_i686_gnullvm-0.53.1/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_i686_gnullvm-0.53.1/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
-- `windows_i686_msvc 0.52.6`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_i686_msvc/0.52.6/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_i686_msvc-0.52.6/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_i686_msvc-0.52.6/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
-- `windows_i686_msvc 0.53.1`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_i686_msvc/0.53.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_i686_msvc-0.53.1/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_i686_msvc-0.53.1/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
-- `windows_x86_64_gnu 0.52.6`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_x86_64_gnu/0.52.6/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_x86_64_gnu-0.52.6/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_x86_64_gnu-0.52.6/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
-- `windows_x86_64_gnu 0.53.1`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_x86_64_gnu/0.53.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_x86_64_gnu-0.53.1/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_x86_64_gnu-0.53.1/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
-- `windows_x86_64_gnullvm 0.52.6`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_x86_64_gnullvm/0.52.6/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_x86_64_gnullvm-0.52.6/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_x86_64_gnullvm-0.52.6/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
-- `windows_x86_64_gnullvm 0.53.1`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_x86_64_gnullvm/0.53.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_x86_64_gnullvm-0.53.1/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_x86_64_gnullvm-0.53.1/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
-- `windows_x86_64_msvc 0.52.6`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_x86_64_msvc/0.52.6/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_x86_64_msvc-0.52.6/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_x86_64_msvc-0.52.6/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
-- `windows_x86_64_msvc 0.53.1`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_x86_64_msvc/0.53.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_x86_64_msvc-0.53.1/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_x86_64_msvc-0.53.1/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
-- `windows-link 0.2.1`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows-link/0.2.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows-link-0.2.1/license-mit`](THIRD-PARTY-LICENSES/windows-link-0.2.1/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
-- `windows-sys 0.52.0`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows-sys/0.52.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows-sys-0.52.0/license-mit`](THIRD-PARTY-LICENSES/windows-sys-0.52.0/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
-- `windows-sys 0.59.0`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows-sys/0.59.0/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows-sys-0.59.0/license-mit`](THIRD-PARTY-LICENSES/windows-sys-0.59.0/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
-- `windows-sys 0.60.2`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows-sys/0.60.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows-sys-0.60.2/license-mit`](THIRD-PARTY-LICENSES/windows-sys-0.60.2/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
-- `windows-sys 0.61.2`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows-sys/0.61.2/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows-sys-0.61.2/license-mit`](THIRD-PARTY-LICENSES/windows-sys-0.61.2/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
-- `windows-targets 0.52.6`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows-targets/0.52.6/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows-targets-0.52.6/license-mit`](THIRD-PARTY-LICENSES/windows-targets-0.52.6/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
-- `windows-targets 0.53.5`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows-targets/0.53.5/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows-targets-0.53.5/license-mit`](THIRD-PARTY-LICENSES/windows-targets-0.53.5/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
-- `windows_aarch64_gnullvm 0.52.6`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_aarch64_gnullvm/0.52.6/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_aarch64_gnullvm-0.52.6/license-mit`](THIRD-PARTY-LICENSES/windows_aarch64_gnullvm-0.52.6/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
-- `windows_aarch64_gnullvm 0.53.1`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_aarch64_gnullvm/0.53.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_aarch64_gnullvm-0.53.1/license-mit`](THIRD-PARTY-LICENSES/windows_aarch64_gnullvm-0.53.1/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
-- `windows_aarch64_msvc 0.52.6`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_aarch64_msvc/0.52.6/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_aarch64_msvc-0.52.6/license-mit`](THIRD-PARTY-LICENSES/windows_aarch64_msvc-0.52.6/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
-- `windows_aarch64_msvc 0.53.1`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_aarch64_msvc/0.53.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_aarch64_msvc-0.53.1/license-mit`](THIRD-PARTY-LICENSES/windows_aarch64_msvc-0.53.1/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
-- `windows_i686_gnu 0.52.6`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_i686_gnu/0.52.6/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_i686_gnu-0.52.6/license-mit`](THIRD-PARTY-LICENSES/windows_i686_gnu-0.52.6/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
-- `windows_i686_gnu 0.53.1`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_i686_gnu/0.53.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_i686_gnu-0.53.1/license-mit`](THIRD-PARTY-LICENSES/windows_i686_gnu-0.53.1/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
-- `windows_i686_gnullvm 0.52.6`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_i686_gnullvm/0.52.6/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_i686_gnullvm-0.52.6/license-mit`](THIRD-PARTY-LICENSES/windows_i686_gnullvm-0.52.6/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
-- `windows_i686_gnullvm 0.53.1`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_i686_gnullvm/0.53.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_i686_gnullvm-0.53.1/license-mit`](THIRD-PARTY-LICENSES/windows_i686_gnullvm-0.53.1/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
-- `windows_i686_msvc 0.52.6`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_i686_msvc/0.52.6/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_i686_msvc-0.52.6/license-mit`](THIRD-PARTY-LICENSES/windows_i686_msvc-0.52.6/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
-- `windows_i686_msvc 0.53.1`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_i686_msvc/0.53.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_i686_msvc-0.53.1/license-mit`](THIRD-PARTY-LICENSES/windows_i686_msvc-0.53.1/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
-- `windows_x86_64_gnu 0.52.6`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_x86_64_gnu/0.52.6/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_x86_64_gnu-0.52.6/license-mit`](THIRD-PARTY-LICENSES/windows_x86_64_gnu-0.52.6/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
-- `windows_x86_64_gnu 0.53.1`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_x86_64_gnu/0.53.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_x86_64_gnu-0.53.1/license-mit`](THIRD-PARTY-LICENSES/windows_x86_64_gnu-0.53.1/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
-- `windows_x86_64_gnullvm 0.52.6`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_x86_64_gnullvm/0.52.6/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_x86_64_gnullvm-0.52.6/license-mit`](THIRD-PARTY-LICENSES/windows_x86_64_gnullvm-0.52.6/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
-- `windows_x86_64_gnullvm 0.53.1`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_x86_64_gnullvm/0.53.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_x86_64_gnullvm-0.53.1/license-mit`](THIRD-PARTY-LICENSES/windows_x86_64_gnullvm-0.53.1/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
-- `windows_x86_64_msvc 0.52.6`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_x86_64_msvc/0.52.6/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_x86_64_msvc-0.52.6/license-mit`](THIRD-PARTY-LICENSES/windows_x86_64_msvc-0.52.6/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
-- `windows_x86_64_msvc 0.53.1`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_x86_64_msvc/0.53.1/download) -> [`AHCL/THIRD-PARTY-LICENSES/windows_x86_64_msvc-0.53.1/license-mit`](THIRD-PARTY-LICENSES/windows_x86_64_msvc-0.53.1/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
+- `windows-link 0.2.1`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows-link/0.2.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows-link-0.2.1/license-apache-2.0`](THIRD-PARTY-LICENSES/windows-link-0.2.1/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
+- `windows-sys 0.52.0`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows-sys/0.52.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows-sys-0.52.0/license-apache-2.0`](THIRD-PARTY-LICENSES/windows-sys-0.52.0/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
+- `windows-sys 0.59.0`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows-sys/0.59.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows-sys-0.59.0/license-apache-2.0`](THIRD-PARTY-LICENSES/windows-sys-0.59.0/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
+- `windows-sys 0.60.2`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows-sys/0.60.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows-sys-0.60.2/license-apache-2.0`](THIRD-PARTY-LICENSES/windows-sys-0.60.2/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
+- `windows-sys 0.61.2`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows-sys/0.61.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows-sys-0.61.2/license-apache-2.0`](THIRD-PARTY-LICENSES/windows-sys-0.61.2/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
+- `windows-targets 0.52.6`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows-targets/0.52.6/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows-targets-0.52.6/license-apache-2.0`](THIRD-PARTY-LICENSES/windows-targets-0.52.6/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
+- `windows-targets 0.53.5`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows-targets/0.53.5/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows-targets-0.53.5/license-apache-2.0`](THIRD-PARTY-LICENSES/windows-targets-0.53.5/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
+- `windows_aarch64_gnullvm 0.52.6`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_aarch64_gnullvm/0.52.6/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_aarch64_gnullvm-0.52.6/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_aarch64_gnullvm-0.52.6/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
+- `windows_aarch64_gnullvm 0.53.1`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_aarch64_gnullvm/0.53.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_aarch64_gnullvm-0.53.1/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_aarch64_gnullvm-0.53.1/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
+- `windows_aarch64_msvc 0.52.6`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_aarch64_msvc/0.52.6/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_aarch64_msvc-0.52.6/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_aarch64_msvc-0.52.6/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
+- `windows_aarch64_msvc 0.53.1`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_aarch64_msvc/0.53.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_aarch64_msvc-0.53.1/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_aarch64_msvc-0.53.1/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
+- `windows_i686_gnu 0.52.6`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_i686_gnu/0.52.6/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_i686_gnu-0.52.6/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_i686_gnu-0.52.6/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
+- `windows_i686_gnu 0.53.1`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_i686_gnu/0.53.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_i686_gnu-0.53.1/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_i686_gnu-0.53.1/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
+- `windows_i686_gnullvm 0.52.6`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_i686_gnullvm/0.52.6/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_i686_gnullvm-0.52.6/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_i686_gnullvm-0.52.6/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
+- `windows_i686_gnullvm 0.53.1`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_i686_gnullvm/0.53.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_i686_gnullvm-0.53.1/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_i686_gnullvm-0.53.1/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
+- `windows_i686_msvc 0.52.6`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_i686_msvc/0.52.6/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_i686_msvc-0.52.6/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_i686_msvc-0.52.6/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
+- `windows_i686_msvc 0.53.1`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_i686_msvc/0.53.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_i686_msvc-0.53.1/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_i686_msvc-0.53.1/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
+- `windows_x86_64_gnu 0.52.6`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_x86_64_gnu/0.52.6/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_x86_64_gnu-0.52.6/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_x86_64_gnu-0.52.6/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
+- `windows_x86_64_gnu 0.53.1`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_x86_64_gnu/0.53.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_x86_64_gnu-0.53.1/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_x86_64_gnu-0.53.1/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
+- `windows_x86_64_gnullvm 0.52.6`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_x86_64_gnullvm/0.52.6/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_x86_64_gnullvm-0.52.6/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_x86_64_gnullvm-0.52.6/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
+- `windows_x86_64_gnullvm 0.53.1`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_x86_64_gnullvm/0.53.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_x86_64_gnullvm-0.53.1/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_x86_64_gnullvm-0.53.1/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
+- `windows_x86_64_msvc 0.52.6`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_x86_64_msvc/0.52.6/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_x86_64_msvc-0.52.6/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_x86_64_msvc-0.52.6/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
+- `windows_x86_64_msvc 0.53.1`: crate archive member [`license-apache-2.0`](https://crates.io/api/v1/crates/windows_x86_64_msvc/0.53.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_x86_64_msvc-0.53.1/license-apache-2.0`](THIRD-PARTY-LICENSES/windows_x86_64_msvc-0.53.1/license-apache-2.0) (SHA-256 `c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b`; 11351 bytes).
+- `windows-link 0.2.1`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows-link/0.2.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows-link-0.2.1/license-mit`](THIRD-PARTY-LICENSES/windows-link-0.2.1/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
+- `windows-sys 0.52.0`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows-sys/0.52.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows-sys-0.52.0/license-mit`](THIRD-PARTY-LICENSES/windows-sys-0.52.0/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
+- `windows-sys 0.59.0`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows-sys/0.59.0/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows-sys-0.59.0/license-mit`](THIRD-PARTY-LICENSES/windows-sys-0.59.0/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
+- `windows-sys 0.60.2`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows-sys/0.60.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows-sys-0.60.2/license-mit`](THIRD-PARTY-LICENSES/windows-sys-0.60.2/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
+- `windows-sys 0.61.2`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows-sys/0.61.2/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows-sys-0.61.2/license-mit`](THIRD-PARTY-LICENSES/windows-sys-0.61.2/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
+- `windows-targets 0.52.6`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows-targets/0.52.6/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows-targets-0.52.6/license-mit`](THIRD-PARTY-LICENSES/windows-targets-0.52.6/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
+- `windows-targets 0.53.5`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows-targets/0.53.5/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows-targets-0.53.5/license-mit`](THIRD-PARTY-LICENSES/windows-targets-0.53.5/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
+- `windows_aarch64_gnullvm 0.52.6`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_aarch64_gnullvm/0.52.6/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_aarch64_gnullvm-0.52.6/license-mit`](THIRD-PARTY-LICENSES/windows_aarch64_gnullvm-0.52.6/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
+- `windows_aarch64_gnullvm 0.53.1`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_aarch64_gnullvm/0.53.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_aarch64_gnullvm-0.53.1/license-mit`](THIRD-PARTY-LICENSES/windows_aarch64_gnullvm-0.53.1/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
+- `windows_aarch64_msvc 0.52.6`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_aarch64_msvc/0.52.6/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_aarch64_msvc-0.52.6/license-mit`](THIRD-PARTY-LICENSES/windows_aarch64_msvc-0.52.6/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
+- `windows_aarch64_msvc 0.53.1`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_aarch64_msvc/0.53.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_aarch64_msvc-0.53.1/license-mit`](THIRD-PARTY-LICENSES/windows_aarch64_msvc-0.53.1/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
+- `windows_i686_gnu 0.52.6`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_i686_gnu/0.52.6/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_i686_gnu-0.52.6/license-mit`](THIRD-PARTY-LICENSES/windows_i686_gnu-0.52.6/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
+- `windows_i686_gnu 0.53.1`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_i686_gnu/0.53.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_i686_gnu-0.53.1/license-mit`](THIRD-PARTY-LICENSES/windows_i686_gnu-0.53.1/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
+- `windows_i686_gnullvm 0.52.6`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_i686_gnullvm/0.52.6/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_i686_gnullvm-0.52.6/license-mit`](THIRD-PARTY-LICENSES/windows_i686_gnullvm-0.52.6/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
+- `windows_i686_gnullvm 0.53.1`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_i686_gnullvm/0.53.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_i686_gnullvm-0.53.1/license-mit`](THIRD-PARTY-LICENSES/windows_i686_gnullvm-0.53.1/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
+- `windows_i686_msvc 0.52.6`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_i686_msvc/0.52.6/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_i686_msvc-0.52.6/license-mit`](THIRD-PARTY-LICENSES/windows_i686_msvc-0.52.6/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
+- `windows_i686_msvc 0.53.1`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_i686_msvc/0.53.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_i686_msvc-0.53.1/license-mit`](THIRD-PARTY-LICENSES/windows_i686_msvc-0.53.1/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
+- `windows_x86_64_gnu 0.52.6`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_x86_64_gnu/0.52.6/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_x86_64_gnu-0.52.6/license-mit`](THIRD-PARTY-LICENSES/windows_x86_64_gnu-0.52.6/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
+- `windows_x86_64_gnu 0.53.1`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_x86_64_gnu/0.53.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_x86_64_gnu-0.53.1/license-mit`](THIRD-PARTY-LICENSES/windows_x86_64_gnu-0.53.1/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
+- `windows_x86_64_gnullvm 0.52.6`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_x86_64_gnullvm/0.52.6/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_x86_64_gnullvm-0.52.6/license-mit`](THIRD-PARTY-LICENSES/windows_x86_64_gnullvm-0.52.6/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
+- `windows_x86_64_gnullvm 0.53.1`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_x86_64_gnullvm/0.53.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_x86_64_gnullvm-0.53.1/license-mit`](THIRD-PARTY-LICENSES/windows_x86_64_gnullvm-0.53.1/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
+- `windows_x86_64_msvc 0.52.6`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_x86_64_msvc/0.52.6/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_x86_64_msvc-0.52.6/license-mit`](THIRD-PARTY-LICENSES/windows_x86_64_msvc-0.52.6/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
+- `windows_x86_64_msvc 0.53.1`: crate archive member [`license-mit`](https://crates.io/api/v1/crates/windows_x86_64_msvc/0.53.1/download) -> [`.ahcl/THIRD-PARTY-LICENSES/windows_x86_64_msvc-0.53.1/license-mit`](THIRD-PARTY-LICENSES/windows_x86_64_msvc-0.53.1/license-mit) (SHA-256 `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`; 1141 bytes).
 
 ### winx
 
@@ -2021,7 +2021,7 @@ Canonical upstream: <https://github.com/sunfishcode/winx>
 
 License evidence:
 
-- `winx 0.36.4`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/winx/0.36.4/download) -> [`AHCL/THIRD-PARTY-LICENSES/winx-0.36.4/LICENSE`](THIRD-PARTY-LICENSES/winx-0.36.4/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
+- `winx 0.36.4`: crate archive member [`LICENSE`](https://crates.io/api/v1/crates/winx/0.36.4/download) -> [`.ahcl/THIRD-PARTY-LICENSES/winx-0.36.4/LICENSE`](THIRD-PARTY-LICENSES/winx-0.36.4/LICENSE) (SHA-256 `268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5`; 12243 bytes).
 
 ### zmij
 
@@ -2033,7 +2033,7 @@ Canonical upstream: <https://github.com/dtolnay/zmij>
 
 License evidence:
 
-- `zmij 1.0.23`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/zmij/1.0.23/download) -> [`AHCL/THIRD-PARTY-LICENSES/zmij-1.0.23/LICENSE-MIT`](THIRD-PARTY-LICENSES/zmij-1.0.23/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
+- `zmij 1.0.23`: crate archive member [`LICENSE-MIT`](https://crates.io/api/v1/crates/zmij/1.0.23/download) -> [`.ahcl/THIRD-PARTY-LICENSES/zmij-1.0.23/LICENSE-MIT`](THIRD-PARTY-LICENSES/zmij-1.0.23/LICENSE-MIT) (SHA-256 `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`; 1023 bytes).
 
 ## Integrity rules
 
