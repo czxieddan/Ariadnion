@@ -50,6 +50,7 @@ pub const MAX_MINOR_UNITS: u64 = 9_000_000_000_000_000_000;
 /// Stable machine-readable pricing failures.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
+#[repr(usize)]
 pub enum ModelPricingErrorCode {
     /// An argument is empty, malformed, or outside its bound.
     InvalidArgument,
@@ -73,16 +74,17 @@ impl ModelPricingErrorCode {
     /// Returns the stable external machine code.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::InvalidArgument => "MODEL_PRICING_INVALID_ARGUMENT",
-            Self::LimitExceeded => "MODEL_PRICING_LIMIT_EXCEEDED",
-            Self::DuplicateDimension => "MODEL_PRICING_DUPLICATE_DIMENSION",
-            Self::OverlappingWindow => "MODEL_PRICING_OVERLAPPING_WINDOW",
-            Self::DuplicateSchedule => "MODEL_PRICING_DUPLICATE_SCHEDULE",
-            Self::NotFound => "MODEL_PRICING_NOT_FOUND",
-            Self::Overflow => "MODEL_PRICING_OVERFLOW",
-            Self::VersionExhausted => "MODEL_PRICING_VERSION_EXHAUSTED",
-        }
+        const CODES: [&str; 8] = [
+            "MODEL_PRICING_INVALID_ARGUMENT",
+            "MODEL_PRICING_LIMIT_EXCEEDED",
+            "MODEL_PRICING_DUPLICATE_DIMENSION",
+            "MODEL_PRICING_OVERLAPPING_WINDOW",
+            "MODEL_PRICING_DUPLICATE_SCHEDULE",
+            "MODEL_PRICING_NOT_FOUND",
+            "MODEL_PRICING_OVERFLOW",
+            "MODEL_PRICING_VERSION_EXHAUSTED",
+        ];
+        CODES[self as usize]
     }
 }
 
@@ -522,24 +524,37 @@ fn validate_schedule_conflicts(
     schedules: &[ModelPricingSchedule],
 ) -> Result<(), ModelPricingError> {
     for (index, schedule) in schedules.iter().enumerate() {
-        for other in schedules.iter().skip(index + 1) {
-            if schedule.model_id != other.model_id {
-                continue;
-            }
-            if schedule.version == other.version && schedule.window == other.window {
-                return Err(error(ModelPricingErrorCode::DuplicateSchedule));
-            }
-            if schedule.window.overlaps(other.window)
-                && schedule
-                    .entries
-                    .iter()
-                    .any(|entry| other.price_for(entry.dimension).is_some())
-            {
-                return Err(error(ModelPricingErrorCode::OverlappingWindow));
-            }
+        if let Some(code) = schedules
+            .iter()
+            .skip(index + 1)
+            .find_map(|other| schedule_pair_error(schedule, other))
+        {
+            return Err(error(code));
         }
     }
     Ok(())
+}
+
+fn schedule_pair_error(
+    left: &ModelPricingSchedule,
+    right: &ModelPricingSchedule,
+) -> Option<ModelPricingErrorCode> {
+    if left.model_id != right.model_id {
+        return None;
+    }
+    if left.version == right.version && left.window == right.window {
+        return Some(ModelPricingErrorCode::DuplicateSchedule);
+    }
+    if left.window.overlaps(right.window) && shares_dimension(left, right) {
+        return Some(ModelPricingErrorCode::OverlappingWindow);
+    }
+    None
+}
+
+fn shares_dimension(left: &ModelPricingSchedule, right: &ModelPricingSchedule) -> bool {
+    left.entries
+        .iter()
+        .any(|entry| right.price_for(entry.dimension).is_some())
 }
 
 fn valid_model_id(value: &str) -> bool {
