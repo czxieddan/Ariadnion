@@ -58,6 +58,7 @@ pub const MAX_CIPHERTEXT_BYTES: usize = 64 * 1024 * 1024;
 pub const EXPORT_SIGNATURE_BYTES: usize = 64;
 
 /// Stable machine-readable account-export failures.
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum ExportErrorCode {
@@ -77,22 +78,26 @@ pub enum ExportErrorCode {
     ScopeMismatch,
     /// An encrypted artifact exceeds its fixed byte bound.
     ArtifactTooLarge,
+    /// A secret-reference export record omitted its external reference.
+    MissingSecretReference,
 }
 
 impl ExportErrorCode {
     /// Returns the stable external machine code.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::InvalidArgument => "ACCOUNT_EXPORT_INVALID_ARGUMENT",
-            Self::EmptyBatch => "ACCOUNT_EXPORT_EMPTY_BATCH",
-            Self::TooManyRecords => "ACCOUNT_EXPORT_TOO_MANY_RECORDS",
-            Self::DuplicateAccount => "ACCOUNT_EXPORT_DUPLICATE_ACCOUNT",
-            Self::AuthorizationExpired => "ACCOUNT_EXPORT_AUTHORIZATION_EXPIRED",
-            Self::SecondaryApprovalRequired => "ACCOUNT_EXPORT_SECONDARY_APPROVAL_REQUIRED",
-            Self::ScopeMismatch => "ACCOUNT_EXPORT_SCOPE_MISMATCH",
-            Self::ArtifactTooLarge => "ACCOUNT_EXPORT_ARTIFACT_TOO_LARGE",
-        }
+        const CODES: [&str; 9] = [
+            "ACCOUNT_EXPORT_INVALID_ARGUMENT",
+            "ACCOUNT_EXPORT_EMPTY_BATCH",
+            "ACCOUNT_EXPORT_TOO_MANY_RECORDS",
+            "ACCOUNT_EXPORT_DUPLICATE_ACCOUNT",
+            "ACCOUNT_EXPORT_AUTHORIZATION_EXPIRED",
+            "ACCOUNT_EXPORT_SECONDARY_APPROVAL_REQUIRED",
+            "ACCOUNT_EXPORT_SCOPE_MISMATCH",
+            "ACCOUNT_EXPORT_ARTIFACT_TOO_LARGE",
+            "ACCOUNT_EXPORT_MISSING_SECRET_REFERENCE",
+        ];
+        CODES[self as usize]
     }
 }
 
@@ -235,6 +240,10 @@ impl ExportFields {
     }
 
     const fn requires_secondary(self) -> bool {
+        matches!(self, Self::MetadataAndSecretReferences)
+    }
+
+    const fn includes_secret_references(self) -> bool {
         matches!(self, Self::MetadataAndSecretReferences)
     }
 
@@ -394,7 +403,7 @@ pub struct ExportRecord {
     account_id: AccountId,
     account_version: AccountVersion,
     config_version: AccountConfigVersion,
-    secret_ref: SecretRef,
+    secret_ref: Option<SecretRef>,
 }
 
 impl ExportRecord {
@@ -413,7 +422,24 @@ impl ExportRecord {
             account_id,
             account_version,
             config_version,
-            secret_ref,
+            secret_ref: Some(secret_ref),
+        }
+    }
+
+    /// Creates a metadata-only record without any secret locator.
+    #[must_use]
+    pub const fn metadata_only(
+        tenant_id: TenantId,
+        account_id: AccountId,
+        account_version: AccountVersion,
+        config_version: AccountConfigVersion,
+    ) -> Self {
+        Self {
+            tenant_id,
+            account_id,
+            account_version,
+            config_version,
+            secret_ref: None,
         }
     }
 
@@ -441,10 +467,19 @@ impl ExportRecord {
         self.config_version
     }
 
-    /// Returns the external secret reference, never secret bytes.
+    /// Returns the external secret reference when this record carries one.
     #[must_use]
-    pub const fn secret_ref(&self) -> &SecretRef {
-        &self.secret_ref
+    pub fn secret_ref(&self) -> Option<&SecretRef> {
+        self.secret_ref.as_ref()
+    }
+
+    fn metadata_projection(&self) -> Self {
+        Self::metadata_only(
+            self.tenant_id.clone(),
+            self.account_id.clone(),
+            self.account_version,
+            self.config_version,
+        )
     }
 }
 
@@ -562,8 +597,9 @@ impl AccountExportPlan {
     /// Validates an export request and constructs an immutable plan.
     ///
     /// The operation is pure: failures leave all caller-owned values untouched.
-    /// Secret references are included only as metadata pointers; plaintext
-    /// secret material cannot be passed to this API.
+    /// Metadata-only authorizations project away all secret locators before the
+    /// plan reaches a sealing adapter. Plaintext secret material cannot be passed
+    /// to this API.
     ///
     /// # Errors
     /// Returns a stable error for expiry, missing dual approval, empty or
@@ -575,7 +611,12 @@ impl AccountExportPlan {
         watermark: ExportWatermark,
     ) -> Result<Self, ExportError> {
         validate_export_requirements(&authorization, records.len(), now)?;
-        validate_records(&records, authorization.tenant_id())?;
+        validate_records(
+            &records,
+            authorization.tenant_id(),
+            authorization.fields(),
+        )?;
+        let records = project_records(authorization.fields(), records);
         let record_count =
             u32::try_from(records.len()).map_err(|_| error(ExportErrorCode::TooManyRecords))?;
         let digest = manifest_digest(&authorization, &records, &watermark, record_count);
@@ -800,13 +841,35 @@ fn validate_secondary_approval(
     Ok(())
 }
 
-fn validate_records(records: &[ExportRecord], tenant_id: &TenantId) -> Result<(), ExportError> {
+fn validate_records(
+    records: &[ExportRecord],
+    tenant_id: &TenantId,
+    fields: ExportFields,
+) -> Result<(), ExportError> {
     let mut seen = BTreeSet::new();
     for record in records {
         validate_record_scope(record, tenant_id)?;
+        validate_record_fields(record, fields)?;
         insert_unique_account(&mut seen, record.account_id())?;
     }
     Ok(())
+}
+
+fn validate_record_fields(record: &ExportRecord, fields: ExportFields) -> Result<(), ExportError> {
+    if fields.includes_secret_references() && record.secret_ref().is_none() {
+        return Err(error(ExportErrorCode::MissingSecretReference));
+    }
+    Ok(())
+}
+
+fn project_records(fields: ExportFields, records: Vec<ExportRecord>) -> Vec<ExportRecord> {
+    match fields {
+        ExportFields::MetadataOnly => records
+            .iter()
+            .map(ExportRecord::metadata_projection)
+            .collect(),
+        ExportFields::MetadataAndSecretReferences => records,
+    }
 }
 
 fn validate_record_scope(record: &ExportRecord, tenant_id: &TenantId) -> Result<(), ExportError> {
@@ -840,15 +903,23 @@ fn manifest_digest(
     hasher.update(authorization.expires_at().get().to_be_bytes());
     hash_text(&mut hasher, watermark.as_str());
     hasher.update(record_count.to_be_bytes());
-    for record in records {
+    let mut ordered = records.to_vec();
+    ordered.sort_by(|left, right| left.account_id().cmp(right.account_id()));
+    for record in &ordered {
         hash_text(&mut hasher, record.tenant_id().as_str());
         hash_text(&mut hasher, record.account_id().as_str());
         hasher.update(record.account_version().get().to_be_bytes());
         hasher.update(record.config_version().get().to_be_bytes());
-        hash_text(&mut hasher, record.secret_ref().provider().as_str());
-        hash_text(&mut hasher, record.secret_ref().path().as_str());
-        hasher.update(record.secret_ref().version().get().to_be_bytes());
-        hash_text(&mut hasher, record.secret_ref().purpose().as_str());
+        match record.secret_ref() {
+            Some(secret_ref) => {
+                hasher.update([1]);
+                hash_text(&mut hasher, secret_ref.provider().as_str());
+                hash_text(&mut hasher, secret_ref.path().as_str());
+                hasher.update(secret_ref.version().get().to_be_bytes());
+                hash_text(&mut hasher, secret_ref.purpose().as_str());
+            }
+            None => hasher.update([0]),
+        }
     }
     ManifestDigest(hasher.finalize().into())
 }
