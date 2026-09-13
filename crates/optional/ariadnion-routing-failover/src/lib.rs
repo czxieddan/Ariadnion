@@ -138,14 +138,14 @@ impl fmt::Debug for CandidateKey {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_tuple("CandidateKey")
-            .field(&self.0)
+            .field(&"<opaque>")
             .finish()
     }
 }
 
 impl fmt::Display for CandidateKey {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.as_str())
+        formatter.write_str("<opaque>")
     }
 }
 
@@ -219,18 +219,8 @@ impl FailoverPlan {
     /// # Errors
     /// Returns a stable error for empty, oversized, duplicate, or invalid input.
     pub fn new(candidates: Vec<CandidateKey>, max_attempts: u8) -> Result<Self, FailoverError> {
-        if candidates.is_empty() || candidates.len() > MAX_PLAN_CANDIDATES {
-            return Err(error(FailoverErrorCode::PlanTooLarge));
-        }
-        if !(1..=MAX_ATTEMPTS).contains(&max_attempts) {
-            return Err(error(FailoverErrorCode::InvalidArgument));
-        }
-        let mut seen = std::collections::BTreeSet::new();
-        for candidate in &candidates {
-            if !seen.insert(candidate) {
-                return Err(error(FailoverErrorCode::DuplicateCandidate));
-            }
-        }
+        validate_plan_bounds(candidates.len(), max_attempts)?;
+        ensure_unique_candidates(&candidates)?;
         Ok(Self {
             candidates,
             max_attempts,
@@ -384,26 +374,54 @@ impl DeterministicFailoverPlanner {
             .plan
             .index_of(context.candidate())
             .ok_or_else(|| error(FailoverErrorCode::CandidateNotInPlan))?;
-        if context.attempt() > self.plan.max_attempts {
-            return Err(error(FailoverErrorCode::AttemptOutOfRange));
-        }
-        if context.stream() == StreamCommitment::FirstByteSent {
+        validate_attempt(context, self.plan.max_attempts)?;
+        if should_stop(context, failure, self.plan.max_attempts) {
             return Ok(FailoverDecision::new(FailoverAction::Stop, failure));
         }
-        if !failure.is_retryable() || !context.operation().permits_retry() {
-            return Ok(FailoverDecision::new(FailoverAction::Stop, failure));
-        }
-        if context.attempt() >= self.plan.max_attempts {
-            return Ok(FailoverDecision::new(FailoverAction::Stop, failure));
-        }
-        let action = self
-            .plan
-            .candidates
-            .get(index + 1)
-            .cloned()
-            .map_or(FailoverAction::RetrySame, FailoverAction::SwitchCandidate);
+        let action = next_action(&self.plan, index);
         Ok(FailoverDecision::new(action, failure))
     }
+}
+
+fn validate_plan_bounds(candidate_count: usize, max_attempts: u8) -> Result<(), FailoverError> {
+    if candidate_count == 0 || candidate_count > MAX_PLAN_CANDIDATES {
+        return Err(error(FailoverErrorCode::PlanTooLarge));
+    }
+    if !(1..=MAX_ATTEMPTS).contains(&max_attempts) {
+        return Err(error(FailoverErrorCode::InvalidArgument));
+    }
+    Ok(())
+}
+
+fn ensure_unique_candidates(candidates: &[CandidateKey]) -> Result<(), FailoverError> {
+    let mut seen = std::collections::BTreeSet::new();
+    for candidate in candidates {
+        if !seen.insert(candidate) {
+            return Err(error(FailoverErrorCode::DuplicateCandidate));
+        }
+    }
+    Ok(())
+}
+
+fn validate_attempt(context: &AttemptContext, max_attempts: u8) -> Result<(), FailoverError> {
+    if context.attempt() > max_attempts {
+        return Err(error(FailoverErrorCode::AttemptOutOfRange));
+    }
+    Ok(())
+}
+
+fn should_stop(context: &AttemptContext, failure: FailureClass, max_attempts: u8) -> bool {
+    context.stream() == StreamCommitment::FirstByteSent
+        || !failure.is_retryable()
+        || !context.operation().permits_retry()
+        || context.attempt() >= max_attempts
+}
+
+fn next_action(plan: &FailoverPlan, index: usize) -> FailoverAction {
+    plan.candidates
+        .get(index + 1)
+        .cloned()
+        .map_or(FailoverAction::RetrySame, FailoverAction::SwitchCandidate)
 }
 
 /// Read-only port for failover decision consumers.
