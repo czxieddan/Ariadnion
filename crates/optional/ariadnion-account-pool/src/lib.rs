@@ -718,16 +718,15 @@ impl CandidateSnapshot {
         let version = RouteSnapshotVersion::new(self.version.get())
             .map_err(|_| error(AccountPoolErrorCode::RoutingProjectionFailed))?;
         let mut projected = Vec::with_capacity(self.candidates.len());
-        for candidate in self
-            .candidates
-            .iter()
-            .filter(|candidate| candidate.availability() == Availability::Available)
-        {
+        for candidate in self.candidates.iter() {
             let source_tenant = candidate
                 .tenant_id()
                 .ok_or_else(|| error(AccountPoolErrorCode::InvalidCandidate))?;
             if source_tenant != tenant_id {
                 return Err(error(AccountPoolErrorCode::TenantMismatch));
+            }
+            if candidate.availability() != Availability::Available {
+                continue;
             }
             let model = candidate
                 .model()
