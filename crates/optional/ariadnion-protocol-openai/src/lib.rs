@@ -31,11 +31,16 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod batch;
+mod batch_http;
 pub mod completions;
 pub mod embeddings;
+pub mod files;
+mod files_http;
 pub mod images;
 pub mod models;
 pub mod realtime;
+mod realtime_transport;
 mod request;
 mod response;
 #[path = "responses/response.rs"]
@@ -48,7 +53,7 @@ use std::fmt::{self, Debug, Formatter};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use ariadnion_api_domain::ServiceRequest;
+use ariadnion_api_domain::{ApiBatchError, ApiBatchErrorCode, BatchEndpoint, ServiceRequest};
 use ariadnion_api_http::{
     ApiHttpError, ApiHttpErrorCode, HttpApiState, HttpProtocolAdapter, HttpRequestIdentity,
     ProtocolBufferedResponse, ProtocolExecutionState, ProtocolFailure, ProtocolRequest,
@@ -58,6 +63,7 @@ use axum::Router;
 
 use response::OpenAiProjection;
 
+pub use batch_http::OpenAiBatchHttpAdapter;
 pub use completions::{
     OPENAI_COMPLETIONS_PATH, OpenAiCompletionsProtocol, OpenAiCompletionsRouter,
     openai_completions_router, openai_completions_router_with_clock,
@@ -66,6 +72,7 @@ pub use embeddings::{
     OPENAI_EMBEDDINGS_PATH, OpenAiEmbeddingsProtocol, OpenAiEmbeddingsRouter,
     openai_embeddings_router,
 };
+pub use files_http::OpenAiFilesHttpAdapter;
 pub use images::{
     OPENAI_IMAGES_GENERATIONS_PATH, OpenAiImagesProtocol, OpenAiImagesRouter, openai_images_router,
     openai_images_router_with_clock,
@@ -79,7 +86,10 @@ pub use realtime::{
     OpenAiRealtimeFileAlias, OpenAiRealtimeOutboundFrame, OpenAiRealtimeProtocol,
     OpenAiRealtimeServerEventKind, OpenAiRealtimeSessionProjection,
 };
-pub use route_manifest::OpenAiRouteManifest;
+pub use realtime_transport::{OpenAiRealtimeTransport, RealtimeFileAliasResolver};
+pub use route_manifest::{
+    OpenAiRouteManifest, openai_batch_router, openai_files_router, openai_realtime_router,
+};
 pub use speech::{
     OPENAI_SPEECH_PATH, OpenAiSpeechProtocol, OpenAiSpeechRouter, openai_speech_router,
 };
@@ -148,6 +158,24 @@ pub const OPENAI_CHAT_COMPLETIONS_PATH: &str = "/v1/chat/completions";
 /// Composition crates use this alias to expose their assembled router without
 /// acquiring a separate direct dependency on the underlying HTTP framework.
 pub type OpenAiChatCompletionsRouter = Router;
+
+pub(crate) fn validate_batch_endpoint_body(
+    endpoint: BatchEndpoint,
+    body: &str,
+) -> Result<(), ApiBatchError> {
+    let valid = match endpoint {
+        BatchEndpoint::Responses => responses::decode_request(body.as_bytes()).is_ok(),
+        BatchEndpoint::ChatCompletions => request::decode(body.as_bytes()).is_ok(),
+        BatchEndpoint::Embeddings => embeddings::decode_request(body.as_bytes()).is_ok(),
+        BatchEndpoint::Completions => completions::request::decode(body.as_bytes()).is_ok(),
+        BatchEndpoint::ImagesGenerations => images::decode_request(body.as_bytes(), None).is_ok(),
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(ApiBatchError::new(ApiBatchErrorCode::InvalidArgument))
+    }
+}
 
 /// Strict decoder and projector for the supported OpenAI chat request subset.
 #[derive(Clone)]
