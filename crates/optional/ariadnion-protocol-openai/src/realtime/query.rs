@@ -33,6 +33,14 @@ use ariadnion_api_domain::{MAX_MODEL_SELECTOR_BYTES, ModelSelector};
 use super::{OpenAiRealtimeError, model_from_wire};
 
 pub(super) fn decode_model(query: Option<&str>) -> Result<ModelSelector, OpenAiRealtimeError> {
+    let member = single_query_member(query)?;
+    let (name, value) = split_model_member(member)?;
+    validate_model_value(name, value)?;
+    let decoded = percent_decode(value)?;
+    model_from_wire(&decoded)
+}
+
+fn single_query_member(query: Option<&str>) -> Result<&str, OpenAiRealtimeError> {
     let query = query.ok_or_else(OpenAiRealtimeError::invalid_request)?;
     if query.is_empty() {
         return Err(OpenAiRealtimeError::invalid_request());
@@ -44,17 +52,23 @@ pub(super) fn decode_model(query: Option<&str>) -> Result<ModelSelector, OpenAiR
     if members.next().is_some() {
         return Err(OpenAiRealtimeError::invalid_request());
     }
-    let (name, value) = member
+    Ok(member)
+}
+
+fn split_model_member(member: &str) -> Result<(&str, &str), OpenAiRealtimeError> {
+    member
         .split_once('=')
-        .ok_or_else(OpenAiRealtimeError::invalid_request)?;
+        .ok_or_else(OpenAiRealtimeError::invalid_request)
+}
+
+fn validate_model_value(name: &str, value: &str) -> Result<(), OpenAiRealtimeError> {
     if name != "model" || value.is_empty() {
         return Err(OpenAiRealtimeError::invalid_request());
     }
     if value.len() > MAX_MODEL_SELECTOR_BYTES.saturating_mul(3) {
         return Err(OpenAiRealtimeError::invalid_request());
     }
-    let decoded = percent_decode(value)?;
-    model_from_wire(&decoded)
+    Ok(())
 }
 
 fn percent_decode(value: &str) -> Result<String, OpenAiRealtimeError> {
@@ -75,7 +89,9 @@ fn percent_decode(value: &str) -> Result<String, OpenAiRealtimeError> {
             decoded.push((hex(high)? << 4) | hex(low)?);
             index = index.saturating_add(3);
         } else {
-            decoded.push(if byte == b'+' { b' ' } else { byte });
+            // URI query percent-decoding preserves a literal plus sign; form
+            // encoding's plus-to-space rule does not apply to this upgrade URI.
+            decoded.push(byte);
             index = index.saturating_add(1);
         }
     }

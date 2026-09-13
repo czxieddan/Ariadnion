@@ -30,6 +30,7 @@
 
 use std::borrow::Cow;
 use std::fmt::{self, Debug, Formatter};
+use std::future::Future;
 
 use ariadnion_api_domain::{
     FileReference, MAX_REALTIME_CONTENT_PARTS, OutputTokenLimit, RealtimeClientEvent,
@@ -103,6 +104,12 @@ pub struct OpenAiRealtimeDecodedEvent {
 }
 
 impl OpenAiRealtimeDecodedEvent {
+    /// Returns the optional client event identifier for error correlation.
+    #[must_use]
+    pub const fn correlation_id(&self) -> Option<&RealtimeClientEventId> {
+        self.correlation_id.as_ref()
+    }
+
     /// Resolves every public file alias before constructing the domain event.
     ///
     /// The resolver is intentionally supplied by the later adapter integration,
@@ -121,6 +128,32 @@ impl OpenAiRealtimeDecodedEvent {
         F: FnMut(&OpenAiRealtimeFileAlias) -> Result<FileReference, OpenAiRealtimeError>,
     {
         let event = self.event.into_domain(&mut resolve)?;
+        Ok(RealtimeInboundEvent::new(
+            self.correlation_id,
+            event,
+            self.frame,
+        ))
+    }
+
+    /// Resolves every public file alias through an asynchronous capability.
+    ///
+    /// This variant is used by network transports whose provider mapping port
+    /// performs authenticated, cancellable I/O. The decoded event remains
+    /// detached from internal file references until the resolver succeeds.
+    ///
+    /// # Errors
+    ///
+    /// Propagates a redacted resolver failure or rejects a conversion that would
+    /// violate the bounded domain event contract.
+    pub async fn resolve_file_aliases_async<F, Fut>(
+        self,
+        mut resolve: F,
+    ) -> Result<RealtimeInboundEvent, OpenAiRealtimeError>
+    where
+        F: FnMut(&OpenAiRealtimeFileAlias) -> Fut,
+        Fut: Future<Output = Result<FileReference, OpenAiRealtimeError>>,
+    {
+        let event = self.event.into_domain_async(&mut resolve).await?;
         Ok(RealtimeInboundEvent::new(
             self.correlation_id,
             event,
@@ -163,6 +196,36 @@ impl DecodedClientEvent {
             )),
         }
     }
+
+    async fn into_domain_async<F, Fut>(
+        self,
+        resolve: &mut F,
+    ) -> Result<RealtimeClientEvent, OpenAiRealtimeError>
+    where
+        F: FnMut(&OpenAiRealtimeFileAlias) -> Fut,
+        Fut: Future<Output = Result<FileReference, OpenAiRealtimeError>>,
+    {
+        match self {
+            Self::SessionUpdate => Ok(RealtimeClientEvent::SessionUpdate(
+                RealtimeSessionUpdate::text_only(),
+            )),
+            Self::ConversationItemCreate(parts) => {
+                let mut content = Vec::with_capacity(parts.len());
+                for part in parts {
+                    content.push(part.into_domain_async(resolve).await?);
+                }
+                let item =
+                    RealtimeConversationItem::new(content).map_err(OpenAiRealtimeError::from)?;
+                Ok(RealtimeClientEvent::ConversationItemCreate(item))
+            }
+            Self::ResponseCreate(limit) => Ok(RealtimeClientEvent::ResponseCreate(
+                RealtimeResponseCreate::new(limit),
+            )),
+            Self::ResponseCancel(response_id) => Ok(RealtimeClientEvent::ResponseCancel(
+                RealtimeResponseCancel::new(response_id),
+            )),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -179,6 +242,20 @@ impl DecodedContentPart {
         match self {
             Self::Text(text) => Ok(RealtimeInputContent::text(text)),
             Self::File(alias) => resolve(&alias).map(RealtimeInputContent::file),
+        }
+    }
+
+    async fn into_domain_async<F, Fut>(
+        self,
+        resolve: &mut F,
+    ) -> Result<RealtimeInputContent, OpenAiRealtimeError>
+    where
+        F: FnMut(&OpenAiRealtimeFileAlias) -> Fut,
+        Fut: Future<Output = Result<FileReference, OpenAiRealtimeError>>,
+    {
+        match self {
+            Self::Text(text) => Ok(RealtimeInputContent::text(text)),
+            Self::File(alias) => resolve(&alias).await.map(RealtimeInputContent::file),
         }
     }
 }
@@ -403,12 +480,8 @@ impl<'de> Visitor<'de> for SessionVisitor {
         let mut session_type = None;
         let mut output_modalities = None;
         while let Some(field) = map.next_key::<&str>()? {
-            match field {
-                "type" => read_once(&mut session_type, "type", &mut map)?,
-                "output_modalities" => {
-                    read_once(&mut output_modalities, "output_modalities", &mut map)?
-                }
-                _ => return Err(A::Error::unknown_field(field, SESSION_FIELDS)),
+            if !read_session_field(field, &mut map, &mut session_type, &mut output_modalities)? {
+                return Err(A::Error::unknown_field(field, SESSION_FIELDS));
             }
         }
         Ok(RawSession {
@@ -445,6 +518,28 @@ impl<'de> Deserialize<'de> for RawItem<'de> {
 
 struct ItemVisitor;
 
+fn read_session_field<'de, A>(
+    field: &str,
+    map: &mut A,
+    session_type: &mut Option<Box<str>>,
+    output_modalities: &mut Option<TextOnlyModalities>,
+) -> Result<bool, A::Error>
+where
+    A: MapAccess<'de>,
+{
+    match field {
+        "type" => {
+            read_once(session_type, "type", map)?;
+            Ok(true)
+        }
+        "output_modalities" => {
+            read_once(output_modalities, "output_modalities", map)?;
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
 impl<'de> Visitor<'de> for ItemVisitor {
     type Value = RawItem<'de>;
 
@@ -460,18 +555,40 @@ impl<'de> Visitor<'de> for ItemVisitor {
         let mut role = None;
         let mut content = None;
         while let Some(field) = map.next_key::<&str>()? {
-            match field {
-                "type" => read_once(&mut item_type, "type", &mut map)?,
-                "role" => read_once(&mut role, "role", &mut map)?,
-                "content" => read_once(&mut content, "content", &mut map)?,
-                _ => return Err(A::Error::unknown_field(field, ITEM_FIELDS)),
-            }
+            read_item_field(field, &mut map, &mut item_type, &mut role, &mut content)?;
         }
         Ok(RawItem {
             item_type: item_type.ok_or_else(|| A::Error::missing_field("type"))?,
             role: role.ok_or_else(|| A::Error::missing_field("role"))?,
             content: content.ok_or_else(|| A::Error::missing_field("content"))?,
         })
+    }
+}
+
+fn read_item_field<'de, A>(
+    field: &str,
+    map: &mut A,
+    item_type: &mut Option<Cow<'de, str>>,
+    role: &mut Option<Cow<'de, str>>,
+    content: &mut Option<RawContents<'de>>,
+) -> Result<(), A::Error>
+where
+    A: MapAccess<'de>,
+{
+    match field {
+        "type" => {
+            read_once(item_type, "type", map)?;
+            Ok(())
+        }
+        "role" => {
+            read_once(role, "role", map)?;
+            Ok(())
+        }
+        "content" => {
+            read_once(content, "content", map)?;
+            Ok(())
+        }
+        _ => Err(A::Error::unknown_field(field, ITEM_FIELDS)),
     }
 }
 
@@ -586,11 +703,8 @@ impl<'de> Visitor<'de> for ContentVisitor {
         let mut text = None;
         let mut file_id = None;
         while let Some(field) = map.next_key::<&str>()? {
-            match field {
-                "type" => read_once(&mut content_type, "type", &mut map)?,
-                "text" => read_once(&mut text, "text", &mut map)?,
-                "file_id" => read_once(&mut file_id, "file_id", &mut map)?,
-                _ => return Err(A::Error::unknown_field(field, CONTENT_FIELDS)),
+            if !read_content_field(field, &mut map, &mut content_type, &mut text, &mut file_id)? {
+                return Err(A::Error::unknown_field(field, CONTENT_FIELDS));
             }
         }
         Ok(RawContent {
@@ -598,6 +712,33 @@ impl<'de> Visitor<'de> for ContentVisitor {
             text,
             file_id,
         })
+    }
+}
+
+fn read_content_field<'de, A>(
+    field: &str,
+    map: &mut A,
+    content_type: &mut Option<Cow<'de, str>>,
+    text: &mut Option<Cow<'de, str>>,
+    file_id: &mut Option<Cow<'de, str>>,
+) -> Result<bool, A::Error>
+where
+    A: MapAccess<'de>,
+{
+    match field {
+        "type" => {
+            read_once(content_type, "type", map)?;
+            Ok(true)
+        }
+        "text" => {
+            read_once(text, "text", map)?;
+            Ok(true)
+        }
+        "file_id" => {
+            read_once(file_id, "file_id", map)?;
+            Ok(true)
+        }
+        _ => Ok(false),
     }
 }
 
@@ -640,14 +781,13 @@ impl<'de> Visitor<'de> for ResponseVisitor {
         let mut output_modalities = None;
         let mut max_output_tokens = None;
         while let Some(field) = map.next_key::<&str>()? {
-            match field {
-                "output_modalities" => {
-                    read_once(&mut output_modalities, "output_modalities", &mut map)?
-                }
-                "max_output_tokens" => {
-                    read_once(&mut max_output_tokens, "max_output_tokens", &mut map)?
-                }
-                _ => return Err(A::Error::unknown_field(field, RESPONSE_FIELDS)),
+            if !read_response_field(
+                field,
+                &mut map,
+                &mut output_modalities,
+                &mut max_output_tokens,
+            )? {
+                return Err(A::Error::unknown_field(field, RESPONSE_FIELDS));
             }
         }
         Ok(RawResponse {
@@ -656,6 +796,28 @@ impl<'de> Visitor<'de> for ResponseVisitor {
             max_output_tokens: max_output_tokens
                 .ok_or_else(|| A::Error::missing_field("max_output_tokens"))?,
         })
+    }
+}
+
+fn read_response_field<'de, A>(
+    field: &str,
+    map: &mut A,
+    output_modalities: &mut Option<TextOnlyModalities>,
+    max_output_tokens: &mut Option<u32>,
+) -> Result<bool, A::Error>
+where
+    A: MapAccess<'de>,
+{
+    match field {
+        "output_modalities" => {
+            read_once(output_modalities, "output_modalities", map)?;
+            Ok(true)
+        }
+        "max_output_tokens" => {
+            read_once(max_output_tokens, "max_output_tokens", map)?;
+            Ok(true)
+        }
+        _ => Ok(false),
     }
 }
 
