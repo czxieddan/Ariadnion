@@ -452,8 +452,8 @@ pub struct PricingCatalog {
 impl PricingCatalog {
     /// Validates and freezes schedules in canonical order.
     ///
-    /// Schedules may coexist when windows or currencies differ. Overlap is
-    /// rejected only when a model, currency, and dimension would be ambiguous.
+    /// Schedules may coexist when windows differ. Overlap is rejected whenever
+    /// a model and dimension would be ambiguous, including across currencies.
     ///
     /// # Errors
     /// Returns a stable bounded, duplicate, or overlap error.
@@ -523,7 +523,7 @@ fn validate_schedule_conflicts(
 ) -> Result<(), ModelPricingError> {
     for (index, schedule) in schedules.iter().enumerate() {
         for other in schedules.iter().skip(index + 1) {
-            if schedule.model_id != other.model_id || schedule.currency != other.currency {
+            if schedule.model_id != other.model_id {
                 continue;
             }
             if schedule.version == other.version && schedule.window == other.window {
