@@ -131,12 +131,26 @@ impl Display for RoutingAdmissionError {
 impl std::error::Error for RoutingAdmissionError {}
 
 /// Immutable input to one composed admission attempt.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct RoutingAdmissionRequest {
     rate: AdmissionRequest,
     budget: ReservationRequest,
     monotonic_now: MonotonicTime,
     budget_now: UnixTimeSeconds,
+}
+
+impl Debug for RoutingAdmissionRequest {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("RoutingAdmissionRequest")
+            .field("rate_dimension_count", &self.rate.keys().len())
+            .field("rate_units", &self.rate.units().get())
+            .field("budget_amount_present", &true)
+            .field("budget_expires_at", &self.budget.expires_at())
+            .field("monotonic_now", &self.monotonic_now)
+            .field("budget_now", &self.budget_now)
+            .finish()
+    }
 }
 
 impl RoutingAdmissionRequest {
