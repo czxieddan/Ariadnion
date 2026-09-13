@@ -169,8 +169,9 @@ impl VaultRevokeRequest {
 }
 
 /// Durable evidence returned after a secret version is stored.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SecretStoreReceipt {
+    reference: SecretRef,
     version: SecretVersion,
     key_version: VaultKeyVersion,
     committed_at: SystemTime,
@@ -180,39 +181,48 @@ impl SecretStoreReceipt {
     /// Creates a receipt after the adapter confirms durable commit.
     #[must_use]
     pub const fn new(
+        reference: SecretRef,
         version: SecretVersion,
         key_version: VaultKeyVersion,
         committed_at: SystemTime,
     ) -> Self {
         Self {
+            reference,
             version,
             key_version,
             committed_at,
         }
     }
 
+    /// Returns the exact secret locator committed by the adapter.
+    #[must_use]
+    pub const fn reference(&self) -> &SecretRef {
+        &self.reference
+    }
+
     /// Returns the committed secret version.
     #[must_use]
-    pub const fn version(self) -> SecretVersion {
+    pub const fn version(&self) -> SecretVersion {
         self.version
     }
 
     /// Returns the encryption key version used by the adapter.
     #[must_use]
-    pub const fn key_version(self) -> VaultKeyVersion {
+    pub const fn key_version(&self) -> VaultKeyVersion {
         self.key_version
     }
 
     /// Returns the adapter-reported UTC commit time.
     #[must_use]
-    pub const fn committed_at(self) -> SystemTime {
+    pub const fn committed_at(&self) -> SystemTime {
         self.committed_at
     }
 }
 
 /// Durable evidence returned after a revoke commit.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SecretRevokeReceipt {
+    reference: SecretRef,
     version: SecretVersion,
     committed_at: SystemTime,
 }
@@ -220,22 +230,33 @@ pub struct SecretRevokeReceipt {
 impl SecretRevokeReceipt {
     /// Creates a revoke receipt after durable commit.
     #[must_use]
-    pub const fn new(version: SecretVersion, committed_at: SystemTime) -> Self {
+    pub const fn new(
+        reference: SecretRef,
+        version: SecretVersion,
+        committed_at: SystemTime,
+    ) -> Self {
         Self {
+            reference,
             version,
             committed_at,
         }
     }
 
+    /// Returns the exact secret locator revoked by the adapter.
+    #[must_use]
+    pub const fn reference(&self) -> &SecretRef {
+        &self.reference
+    }
+
     /// Returns the revoked secret version.
     #[must_use]
-    pub const fn version(self) -> SecretVersion {
+    pub const fn version(&self) -> SecretVersion {
         self.version
     }
 
     /// Returns the adapter-reported UTC commit time.
     #[must_use]
-    pub const fn committed_at(self) -> SystemTime {
+    pub const fn committed_at(&self) -> SystemTime {
         self.committed_at
     }
 }

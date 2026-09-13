@@ -347,13 +347,19 @@ impl SecretLease {
         self.issued_at <= now && now < self.expires_at
     }
 
-    /// Borrows plaintext for one final trusted adapter operation.
+    /// Borrows plaintext for one final trusted adapter operation when the lease
+    /// is still valid at `now`.
     ///
-    /// Callers must check [`Self::is_valid_at`] immediately before use and must
-    /// not copy, log, serialize, or retain the returned bytes.
-    #[must_use]
-    pub fn material(&self) -> &SecretMaterial {
-        &self.material
+    /// The returned bytes must not be copied, logged, serialized, or retained.
+    ///
+    /// # Errors
+    /// Returns [`VaultErrorCode::Expired`] when `now` is outside the lease
+    /// interval.
+    pub fn material_at(&self, now: SystemTime) -> Result<&SecretMaterial, VaultError> {
+        if !self.is_valid_at(now) {
+            return Err(VaultError::new(VaultErrorCode::Expired));
+        }
+        Ok(&self.material)
     }
 }
 

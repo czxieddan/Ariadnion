@@ -33,6 +33,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 use ariadnion_core::{CoreError, ErrorCode};
 
 /// Stable machine-readable failures returned by a vault boundary.
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum VaultErrorCode {
@@ -70,22 +71,23 @@ impl VaultErrorCode {
     /// Returns the stable external machine code.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::InvalidArgument => "VAULT_INVALID_ARGUMENT",
-            Self::Unauthenticated => "VAULT_UNAUTHENTICATED",
-            Self::PermissionDenied => "VAULT_PERMISSION_DENIED",
-            Self::NotFound => "VAULT_NOT_FOUND",
-            Self::Conflict => "VAULT_CONFLICT",
-            Self::LimitExceeded => "VAULT_LIMIT_EXCEEDED",
-            Self::Expired => "VAULT_EXPIRED",
-            Self::Cancelled => "VAULT_CANCELLED",
-            Self::DeadlineExceeded => "VAULT_DEADLINE_EXCEEDED",
-            Self::ResourceExhausted => "VAULT_RESOURCE_EXHAUSTED",
-            Self::Unavailable => "VAULT_UNAVAILABLE",
-            Self::IntegrityFailure => "VAULT_INTEGRITY_FAILURE",
-            Self::CommitIndeterminate => "VAULT_COMMIT_INDETERMINATE",
-            Self::Internal => "VAULT_INTERNAL",
-        }
+        const CODES: [&str; 14] = [
+            "VAULT_INVALID_ARGUMENT",
+            "VAULT_UNAUTHENTICATED",
+            "VAULT_PERMISSION_DENIED",
+            "VAULT_NOT_FOUND",
+            "VAULT_CONFLICT",
+            "VAULT_LIMIT_EXCEEDED",
+            "VAULT_EXPIRED",
+            "VAULT_CANCELLED",
+            "VAULT_DEADLINE_EXCEEDED",
+            "VAULT_RESOURCE_EXHAUSTED",
+            "VAULT_UNAVAILABLE",
+            "VAULT_INTEGRITY_FAILURE",
+            "VAULT_COMMIT_INDETERMINATE",
+            "VAULT_INTERNAL",
+        ];
+        CODES[self as usize]
     }
 }
 
