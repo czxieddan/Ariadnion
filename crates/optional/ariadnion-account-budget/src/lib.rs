@@ -976,16 +976,41 @@ fn apply_transition_usage(
 }
 
 fn expire_records(state: &mut BudgetState, now: UnixTimeSeconds) -> Result<usize, BudgetError> {
-    let expired: Vec<ReservationId> = state
+    let expired: Vec<ReservationRecord> = state
         .reservations
         .values()
         .filter(|record| {
             record.state == ReservationState::Reserved && record.request.expires_at <= now
         })
-        .map(|record| record.request.id.clone())
+        .cloned()
         .collect();
-    for id in &expired {
-        transition_record(state, id, ReservationState::Expired)?;
+    let mut decrements = BTreeMap::<BudgetPolicyId, u64>::new();
+    for record in &expired {
+        for policy_id in &record.applied_policies {
+            let amount = record.request.amount.minor_units();
+            let total = decrements.get(policy_id).copied().unwrap_or(0);
+            let next = total
+                .checked_add(amount)
+                .ok_or_else(|| error(BudgetErrorCode::ArithmeticOverflow))?;
+            decrements.insert(policy_id.clone(), next);
+        }
+    }
+    for (policy_id, amount) in &decrements {
+        let policy = policy_state(state, policy_id)?;
+        if policy.reserved < *amount {
+            return Err(error(BudgetErrorCode::ArithmeticOverflow));
+        }
+    }
+    for (policy_id, amount) in decrements {
+        let policy = policy_state_mut(state, &policy_id)?;
+        policy.reserved -= amount;
+    }
+    for record in &expired {
+        let stored = state
+            .reservations
+            .get_mut(record.request.id())
+            .ok_or_else(|| error(BudgetErrorCode::ReservationNotFound))?;
+        stored.state = ReservationState::Expired;
     }
     Ok(expired.len())
 }
