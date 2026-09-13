@@ -135,17 +135,33 @@ fn parse_list_component(
     limit: &mut Option<ProviderFilePageLimit>,
 ) -> Result<(), OpenAiFilesError> {
     match name {
-        "after" if after.is_none() => {
-            *after = Some(ProviderFileId::new(value).map_err(|_| invalid())?);
-            Ok(())
-        }
-        "limit" if limit.is_none() => {
-            let value = value.parse::<usize>().map_err(|_| invalid())?;
-            *limit = Some(ProviderFilePageLimit::new(value).map_err(|_| invalid())?);
-            Ok(())
-        }
+        "after" => parse_after_component(value, after),
+        "limit" => parse_limit_component(value, limit),
         _ => Err(invalid()),
     }
+}
+
+fn parse_after_component(
+    value: &str,
+    after: &mut Option<ProviderFileId>,
+) -> Result<(), OpenAiFilesError> {
+    if after.is_some() {
+        return Err(invalid());
+    }
+    *after = Some(ProviderFileId::new(value).map_err(|_| invalid())?);
+    Ok(())
+}
+
+fn parse_limit_component(
+    value: &str,
+    limit: &mut Option<ProviderFilePageLimit>,
+) -> Result<(), OpenAiFilesError> {
+    if limit.is_some() {
+        return Err(invalid());
+    }
+    let value = value.parse::<usize>().map_err(|_| invalid())?;
+    *limit = Some(ProviderFilePageLimit::new(value).map_err(|_| invalid())?);
+    Ok(())
 }
 
 /// Exact public OpenAI file representation for the frozen P4 subset.
@@ -331,14 +347,14 @@ impl OpenAiFilesAdapter {
     /// # Errors
     ///
     /// Returns a stable redacted mapping, service, request, or integrity error.
-    pub async fn delete<'a>(
+    pub async fn delete(
         &self,
-        file_id: &'a str,
+        file_id: &str,
         idempotency_key: IdempotencyKey,
         context: &RequestContext,
     ) -> Result<OpenAiFileDeletion, OpenAiFilesError> {
         let mapping = self.resolve(file_id, context).await?;
-        let request = FileDeleteRequest::new(mapping.file_reference().clone(), idempotency_key);
+        let request = FileDeleteRequest::new(*mapping.file_reference(), idempotency_key);
         self.service.delete(request, context).await?;
         Ok(OpenAiFileDeletion {
             id: file_id.to_owned(),
@@ -370,7 +386,7 @@ impl OpenAiFilesAdapter {
         let key = request.idempotency_key().clone();
         let descriptor = self.service.upload(request, source, context).await?;
         let metadata = ProviderFileMappingMetadata::new(
-            descriptor.reference().clone(),
+            *descriptor.reference(),
             purpose,
             created_at,
             expires_at,
