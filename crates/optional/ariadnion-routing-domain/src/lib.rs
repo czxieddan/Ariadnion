@@ -51,6 +51,7 @@ pub const MAX_MODEL_BYTES: usize = 160;
 pub const MAX_REQUIRED_CAPABILITIES: usize = 64;
 
 /// Stable machine-readable failures returned by routing-domain contracts.
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum RoutingDomainErrorCode {
@@ -72,23 +73,27 @@ pub enum RoutingDomainErrorCode {
     ModelMismatch,
     /// A required capability appeared more than once.
     DuplicateCapability,
+    /// A routing context and snapshot belong to different tenants.
+    TenantMismatch,
 }
 
 impl RoutingDomainErrorCode {
     /// Returns the stable external machine code.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::InvalidArgument => "ROUTING_INVALID_ARGUMENT",
-            Self::EmptySnapshot => "ROUTING_EMPTY_SNAPSHOT",
-            Self::TooManyEntries => "ROUTING_TOO_MANY_ENTRIES",
-            Self::DuplicateCandidateId => "ROUTING_DUPLICATE_CANDIDATE_ID",
-            Self::SnapshotVersionExhausted => "ROUTING_SNAPSHOT_VERSION_EXHAUSTED",
-            Self::CandidateNotFound => "ROUTING_CANDIDATE_NOT_FOUND",
-            Self::SnapshotVersionMismatch => "ROUTING_SNAPSHOT_VERSION_MISMATCH",
-            Self::ModelMismatch => "ROUTING_MODEL_MISMATCH",
-            Self::DuplicateCapability => "ROUTING_DUPLICATE_CAPABILITY",
-        }
+        const CODES: [&str; 10] = [
+            "ROUTING_INVALID_ARGUMENT",
+            "ROUTING_EMPTY_SNAPSHOT",
+            "ROUTING_TOO_MANY_ENTRIES",
+            "ROUTING_DUPLICATE_CANDIDATE_ID",
+            "ROUTING_SNAPSHOT_VERSION_EXHAUSTED",
+            "ROUTING_CANDIDATE_NOT_FOUND",
+            "ROUTING_SNAPSHOT_VERSION_MISMATCH",
+            "ROUTING_MODEL_MISMATCH",
+            "ROUTING_DUPLICATE_CAPABILITY",
+            "ROUTING_TENANT_MISMATCH",
+        ];
+        CODES[self as usize]
     }
 }
 
@@ -206,6 +211,7 @@ impl Display for CandidateKey {
 /// A candidate reference without health, quota, or credential material.
 #[derive(Clone, Eq, Hash, PartialEq)]
 pub struct CandidateRef {
+    tenant_id: TenantId,
     key: CandidateKey,
     account_id: AccountId,
     provider_id: ProviderId,
@@ -217,19 +223,28 @@ impl CandidateRef {
     ///
     /// # Errors
     /// Returns [`RoutingDomainErrorCode::InvalidArgument`] when `key` is not a
-    /// valid bounded candidate key.
+    /// valid bounded candidate key. Snapshot construction rejects candidates
+    /// whose tenant differs from the snapshot tenant.
     pub fn new(
+        tenant_id: TenantId,
         key: &str,
         account_id: AccountId,
         provider_id: ProviderId,
         model: RouteModel,
     ) -> Result<Self, RoutingDomainError> {
         Ok(Self {
+            tenant_id,
             key: CandidateKey::parse(key)?,
             account_id,
             provider_id,
             model,
         })
+    }
+
+    /// Returns the tenant owning this candidate.
+    #[must_use]
+    pub const fn tenant_id(&self) -> &TenantId {
+        &self.tenant_id
     }
 
     /// Returns the stable candidate key.
@@ -312,6 +327,7 @@ impl RouteSnapshotVersion {
 /// An immutable, duplicate-free set of routable candidate references.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RouteSnapshot {
+    tenant_id: TenantId,
     version: RouteSnapshotVersion,
     candidates: Vec<CandidateRef>,
 }
@@ -320,22 +336,34 @@ impl RouteSnapshot {
     /// Validates and creates an immutable candidate snapshot.
     ///
     /// # Errors
-    /// Returns a stable error for an empty, oversized, or duplicate-key input.
+    /// Returns a stable error for an empty, oversized, duplicate-key, or
+    /// cross-tenant input.
     pub fn new(
+        tenant_id: TenantId,
         version: RouteSnapshotVersion,
         candidates: Vec<CandidateRef>,
     ) -> Result<Self, RoutingDomainError> {
         validate_snapshot_size(candidates.len())?;
         let mut keys = BTreeSet::new();
         for candidate in &candidates {
+            if candidate.tenant_id() != &tenant_id {
+                return Err(error(RoutingDomainErrorCode::TenantMismatch));
+            }
             if !keys.insert(candidate.key().clone()) {
                 return Err(error(RoutingDomainErrorCode::DuplicateCandidateId));
             }
         }
         Ok(Self {
+            tenant_id,
             version,
             candidates,
         })
+    }
+
+    /// Returns the tenant owning this immutable snapshot.
+    #[must_use]
+    pub const fn tenant_id(&self) -> &TenantId {
+        &self.tenant_id
     }
 
     /// Returns the immutable snapshot version.
@@ -538,14 +566,18 @@ impl RoutingEvaluation {
     /// Creates an evaluation after binding the decision to context and snapshot.
     ///
     /// # Errors
-    /// Returns a stable error if the decision is not present in the snapshot or
-    /// if the selected candidate serves a different model.
+    /// Returns a stable error if the context and snapshot belong to different
+    /// tenants, the decision is not present in the snapshot, or the selected
+    /// candidate serves a different model.
     pub fn new(
         context: RoutingContext,
         snapshot: &RouteSnapshot,
         decision: RouteDecision,
         exclusions: Vec<CandidateExclusion>,
     ) -> Result<Self, RoutingDomainError> {
+        if context.tenant_id() != snapshot.tenant_id() {
+            return Err(error(RoutingDomainErrorCode::TenantMismatch));
+        }
         decision.validate_against(snapshot)?;
         let selected = snapshot
             .candidate(decision.selected())
