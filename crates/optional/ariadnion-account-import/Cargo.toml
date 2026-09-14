@@ -39,6 +39,7 @@ publish = false
 
 [dependencies]
 ariadnion-account-domain = { path = "../ariadnion-account-domain" }
+ariadnion-core = { path = "../../ariadnion-core" }
 
 [lints.rust]
 unsafe_code = "forbid"

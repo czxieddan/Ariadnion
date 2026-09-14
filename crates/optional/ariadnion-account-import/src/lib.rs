@@ -30,9 +30,10 @@
 //!
 //! This crate stops before encryption or signature verification. Importers pass
 //! only typed [`SecretRef`] values and opaque digests. A coordinator performs a
-//! deterministic dry run and local generation sequencing, leaving cryptographic
-//! custody and durable snapshot publication to a later adapter such as the
-//! account-pool boundary.
+//! deterministic dry run and local generation sequencing. The durable port binds
+//! publication to an authenticated tenant, a caller-stable mutation identity,
+//! and restart-safe reconciliation without pretending local acceptance is a
+//! storage commit.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -42,6 +43,13 @@ use std::fmt::{self, Debug, Display, Formatter};
 use std::sync::RwLock;
 
 pub use ariadnion_account_domain::{AccountId, ProviderId, SecretRef};
+
+mod port;
+
+pub use port::{
+    AccountImportPort, BoxImportFuture, DurablePublishReceipt, DurablePublishRequest,
+    ImportMutationId, ImportPortError, ImportPortErrorCode, MAX_IMPORT_MUTATION_ID_BYTES,
+};
 
 /// Maximum entries accepted by one import batch.
 pub const MAX_IMPORT_ENTRIES: usize = 1 << 17;
@@ -470,7 +478,6 @@ impl PublishReceipt {
     pub const fn published_count(self) -> usize {
         self.published_count
     }
-
 }
 
 #[derive(Debug)]
@@ -498,10 +505,18 @@ impl ImportCoordinator {
     /// Creates an empty coordinator at generation zero.
     #[must_use]
     pub fn new() -> Self {
+        Self::from_generation(ImportGeneration::initial())
+    }
+
+    /// Reconstructs a coordinator at an authoritative durable generation.
+    ///
+    /// Callers obtain this value from [`AccountImportPort::generation`] after
+    /// opening the tenant's durable adapter. The constructor performs no I/O and
+    /// does not claim that the supplied generation was independently verified.
+    #[must_use]
+    pub fn from_generation(generation: ImportGeneration) -> Self {
         Self {
-            state: RwLock::new(CoordinatorState {
-                generation: ImportGeneration::initial(),
-            }),
+            state: RwLock::new(CoordinatorState { generation }),
         }
     }
 
