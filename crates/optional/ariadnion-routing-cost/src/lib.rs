@@ -40,7 +40,7 @@ use core::fmt;
 use std::collections::BTreeSet;
 
 /// Maximum candidates accepted by one cost evaluation.
-pub const MAX_CANDIDATES: usize = 4_096;
+pub const MAX_CANDIDATES: usize = 1 << 17;
 /// Maximum UTF-8 byte length of one candidate identifier.
 pub const MAX_CANDIDATE_ID_BYTES: usize = 128;
 /// Maximum representable abstract cost in one estimate or constraint.
@@ -437,7 +437,7 @@ pub fn evaluate(
     let mut fallback = Vec::new();
     let mut exclusions = Vec::new();
     for input in inputs {
-        if !seen.insert(input.candidate().clone()) {
+        if !seen.insert(input.candidate()) {
             return Err(RoutingCostError::new(
                 RoutingCostErrorCode::DuplicateCandidate,
             ));
