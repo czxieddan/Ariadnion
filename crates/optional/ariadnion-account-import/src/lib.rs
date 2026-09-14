@@ -76,17 +76,36 @@ impl ImportErrorCode {
     /// Returns the stable external machine code.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        const CODES: [&str; 8] = [
-            "ACCOUNT_IMPORT_INVALID_ARGUMENT",
-            "ACCOUNT_IMPORT_UNSUPPORTED_SCHEMA_VERSION",
-            "ACCOUNT_IMPORT_TOO_MANY_ENTRIES",
-            "ACCOUNT_IMPORT_DUPLICATE_ENTRY",
-            "ACCOUNT_IMPORT_CONFLICT",
-            "ACCOUNT_IMPORT_GENERATION_CONFLICT",
-            "ACCOUNT_IMPORT_GENERATION_EXHAUSTED",
-            "ACCOUNT_IMPORT_STATE_UNAVAILABLE",
-        ];
-        CODES[self as usize]
+        match self {
+            Self::InvalidArgument
+            | Self::UnsupportedSchemaVersion
+            | Self::TooManyEntries
+            | Self::DuplicateEntry => import_validation_error_code(self),
+            Self::Conflict
+            | Self::GenerationConflict
+            | Self::GenerationExhausted
+            | Self::StateUnavailable => import_publication_error_code(self),
+        }
+    }
+}
+
+const fn import_validation_error_code(code: ImportErrorCode) -> &'static str {
+    match code {
+        ImportErrorCode::InvalidArgument => "ACCOUNT_IMPORT_INVALID_ARGUMENT",
+        ImportErrorCode::UnsupportedSchemaVersion => "ACCOUNT_IMPORT_UNSUPPORTED_SCHEMA_VERSION",
+        ImportErrorCode::TooManyEntries => "ACCOUNT_IMPORT_TOO_MANY_ENTRIES",
+        ImportErrorCode::DuplicateEntry => "ACCOUNT_IMPORT_DUPLICATE_ENTRY",
+        _ => "ACCOUNT_IMPORT_INVALID_ARGUMENT",
+    }
+}
+
+const fn import_publication_error_code(code: ImportErrorCode) -> &'static str {
+    match code {
+        ImportErrorCode::Conflict => "ACCOUNT_IMPORT_CONFLICT",
+        ImportErrorCode::GenerationConflict => "ACCOUNT_IMPORT_GENERATION_CONFLICT",
+        ImportErrorCode::GenerationExhausted => "ACCOUNT_IMPORT_GENERATION_EXHAUSTED",
+        ImportErrorCode::StateUnavailable => "ACCOUNT_IMPORT_STATE_UNAVAILABLE",
+        _ => "ACCOUNT_IMPORT_INVALID_ARGUMENT",
     }
 }
 
