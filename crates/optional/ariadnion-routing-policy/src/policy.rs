@@ -28,11 +28,10 @@
 
 use crate::error::{RoutingPolicyError, RoutingPolicyErrorCode};
 use crate::model::{
-    Availability, Candidate, CandidateExclusion, ExclusionReason, MAX_CANDIDATES, Priority,
-    SelectionDecision,
+    Availability, Candidate, CandidateExclusion, CandidateId, ExclusionReason,
+    PreparedCandidateSet, Priority, SelectionDecision, validate_candidates,
 };
 use std::cmp::Ordering;
-use std::collections::BTreeSet;
 
 /// Pure policy contract over an immutable candidate slice.
 pub trait SelectionPolicy {
@@ -49,45 +48,77 @@ impl WeightedLeastLoadPolicy {
     pub const fn new() -> Self {
         Self
     }
+
+    /// Selects from a snapshot that already passed bounded identity validation.
+    ///
+    /// This is the request hot path for large immutable account pools. The
+    /// returned value borrows the prepared snapshot and can materialize the
+    /// complete per-candidate explanation later through
+    /// [`PreparedSelection::explain`].
+    ///
+    /// # Errors
+    /// Returns [`RoutingPolicyErrorCode::NoEligibleCandidates`] when every
+    /// candidate is unavailable or has zero weight.
+    pub fn select_prepared<'a>(
+        &self,
+        candidates: &'a PreparedCandidateSet,
+    ) -> Result<PreparedSelection<'a>, RoutingPolicyError> {
+        select_candidates(candidates.candidates())
+    }
 }
 
 impl SelectionPolicy for WeightedLeastLoadPolicy {
     fn select(&self, candidates: &[Candidate]) -> Result<SelectionDecision, RoutingPolicyError> {
-        validate_input(candidates)?;
-        let winning_priority = find_winning_priority(candidates)?;
-        let winner = find_winner(candidates, winning_priority)?;
-        let exclusions = explain_exclusions(candidates, winner, winning_priority);
-        Ok(SelectionDecision::new(
-            winner.id().clone(),
-            winning_priority,
-            exclusions,
-        ))
+        validate_candidates(candidates)?;
+        Ok(select_candidates(candidates)?.explain())
     }
 }
 
-fn validate_input(candidates: &[Candidate]) -> Result<(), RoutingPolicyError> {
-    if candidates.is_empty() {
-        return Err(RoutingPolicyError::new(
-            RoutingPolicyErrorCode::EmptyCandidates,
-            "at least one candidate is required",
-        ));
+/// Fast routing result bound to the prepared snapshot that produced it.
+///
+/// The result contains no copied candidate set or exclusion list. Call
+/// [`Self::explain`] when a full audit explanation is required.
+#[derive(Clone, Copy, Debug)]
+pub struct PreparedSelection<'a> {
+    candidates: &'a [Candidate],
+    winner: &'a Candidate,
+    winning_priority: Priority,
+}
+
+impl PreparedSelection<'_> {
+    /// Returns the selected candidate identifier.
+    #[must_use]
+    pub fn selected(&self) -> &CandidateId {
+        self.winner.id()
     }
-    if candidates.len() > MAX_CANDIDATES {
-        return Err(RoutingPolicyError::new(
-            RoutingPolicyErrorCode::TooManyCandidates,
-            "candidate set exceeds the bounded policy limit",
-        ));
+
+    /// Returns the lowest eligible priority tier used by the decision.
+    #[must_use]
+    pub const fn winning_priority(&self) -> Priority {
+        self.winning_priority
     }
-    let mut identifiers = BTreeSet::new();
-    for candidate in candidates {
-        if !identifiers.insert(candidate.id().clone()) {
-            return Err(RoutingPolicyError::new(
-                RoutingPolicyErrorCode::DuplicateCandidateId,
-                "candidate identifiers must be unique within one snapshot",
-            ));
-        }
+
+    /// Materializes the complete deterministic per-candidate explanation.
+    ///
+    /// Explanation allocation is deliberately separate from the selection hot
+    /// path so large pools do not pay that cost before dispatch.
+    #[must_use]
+    pub fn explain(&self) -> SelectionDecision {
+        let exclusions = explain_exclusions(self.candidates, self.winner, self.winning_priority);
+        SelectionDecision::new(self.winner.id().clone(), self.winning_priority, exclusions)
     }
-    Ok(())
+}
+
+fn select_candidates(
+    candidates: &[Candidate],
+) -> Result<PreparedSelection<'_>, RoutingPolicyError> {
+    let winning_priority = find_winning_priority(candidates)?;
+    let winner = find_winner(candidates, winning_priority)?;
+    Ok(PreparedSelection {
+        candidates,
+        winner,
+        winning_priority,
+    })
 }
 
 fn find_winning_priority(candidates: &[Candidate]) -> Result<Priority, RoutingPolicyError> {

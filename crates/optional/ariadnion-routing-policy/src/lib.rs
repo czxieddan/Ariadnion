@@ -43,7 +43,7 @@ mod policy;
 pub use error::{RoutingPolicyError, RoutingPolicyErrorCode};
 pub use model::{
     Availability, Candidate, CandidateExclusion, CandidateId, ExclusionReason, Load,
-    MAX_CANDIDATE_ID_BYTES, MAX_CANDIDATES, MAX_LOAD, MAX_WEIGHT, Priority, SelectionDecision,
-    SelectionStrategy, Weight,
+    MAX_CANDIDATE_ID_BYTES, MAX_CANDIDATES, MAX_LOAD, MAX_WEIGHT, PreparedCandidateSet, Priority,
+    SelectionDecision, SelectionStrategy, Weight,
 };
-pub use policy::{SelectionPolicy, WeightedLeastLoadPolicy};
+pub use policy::{PreparedSelection, SelectionPolicy, WeightedLeastLoadPolicy};

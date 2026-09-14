@@ -28,9 +28,11 @@
 
 use crate::error::{RoutingPolicyError, RoutingPolicyErrorCode};
 use core::fmt;
+use std::collections::BTreeSet;
+use std::sync::Arc;
 
 /// Maximum number of candidates accepted by one policy evaluation.
-pub const MAX_CANDIDATES: usize = 4_096;
+pub const MAX_CANDIDATES: usize = 1 << 17;
 /// Maximum UTF-8 byte length of a candidate identifier.
 pub const MAX_CANDIDATE_ID_BYTES: usize = 128;
 /// Maximum supported instantaneous load value.
@@ -196,6 +198,76 @@ impl Candidate {
     pub const fn availability(&self) -> Availability {
         self.availability
     }
+}
+
+/// Immutable candidate set whose bounds and identifiers were validated once.
+///
+/// Preparing a set belongs on snapshot publication paths. Repeated routing
+/// decisions can then avoid rebuilding duplicate-detection state while still
+/// evaluating every candidate deterministically.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PreparedCandidateSet {
+    candidates: Arc<[Candidate]>,
+}
+
+impl PreparedCandidateSet {
+    /// Validates and freezes a complete routing candidate snapshot.
+    ///
+    /// # Errors
+    /// Returns a stable error when the set is empty, exceeds
+    /// [`MAX_CANDIDATES`], or repeats a candidate identifier.
+    pub fn new(candidates: Vec<Candidate>) -> Result<Self, RoutingPolicyError> {
+        validate_candidates(&candidates)?;
+        Ok(Self {
+            candidates: Arc::from(candidates.into_boxed_slice()),
+        })
+    }
+
+    /// Returns the validated candidates in caller-provided order.
+    #[must_use]
+    pub fn candidates(&self) -> &[Candidate] {
+        &self.candidates
+    }
+
+    /// Returns the number of validated candidates.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.candidates.len()
+    }
+
+    /// Returns whether the set contains no candidates.
+    ///
+    /// A successfully constructed set is never empty; this accessor supports
+    /// generic collection consumers without weakening construction rules.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.candidates.is_empty()
+    }
+}
+
+pub(crate) fn validate_candidates(candidates: &[Candidate]) -> Result<(), RoutingPolicyError> {
+    if candidates.is_empty() {
+        return Err(RoutingPolicyError::new(
+            RoutingPolicyErrorCode::EmptyCandidates,
+            "at least one candidate is required",
+        ));
+    }
+    if candidates.len() > MAX_CANDIDATES {
+        return Err(RoutingPolicyError::new(
+            RoutingPolicyErrorCode::TooManyCandidates,
+            "candidate set exceeds the bounded policy limit",
+        ));
+    }
+    let mut identifiers = BTreeSet::new();
+    for candidate in candidates {
+        if !identifiers.insert(candidate.id()) {
+            return Err(RoutingPolicyError::new(
+                RoutingPolicyErrorCode::DuplicateCandidateId,
+                "candidate identifiers must be unique within one snapshot",
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Policy strategy recorded in a selection explanation.
