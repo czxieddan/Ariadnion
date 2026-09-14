@@ -86,18 +86,38 @@ impl ExportErrorCode {
     /// Returns the stable external machine code.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        const CODES: [&str; 9] = [
-            "ACCOUNT_EXPORT_INVALID_ARGUMENT",
-            "ACCOUNT_EXPORT_EMPTY_BATCH",
-            "ACCOUNT_EXPORT_TOO_MANY_RECORDS",
-            "ACCOUNT_EXPORT_DUPLICATE_ACCOUNT",
-            "ACCOUNT_EXPORT_AUTHORIZATION_EXPIRED",
-            "ACCOUNT_EXPORT_SECONDARY_APPROVAL_REQUIRED",
-            "ACCOUNT_EXPORT_SCOPE_MISMATCH",
-            "ACCOUNT_EXPORT_ARTIFACT_TOO_LARGE",
-            "ACCOUNT_EXPORT_MISSING_SECRET_REFERENCE",
-        ];
-        CODES[self as usize]
+        match self {
+            Self::InvalidArgument
+            | Self::EmptyBatch
+            | Self::TooManyRecords
+            | Self::DuplicateAccount
+            | Self::AuthorizationExpired => export_input_error_code(self),
+            Self::SecondaryApprovalRequired
+            | Self::ScopeMismatch
+            | Self::ArtifactTooLarge
+            | Self::MissingSecretReference => export_security_error_code(self),
+        }
+    }
+}
+
+const fn export_input_error_code(code: ExportErrorCode) -> &'static str {
+    match code {
+        ExportErrorCode::InvalidArgument => "ACCOUNT_EXPORT_INVALID_ARGUMENT",
+        ExportErrorCode::EmptyBatch => "ACCOUNT_EXPORT_EMPTY_BATCH",
+        ExportErrorCode::TooManyRecords => "ACCOUNT_EXPORT_TOO_MANY_RECORDS",
+        ExportErrorCode::DuplicateAccount => "ACCOUNT_EXPORT_DUPLICATE_ACCOUNT",
+        ExportErrorCode::AuthorizationExpired => "ACCOUNT_EXPORT_AUTHORIZATION_EXPIRED",
+        _ => "ACCOUNT_EXPORT_INVALID_ARGUMENT",
+    }
+}
+
+const fn export_security_error_code(code: ExportErrorCode) -> &'static str {
+    match code {
+        ExportErrorCode::SecondaryApprovalRequired => "ACCOUNT_EXPORT_SECONDARY_APPROVAL_REQUIRED",
+        ExportErrorCode::ScopeMismatch => "ACCOUNT_EXPORT_SCOPE_MISMATCH",
+        ExportErrorCode::ArtifactTooLarge => "ACCOUNT_EXPORT_ARTIFACT_TOO_LARGE",
+        ExportErrorCode::MissingSecretReference => "ACCOUNT_EXPORT_MISSING_SECRET_REFERENCE",
+        _ => "ACCOUNT_EXPORT_INVALID_ARGUMENT",
     }
 }
 
@@ -611,11 +631,7 @@ impl AccountExportPlan {
         watermark: ExportWatermark,
     ) -> Result<Self, ExportError> {
         validate_export_requirements(&authorization, records.len(), now)?;
-        validate_records(
-            &records,
-            authorization.tenant_id(),
-            authorization.fields(),
-        )?;
+        validate_records(&records, authorization.tenant_id(), authorization.fields())?;
         let records = project_records(authorization.fields(), records);
         let record_count =
             u32::try_from(records.len()).map_err(|_| error(ExportErrorCode::TooManyRecords))?;
