@@ -46,7 +46,7 @@ use ariadnion_core::TenantId;
 /// Maximum number of policies in one budget book.
 pub const MAX_POLICIES: usize = 4_096;
 /// Maximum number of reservation identities retained for replay protection.
-pub const MAX_RESERVATIONS: usize = 100_000;
+pub const MAX_RESERVATIONS: usize = 1 << 17;
 const MAX_ID_BYTES: usize = 128;
 
 /// Stable machine-readable failures returned by budget operations.

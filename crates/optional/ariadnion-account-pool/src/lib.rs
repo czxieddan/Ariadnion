@@ -212,9 +212,9 @@ use ariadnion_core::TenantId;
 use ariadnion_routing_domain::{CandidateRef, RouteModel, RouteSnapshot, RouteSnapshotVersion};
 
 /// Maximum records accepted by one account import.
-pub const MAX_IMPORT_RECORDS: usize = 100_000;
+pub const MAX_IMPORT_RECORDS: usize = 1 << 17;
 /// Maximum candidates held by one immutable snapshot.
-pub const MAX_SNAPSHOT_CANDIDATES: usize = 100_000;
+pub const MAX_SNAPSHOT_CANDIDATES: usize = 1 << 17;
 /// Maximum supported candidate weight.
 pub const MAX_WEIGHT: u32 = 1_000_000;
 /// Maximum supported instantaneous load value.

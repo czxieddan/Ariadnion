@@ -44,7 +44,7 @@ use std::sync::RwLock;
 pub use ariadnion_account_domain::{AccountId, ProviderId, SecretRef};
 
 /// Maximum entries accepted by one import batch.
-pub const MAX_IMPORT_ENTRIES: usize = 100_000;
+pub const MAX_IMPORT_ENTRIES: usize = 1 << 17;
 /// Maximum bytes accepted when parsing a hexadecimal digest.
 pub const DIGEST_HEX_BYTES: usize = 64;
 const CURRENT_SCHEMA_VERSION: u16 = 1;

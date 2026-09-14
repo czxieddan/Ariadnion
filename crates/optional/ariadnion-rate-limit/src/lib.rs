@@ -46,7 +46,7 @@ pub const MAX_LIMIT_ID_BYTES: usize = 160;
 /// Maximum number of dimensions admitted atomically for one request.
 pub const MAX_DIMENSIONS_PER_ADMISSION: usize = 4;
 /// Maximum number of configured dimension policies.
-pub const MAX_POLICIES: usize = 100_000;
+pub const MAX_POLICIES: usize = 1 << 17;
 /// Shortest supported rate window.
 pub const MIN_RATE_WINDOW: Duration = Duration::from_millis(10);
 /// Longest supported short-window rate interval.

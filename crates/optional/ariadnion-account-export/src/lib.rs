@@ -43,7 +43,7 @@ use std::collections::BTreeSet;
 use std::fmt::{self, Debug, Display, Formatter};
 
 /// Maximum number of account records in one export plan.
-pub const MAX_EXPORT_RECORDS: usize = 100_000;
+pub const MAX_EXPORT_RECORDS: usize = 1 << 17;
 /// Number of records at which a second approval is mandatory.
 pub const LARGE_EXPORT_THRESHOLD: usize = 1_000;
 /// Maximum byte length of an export batch identifier.

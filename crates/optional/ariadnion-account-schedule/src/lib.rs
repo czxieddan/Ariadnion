@@ -40,7 +40,7 @@ const MINUTES_PER_DAY: u16 = 1_440;
 const MAX_OFFSET_MINUTES: i32 = 1_440;
 const MAX_WEEKLY_WINDOWS: usize = 128;
 const MAX_MAINTENANCE_WINDOWS: usize = 128;
-const MAX_SCHEDULES: usize = 100_000;
+const MAX_SCHEDULES: usize = 1 << 17;
 
 /// Stable machine-readable schedule failure codes.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
