@@ -81,18 +81,24 @@ impl SimulationErrorCode {
     /// Returns the stable external machine code.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        const CODES: [&str; 9] = [
-            "ROUTING_SIMULATOR_INVALID_ARGUMENT",
-            "ROUTING_SIMULATOR_EMPTY_CANDIDATES",
-            "ROUTING_SIMULATOR_TOO_MANY_CANDIDATES",
-            "ROUTING_SIMULATOR_DUPLICATE_CANDIDATE",
-            "ROUTING_SIMULATOR_CANDIDATE_NOT_FOUND",
-            "ROUTING_SIMULATOR_MODEL_MISMATCH",
-            "ROUTING_SIMULATOR_NO_ELIGIBLE_CANDIDATES",
-            "ROUTING_SIMULATOR_CAPACITY_OVERFLOW",
-            "ROUTING_SIMULATOR_TENANT_MISMATCH",
-        ];
-        CODES[self as usize]
+        match self {
+            Self::InvalidArgument => "ROUTING_SIMULATOR_INVALID_ARGUMENT",
+            Self::EmptyCandidates => "ROUTING_SIMULATOR_EMPTY_CANDIDATES",
+            Self::TooManyCandidates => "ROUTING_SIMULATOR_TOO_MANY_CANDIDATES",
+            Self::DuplicateCandidate => "ROUTING_SIMULATOR_DUPLICATE_CANDIDATE",
+            Self::CandidateNotFound => "ROUTING_SIMULATOR_CANDIDATE_NOT_FOUND",
+            other => other.as_tail_str(),
+        }
+    }
+
+    const fn as_tail_str(self) -> &'static str {
+        match self {
+            Self::ModelMismatch => "ROUTING_SIMULATOR_MODEL_MISMATCH",
+            Self::NoEligibleCandidates => "ROUTING_SIMULATOR_NO_ELIGIBLE_CANDIDATES",
+            Self::CapacityOverflow => "ROUTING_SIMULATOR_CAPACITY_OVERFLOW",
+            Self::TenantMismatch => "ROUTING_SIMULATOR_TENANT_MISMATCH",
+            _ => "ROUTING_SIMULATOR_INVALID_ARGUMENT",
+        }
     }
 }
 
@@ -337,7 +343,9 @@ fn validate_policy_candidates(
     let mut ids = BTreeSet::new();
     for candidate in policy {
         if !ids.insert(candidate.id().clone()) {
-            return Err(SimulationError::new(SimulationErrorCode::DuplicateCandidate));
+            return Err(SimulationError::new(
+                SimulationErrorCode::DuplicateCandidate,
+            ));
         }
         if !snapshot
             .candidates()
@@ -369,8 +377,13 @@ fn evaluate_policy(
     let decision = RouteDecision::new(input.snapshot().version(), selected.key().clone())
         .map_err(|_| SimulationError::new(SimulationErrorCode::InvalidArgument))?;
     let exclusions = policy_exclusions(input.snapshot(), policy);
-    RoutingEvaluation::new(input.context().clone(), input.snapshot(), decision, exclusions)
-        .map_err(map_domain_error)
+    RoutingEvaluation::new(
+        input.context().clone(),
+        input.snapshot(),
+        decision,
+        exclusions,
+    )
+    .map_err(map_domain_error)
 }
 
 fn policy_exclusions(snapshot: &RouteSnapshot, policy: &SelectionDecision) -> Vec<DomainExclusion> {
