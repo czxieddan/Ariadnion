@@ -81,19 +81,40 @@ impl RoutingDomainErrorCode {
     /// Returns the stable external machine code.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        const CODES: [&str; 10] = [
-            "ROUTING_INVALID_ARGUMENT",
-            "ROUTING_EMPTY_SNAPSHOT",
-            "ROUTING_TOO_MANY_ENTRIES",
-            "ROUTING_DUPLICATE_CANDIDATE_ID",
-            "ROUTING_SNAPSHOT_VERSION_EXHAUSTED",
-            "ROUTING_CANDIDATE_NOT_FOUND",
-            "ROUTING_SNAPSHOT_VERSION_MISMATCH",
-            "ROUTING_MODEL_MISMATCH",
-            "ROUTING_DUPLICATE_CAPABILITY",
-            "ROUTING_TENANT_MISMATCH",
-        ];
-        CODES[self as usize]
+        match self {
+            Self::InvalidArgument
+            | Self::EmptySnapshot
+            | Self::TooManyEntries
+            | Self::DuplicateCandidateId
+            | Self::SnapshotVersionExhausted => routing_input_error_code(self),
+            Self::CandidateNotFound
+            | Self::SnapshotVersionMismatch
+            | Self::ModelMismatch
+            | Self::DuplicateCapability
+            | Self::TenantMismatch => routing_evaluation_error_code(self),
+        }
+    }
+}
+
+const fn routing_input_error_code(code: RoutingDomainErrorCode) -> &'static str {
+    match code {
+        RoutingDomainErrorCode::InvalidArgument => "ROUTING_INVALID_ARGUMENT",
+        RoutingDomainErrorCode::EmptySnapshot => "ROUTING_EMPTY_SNAPSHOT",
+        RoutingDomainErrorCode::TooManyEntries => "ROUTING_TOO_MANY_ENTRIES",
+        RoutingDomainErrorCode::DuplicateCandidateId => "ROUTING_DUPLICATE_CANDIDATE_ID",
+        RoutingDomainErrorCode::SnapshotVersionExhausted => "ROUTING_SNAPSHOT_VERSION_EXHAUSTED",
+        _ => "ROUTING_INVALID_ARGUMENT",
+    }
+}
+
+const fn routing_evaluation_error_code(code: RoutingDomainErrorCode) -> &'static str {
+    match code {
+        RoutingDomainErrorCode::CandidateNotFound => "ROUTING_CANDIDATE_NOT_FOUND",
+        RoutingDomainErrorCode::SnapshotVersionMismatch => "ROUTING_SNAPSHOT_VERSION_MISMATCH",
+        RoutingDomainErrorCode::ModelMismatch => "ROUTING_MODEL_MISMATCH",
+        RoutingDomainErrorCode::DuplicateCapability => "ROUTING_DUPLICATE_CAPABILITY",
+        RoutingDomainErrorCode::TenantMismatch => "ROUTING_TENANT_MISMATCH",
+        _ => "ROUTING_INVALID_ARGUMENT",
     }
 }
 
