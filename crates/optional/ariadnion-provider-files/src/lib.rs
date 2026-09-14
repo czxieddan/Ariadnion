@@ -49,8 +49,8 @@ pub const MAX_PROVIDER_ACCOUNT_ID_BYTES: usize = 128;
 pub const MAX_PROVIDER_FILE_ID_BYTES: usize = 256;
 /// Maximum ASCII byte length of one provider file purpose.
 pub const MAX_PROVIDER_FILE_PURPOSE_BYTES: usize = 64;
-/// Maximum number of records accepted by one immutable mapping snapshot.
-pub const MAX_PROVIDER_FILE_MAPPINGS: usize = 100_000;
+/// Binary record ceiling accepted by one immutable mapping snapshot.
+pub const MAX_PROVIDER_FILE_MAPPINGS: usize = 1 << 17;
 /// Maximum mappings returned by one provider-file page.
 pub const MAX_PROVIDER_FILE_PAGE_RESULTS: usize = 1_000;
 
