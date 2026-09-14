@@ -75,21 +75,48 @@ impl AccountCircuitErrorCode {
     /// Returns the stable external machine code.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        const CODES: [&str; 12] = [
-            "ACCOUNT_CIRCUIT_INVALID_ARGUMENT",
-            "ACCOUNT_CIRCUIT_ACCOUNT_MISMATCH",
-            "ACCOUNT_CIRCUIT_GENERATION_CONFLICT",
-            "ACCOUNT_CIRCUIT_TIMESTAMP_OUT_OF_ORDER",
-            "ACCOUNT_CIRCUIT_INVALID_TRANSITION",
-            "ACCOUNT_CIRCUIT_RECOVERY_WINDOW_CLOSED",
-            "ACCOUNT_CIRCUIT_PROBE_LIMIT_REACHED",
-            "ACCOUNT_CIRCUIT_ADMINISTRATIVE_RESET_REQUIRED",
-            "ACCOUNT_CIRCUIT_LEASE_CONFLICT",
-            "ACCOUNT_CIRCUIT_LEASE_EXPIRED",
-            "ACCOUNT_CIRCUIT_VERSION_EXHAUSTED",
-            "ACCOUNT_CIRCUIT_STATE_UNAVAILABLE",
-        ];
-        CODES[self as usize]
+        match self {
+            Self::InvalidArgument
+            | Self::AccountMismatch
+            | Self::GenerationConflict
+            | Self::TimestampOutOfOrder
+            | Self::InvalidTransition
+            | Self::RecoveryWindowClosed => circuit_request_error_code(self),
+            Self::ProbeLimitReached
+            | Self::AdministrativeResetRequired
+            | Self::LeaseConflict
+            | Self::LeaseExpired
+            | Self::VersionExhausted
+            | Self::StateUnavailable => circuit_state_error_code(self),
+        }
+    }
+}
+
+const fn circuit_request_error_code(code: AccountCircuitErrorCode) -> &'static str {
+    match code {
+        AccountCircuitErrorCode::InvalidArgument => "ACCOUNT_CIRCUIT_INVALID_ARGUMENT",
+        AccountCircuitErrorCode::AccountMismatch => "ACCOUNT_CIRCUIT_ACCOUNT_MISMATCH",
+        AccountCircuitErrorCode::GenerationConflict => "ACCOUNT_CIRCUIT_GENERATION_CONFLICT",
+        AccountCircuitErrorCode::TimestampOutOfOrder => "ACCOUNT_CIRCUIT_TIMESTAMP_OUT_OF_ORDER",
+        AccountCircuitErrorCode::InvalidTransition => "ACCOUNT_CIRCUIT_INVALID_TRANSITION",
+        AccountCircuitErrorCode::RecoveryWindowClosed => {
+            "ACCOUNT_CIRCUIT_RECOVERY_WINDOW_CLOSED"
+        }
+        _ => "ACCOUNT_CIRCUIT_INVALID_ARGUMENT",
+    }
+}
+
+const fn circuit_state_error_code(code: AccountCircuitErrorCode) -> &'static str {
+    match code {
+        AccountCircuitErrorCode::ProbeLimitReached => "ACCOUNT_CIRCUIT_PROBE_LIMIT_REACHED",
+        AccountCircuitErrorCode::AdministrativeResetRequired => {
+            "ACCOUNT_CIRCUIT_ADMINISTRATIVE_RESET_REQUIRED"
+        }
+        AccountCircuitErrorCode::LeaseConflict => "ACCOUNT_CIRCUIT_LEASE_CONFLICT",
+        AccountCircuitErrorCode::LeaseExpired => "ACCOUNT_CIRCUIT_LEASE_EXPIRED",
+        AccountCircuitErrorCode::VersionExhausted => "ACCOUNT_CIRCUIT_VERSION_EXHAUSTED",
+        AccountCircuitErrorCode::StateUnavailable => "ACCOUNT_CIRCUIT_STATE_UNAVAILABLE",
+        _ => "ACCOUNT_CIRCUIT_INVALID_ARGUMENT",
     }
 }
 
