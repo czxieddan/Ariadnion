@@ -74,17 +74,35 @@ impl ModelPricingErrorCode {
     /// Returns the stable external machine code.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        const CODES: [&str; 8] = [
-            "MODEL_PRICING_INVALID_ARGUMENT",
-            "MODEL_PRICING_LIMIT_EXCEEDED",
-            "MODEL_PRICING_DUPLICATE_DIMENSION",
-            "MODEL_PRICING_OVERLAPPING_WINDOW",
-            "MODEL_PRICING_DUPLICATE_SCHEDULE",
-            "MODEL_PRICING_NOT_FOUND",
-            "MODEL_PRICING_OVERFLOW",
-            "MODEL_PRICING_VERSION_EXHAUSTED",
-        ];
-        CODES[self as usize]
+        match self {
+            Self::InvalidArgument
+            | Self::LimitExceeded
+            | Self::DuplicateDimension
+            | Self::OverlappingWindow => self.as_str_core(),
+            Self::DuplicateSchedule | Self::NotFound | Self::Overflow | Self::VersionExhausted => {
+                self.as_str_extended()
+            }
+        }
+    }
+
+    const fn as_str_core(self) -> &'static str {
+        match self {
+            Self::InvalidArgument => "MODEL_PRICING_INVALID_ARGUMENT",
+            Self::LimitExceeded => "MODEL_PRICING_LIMIT_EXCEEDED",
+            Self::DuplicateDimension => "MODEL_PRICING_DUPLICATE_DIMENSION",
+            Self::OverlappingWindow => "MODEL_PRICING_OVERLAPPING_WINDOW",
+            _ => "MODEL_PRICING_INVALID_ARGUMENT",
+        }
+    }
+
+    const fn as_str_extended(self) -> &'static str {
+        match self {
+            Self::DuplicateSchedule => "MODEL_PRICING_DUPLICATE_SCHEDULE",
+            Self::NotFound => "MODEL_PRICING_NOT_FOUND",
+            Self::Overflow => "MODEL_PRICING_OVERFLOW",
+            Self::VersionExhausted => "MODEL_PRICING_VERSION_EXHAUSTED",
+            _ => "MODEL_PRICING_INVALID_ARGUMENT",
+        }
     }
 }
 
@@ -502,7 +520,9 @@ impl PricingCatalog {
             .schedules
             .iter()
             .find(|schedule| {
-                schedule.model_id.as_ref() == model_id && schedule.window.contains(timestamp)
+                schedule.model_id.as_ref() == model_id
+                    && schedule.window.contains(timestamp)
+                    && schedule.price_for(dimension).is_some()
             })
             .ok_or_else(|| error(ModelPricingErrorCode::NotFound))?;
         let price = schedule
