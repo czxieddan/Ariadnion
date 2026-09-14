@@ -42,9 +42,9 @@ pub const MAX_SUBJECT_BYTES: usize = 256;
 /// Maximum bytes accepted for one candidate identity.
 pub const MAX_CANDIDATE_BYTES: usize = 128;
 /// Maximum number of retained bindings in one registry.
-pub const MAX_BINDINGS: usize = 100_000;
+pub const MAX_BINDINGS: usize = 1 << 17;
 /// Maximum number of candidates considered by one selection.
-pub const MAX_CANDIDATES: usize = 100_000;
+pub const MAX_CANDIDATES: usize = 1 << 17;
 /// Maximum lifetime of a binding in seconds.
 pub const MAX_TTL_SECONDS: u64 = 30 * 86_400;
 
@@ -79,19 +79,40 @@ impl AccountAffinityErrorCode {
     /// Returns the stable external machine code.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        const CODES: [&str; 10] = [
-            "ACCOUNT_AFFINITY_INVALID_ARGUMENT",
-            "ACCOUNT_AFFINITY_EMPTY_CANDIDATE_SET",
-            "ACCOUNT_AFFINITY_TOO_MANY_CANDIDATES",
-            "ACCOUNT_AFFINITY_CAPACITY_EXCEEDED",
-            "ACCOUNT_AFFINITY_INVALID_TTL",
-            "ACCOUNT_AFFINITY_GENERATION_CONFLICT",
-            "ACCOUNT_AFFINITY_EPOCH_CONFLICT",
-            "ACCOUNT_AFFINITY_TENANT_MISMATCH",
-            "ACCOUNT_AFFINITY_VERSION_EXHAUSTED",
-            "ACCOUNT_AFFINITY_STATE_UNAVAILABLE",
-        ];
-        CODES[self as usize]
+        match self {
+            Self::InvalidArgument
+            | Self::EmptyCandidateSet
+            | Self::TooManyCandidates
+            | Self::CapacityExceeded
+            | Self::InvalidTtl => affinity_input_error_code(self),
+            Self::GenerationConflict
+            | Self::EpochConflict
+            | Self::TenantMismatch
+            | Self::VersionExhausted
+            | Self::StateUnavailable => affinity_state_error_code(self),
+        }
+    }
+}
+
+const fn affinity_input_error_code(code: AccountAffinityErrorCode) -> &'static str {
+    match code {
+        AccountAffinityErrorCode::InvalidArgument => "ACCOUNT_AFFINITY_INVALID_ARGUMENT",
+        AccountAffinityErrorCode::EmptyCandidateSet => "ACCOUNT_AFFINITY_EMPTY_CANDIDATE_SET",
+        AccountAffinityErrorCode::TooManyCandidates => "ACCOUNT_AFFINITY_TOO_MANY_CANDIDATES",
+        AccountAffinityErrorCode::CapacityExceeded => "ACCOUNT_AFFINITY_CAPACITY_EXCEEDED",
+        AccountAffinityErrorCode::InvalidTtl => "ACCOUNT_AFFINITY_INVALID_TTL",
+        _ => "ACCOUNT_AFFINITY_INVALID_ARGUMENT",
+    }
+}
+
+const fn affinity_state_error_code(code: AccountAffinityErrorCode) -> &'static str {
+    match code {
+        AccountAffinityErrorCode::GenerationConflict => "ACCOUNT_AFFINITY_GENERATION_CONFLICT",
+        AccountAffinityErrorCode::EpochConflict => "ACCOUNT_AFFINITY_EPOCH_CONFLICT",
+        AccountAffinityErrorCode::TenantMismatch => "ACCOUNT_AFFINITY_TENANT_MISMATCH",
+        AccountAffinityErrorCode::VersionExhausted => "ACCOUNT_AFFINITY_VERSION_EXHAUSTED",
+        AccountAffinityErrorCode::StateUnavailable => "ACCOUNT_AFFINITY_STATE_UNAVAILABLE",
+        _ => "ACCOUNT_AFFINITY_INVALID_ARGUMENT",
     }
 }
 
