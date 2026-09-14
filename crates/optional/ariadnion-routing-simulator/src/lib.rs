@@ -44,11 +44,11 @@ use ariadnion_routing_policy::{
     Candidate, RoutingPolicyErrorCode, SelectionDecision, SelectionPolicy, WeightedLeastLoadPolicy,
 };
 use std::borrow::Borrow;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 /// Maximum candidates accepted by one simulation input.
-pub const MAX_CANDIDATES: usize = 4_096;
+pub const MAX_CANDIDATES: usize = 1 << 17;
 /// Maximum projected requests or capacity units in one forecast.
 pub const MAX_FORECAST_UNITS: u64 = 1_000_000_000_000;
 
@@ -340,18 +340,19 @@ fn validate_policy_candidates(
     snapshot: &RouteSnapshot,
     policy: &[Candidate],
 ) -> Result<(), SimulationError> {
+    let snapshot_ids: BTreeSet<_> = snapshot
+        .candidates()
+        .iter()
+        .map(|candidate| candidate.key().as_str())
+        .collect();
     let mut ids = BTreeSet::new();
     for candidate in policy {
-        if !ids.insert(candidate.id().clone()) {
+        if !ids.insert(candidate.id().as_str()) {
             return Err(SimulationError::new(
                 SimulationErrorCode::DuplicateCandidate,
             ));
         }
-        if !snapshot
-            .candidates()
-            .iter()
-            .any(|route| route.key().as_str() == candidate.id().as_str())
-        {
+        if !snapshot_ids.contains(candidate.id().as_str()) {
             return Err(SimulationError::new(SimulationErrorCode::CandidateNotFound));
         }
     }
@@ -387,20 +388,19 @@ fn evaluate_policy(
 }
 
 fn policy_exclusions(snapshot: &RouteSnapshot, policy: &SelectionDecision) -> Vec<DomainExclusion> {
+    let routes: BTreeMap<_, _> = snapshot
+        .candidates()
+        .iter()
+        .map(|candidate| (candidate.key().as_str(), candidate.key()))
+        .collect();
     policy
         .exclusions()
         .iter()
         .filter_map(|exclusion| {
-            snapshot
-                .candidates()
-                .iter()
-                .find(|candidate| candidate.key().as_str() == exclusion.candidate_id().as_str())
-                .map(|candidate| {
-                    DomainExclusion::new(
-                        candidate.key().clone(),
-                        DomainExclusionReason::PolicyExcluded,
-                    )
-                })
+            routes
+                .get(exclusion.candidate_id().as_str())
+                .copied()
+                .map(|key| DomainExclusion::new(key.clone(), DomainExclusionReason::PolicyExcluded))
         })
         .collect()
 }
