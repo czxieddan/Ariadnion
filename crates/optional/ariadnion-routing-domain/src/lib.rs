@@ -42,7 +42,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 use std::num::NonZeroU64;
 
 /// Maximum number of candidates retained in one immutable snapshot.
-pub const MAX_CANDIDATES: usize = 4_096;
+pub const MAX_CANDIDATES: usize = 1 << 17;
 /// Maximum byte length of a candidate key.
 pub const MAX_CANDIDATE_KEY_BYTES: usize = 128;
 /// Maximum byte length of a model selector.
@@ -370,7 +370,7 @@ impl RouteSnapshot {
             if candidate.tenant_id() != &tenant_id {
                 return Err(error(RoutingDomainErrorCode::TenantMismatch));
             }
-            if !keys.insert(candidate.key().clone()) {
+            if !keys.insert(candidate.key()) {
                 return Err(error(RoutingDomainErrorCode::DuplicateCandidateId));
             }
         }
