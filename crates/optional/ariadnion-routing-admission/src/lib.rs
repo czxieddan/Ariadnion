@@ -88,11 +88,18 @@ impl RoutingAdmissionErrorCode {
             Self::BudgetRejected => "ROUTING_ADMISSION_BUDGET_REJECTED",
             Self::TenantMismatch => "ROUTING_ADMISSION_TENANT_MISMATCH",
             Self::StateUnavailable => "ROUTING_ADMISSION_STATE_UNAVAILABLE",
+            other => other.as_tail_str(),
+        }
+    }
+
+    const fn as_tail_str(self) -> &'static str {
+        match self {
             Self::ClockRegressed => "ROUTING_ADMISSION_CLOCK_REGRESSED",
             Self::LeaseExpired => "ROUTING_ADMISSION_LEASE_EXPIRED",
             Self::LeaseClosed => "ROUTING_ADMISSION_LEASE_CLOSED",
             Self::CommitIncomplete => "ROUTING_ADMISSION_COMMIT_INCOMPLETE",
             Self::RollbackFailed => "ROUTING_ADMISSION_ROLLBACK_FAILED",
+            _ => "ROUTING_ADMISSION_INVALID_ARGUMENT",
         }
     }
 }
@@ -202,6 +209,18 @@ pub struct RoutingAdmissionCoordinator {
     budget: Arc<BudgetBook>,
 }
 
+/// Observable lifecycle state of a coupled admission lease.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum RoutingAdmissionLeaseState {
+    /// Budget and rate/concurrency capacity are reserved but not finalized.
+    Pending,
+    /// Budget usage is committed and rate usage is charged; concurrency is released.
+    Committed,
+    /// Budget usage is committed but the rate transition did not complete.
+    ReconciliationRequired,
+}
+
 impl RoutingAdmissionCoordinator {
     /// Creates a coordinator from independent in-process component stores.
     #[must_use]
@@ -250,6 +269,7 @@ impl RoutingAdmissionCoordinator {
             budget_receipt: receipt,
             budget_finalized: false,
             closed: false,
+            state: RoutingAdmissionLeaseState::Pending,
         })
     }
 }
@@ -274,6 +294,7 @@ pub struct RoutingAdmissionLease {
     budget_receipt: ReservationReceipt,
     budget_finalized: bool,
     closed: bool,
+    state: RoutingAdmissionLeaseState,
 }
 
 impl RoutingAdmissionLease {
@@ -281,6 +302,12 @@ impl RoutingAdmissionLease {
     #[must_use]
     pub const fn budget_receipt(&self) -> &ReservationReceipt {
         &self.budget_receipt
+    }
+
+    /// Returns the coupled lease lifecycle state.
+    #[must_use]
+    pub const fn state(&self) -> RoutingAdmissionLeaseState {
+        self.state
     }
 
     /// Commits budget usage and then permanently charges the rate window.
@@ -297,12 +324,20 @@ impl RoutingAdmissionLease {
             .map_err(map_budget_lifecycle_error)?;
         self.budget_receipt = receipt;
         self.budget_finalized = true;
-        let Some(rate) = self.rate.as_mut() else {
+        let Some(mut rate) = self.rate.take() else {
+            self.mark_reconciliation_required();
             return Err(error(RoutingAdmissionErrorCode::CommitIncomplete));
         };
         if rate.commit_rate(now).is_err() {
+            drop(rate);
+            self.mark_reconciliation_required();
             return Err(error(RoutingAdmissionErrorCode::CommitIncomplete));
         }
+        if rate.release(now).is_err() {
+            self.mark_reconciliation_required();
+            return Err(error(RoutingAdmissionErrorCode::CommitIncomplete));
+        }
+        self.state = RoutingAdmissionLeaseState::Committed;
         self.closed = true;
         Ok(())
     }
@@ -336,6 +371,11 @@ impl RoutingAdmissionLease {
             Ok(())
         }
     }
+
+    fn mark_reconciliation_required(&mut self) {
+        self.state = RoutingAdmissionLeaseState::ReconciliationRequired;
+        self.closed = true;
+    }
 }
 
 impl Debug for RoutingAdmissionLease {
@@ -344,6 +384,7 @@ impl Debug for RoutingAdmissionLease {
             .debug_struct("RoutingAdmissionLease")
             .field("budget_state", &self.budget_receipt.state())
             .field("budget_finalized", &self.budget_finalized)
+            .field("state", &self.state)
             .field("closed", &self.closed)
             .finish_non_exhaustive()
     }
