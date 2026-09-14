@@ -61,6 +61,8 @@
 
 use std::fmt;
 
+const UNKNOWN_ERROR_CODE: &str = "ACCOUNT_POOL_UNKNOWN";
+
 /// Stable machine-readable account-pool failure codes.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
@@ -96,19 +98,49 @@ impl AccountPoolErrorCode {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::InvalidArgument => "ACCOUNT_POOL_INVALID_ARGUMENT",
-            Self::UnsupportedSchemaVersion => "ACCOUNT_POOL_UNSUPPORTED_SCHEMA_VERSION",
-            Self::TooManyRecords => "ACCOUNT_POOL_TOO_MANY_RECORDS",
-            Self::DuplicateAccount => "ACCOUNT_POOL_DUPLICATE_ACCOUNT",
-            Self::DuplicateCandidate => "ACCOUNT_POOL_DUPLICATE_CANDIDATE",
-            Self::TooManyCandidates => "ACCOUNT_POOL_TOO_MANY_CANDIDATES",
-            Self::GenerationConflict => "ACCOUNT_POOL_GENERATION_CONFLICT",
-            Self::VersionExhausted => "ACCOUNT_POOL_VERSION_EXHAUSTED",
-            Self::InvalidCandidate => "ACCOUNT_POOL_INVALID_CANDIDATE",
-            Self::StateUnavailable => "ACCOUNT_POOL_STATE_UNAVAILABLE",
-            Self::TenantMismatch => "ACCOUNT_POOL_TENANT_MISMATCH",
-            Self::RoutingProjectionFailed => "ACCOUNT_POOL_ROUTING_PROJECTION_FAILED",
+            Self::InvalidArgument
+            | Self::UnsupportedSchemaVersion
+            | Self::TooManyRecords
+            | Self::DuplicateAccount => import_error_code(self),
+            Self::DuplicateCandidate
+            | Self::TooManyCandidates
+            | Self::GenerationConflict
+            | Self::VersionExhausted => snapshot_error_code(self),
+            Self::InvalidCandidate
+            | Self::StateUnavailable
+            | Self::TenantMismatch
+            | Self::RoutingProjectionFailed => projection_error_code(self),
         }
+    }
+}
+
+const fn import_error_code(code: AccountPoolErrorCode) -> &'static str {
+    match code {
+        AccountPoolErrorCode::InvalidArgument => "ACCOUNT_POOL_INVALID_ARGUMENT",
+        AccountPoolErrorCode::UnsupportedSchemaVersion => "ACCOUNT_POOL_UNSUPPORTED_SCHEMA_VERSION",
+        AccountPoolErrorCode::TooManyRecords => "ACCOUNT_POOL_TOO_MANY_RECORDS",
+        AccountPoolErrorCode::DuplicateAccount => "ACCOUNT_POOL_DUPLICATE_ACCOUNT",
+        _ => UNKNOWN_ERROR_CODE,
+    }
+}
+
+const fn snapshot_error_code(code: AccountPoolErrorCode) -> &'static str {
+    match code {
+        AccountPoolErrorCode::DuplicateCandidate => "ACCOUNT_POOL_DUPLICATE_CANDIDATE",
+        AccountPoolErrorCode::TooManyCandidates => "ACCOUNT_POOL_TOO_MANY_CANDIDATES",
+        AccountPoolErrorCode::GenerationConflict => "ACCOUNT_POOL_GENERATION_CONFLICT",
+        AccountPoolErrorCode::VersionExhausted => "ACCOUNT_POOL_VERSION_EXHAUSTED",
+        _ => UNKNOWN_ERROR_CODE,
+    }
+}
+
+const fn projection_error_code(code: AccountPoolErrorCode) -> &'static str {
+    match code {
+        AccountPoolErrorCode::InvalidCandidate => "ACCOUNT_POOL_INVALID_CANDIDATE",
+        AccountPoolErrorCode::StateUnavailable => "ACCOUNT_POOL_STATE_UNAVAILABLE",
+        AccountPoolErrorCode::TenantMismatch => "ACCOUNT_POOL_TENANT_MISMATCH",
+        AccountPoolErrorCode::RoutingProjectionFailed => "ACCOUNT_POOL_ROUTING_PROJECTION_FAILED",
+        _ => UNKNOWN_ERROR_CODE,
     }
 }
 
@@ -719,29 +751,9 @@ impl CandidateSnapshot {
             .map_err(|_| error(AccountPoolErrorCode::RoutingProjectionFailed))?;
         let mut projected = Vec::with_capacity(self.candidates.len());
         for candidate in self.candidates.iter() {
-            let source_tenant = candidate
-                .tenant_id()
-                .ok_or_else(|| error(AccountPoolErrorCode::InvalidCandidate))?;
-            if source_tenant != tenant_id {
-                return Err(error(AccountPoolErrorCode::TenantMismatch));
+            if let Some(route_candidate) = project_candidate(candidate, tenant_id)? {
+                projected.push(route_candidate);
             }
-            if candidate.availability() != Availability::Available {
-                continue;
-            }
-            let model = candidate
-                .model()
-                .ok_or_else(|| error(AccountPoolErrorCode::InvalidCandidate))?;
-            let model = RouteModel::parse(model.as_str())
-                .map_err(|_| error(AccountPoolErrorCode::InvalidCandidate))?;
-            let route_candidate = CandidateRef::new(
-                tenant_id.clone(),
-                candidate.id().as_str(),
-                candidate.account_id().clone(),
-                candidate.provider_id().clone(),
-                model,
-            )
-            .map_err(|_| error(AccountPoolErrorCode::InvalidCandidate))?;
-            projected.push(route_candidate);
         }
         RouteSnapshot::new(tenant_id.clone(), version, projected).map_err(projected_routing_error)
     }
@@ -753,6 +765,49 @@ impl CandidateSnapshot {
     ) -> Result<RouteSnapshot, AccountPoolError> {
         self.to_route_snapshot(tenant_id)
     }
+}
+
+fn project_candidate(
+    candidate: &CandidateMetadata,
+    tenant_id: &TenantId,
+) -> Result<Option<CandidateRef>, AccountPoolError> {
+    ensure_candidate_tenant(candidate, tenant_id)?;
+    if candidate.availability() != Availability::Available {
+        return Ok(None);
+    }
+    build_route_candidate(candidate, tenant_id).map(Some)
+}
+
+fn ensure_candidate_tenant(
+    candidate: &CandidateMetadata,
+    tenant_id: &TenantId,
+) -> Result<(), AccountPoolError> {
+    let source_tenant = candidate
+        .tenant_id()
+        .ok_or_else(|| error(AccountPoolErrorCode::InvalidCandidate))?;
+    if source_tenant != tenant_id {
+        return Err(error(AccountPoolErrorCode::TenantMismatch));
+    }
+    Ok(())
+}
+
+fn build_route_candidate(
+    candidate: &CandidateMetadata,
+    tenant_id: &TenantId,
+) -> Result<CandidateRef, AccountPoolError> {
+    let model = candidate
+        .model()
+        .ok_or_else(|| error(AccountPoolErrorCode::InvalidCandidate))?;
+    let model = RouteModel::parse(model.as_str())
+        .map_err(|_| error(AccountPoolErrorCode::InvalidCandidate))?;
+    CandidateRef::new(
+        tenant_id.clone(),
+        candidate.id().as_str(),
+        candidate.account_id().clone(),
+        candidate.provider_id().clone(),
+        model,
+    )
+    .map_err(|_| error(AccountPoolErrorCode::InvalidCandidate))
 }
 
 fn valid_candidate_id(value: &str) -> bool {
