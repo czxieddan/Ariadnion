@@ -33,11 +33,11 @@ use std::time::Duration;
 use crate::error::{CoreError, ErrorCode};
 
 const MAX_LIFECYCLE_DURATION: Duration = Duration::from_secs(24 * 60 * 60);
-const MAX_RESTARTS: u16 = 1_024;
-const MAX_QUEUE_CAPACITY: usize = 1_048_576;
-const MAX_TASKS: usize = 65_536;
+const MAX_RESTARTS: u16 = 1 << 10;
+const MAX_QUEUE_CAPACITY: usize = 1 << 20;
+const MAX_TASKS: usize = 1 << 16;
 const MAX_MEMORY_BYTES: u64 = 1 << 40;
-const MAX_WASM_FUEL: u64 = 1_000_000_000_000_000;
+const MAX_WASM_FUEL: u64 = 1 << 50;
 
 /// Inputs for a module's lifecycle deadlines and restart policy.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
