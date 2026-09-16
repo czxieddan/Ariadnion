@@ -41,7 +41,11 @@ use crate::{VaultError, VaultErrorCode};
 /// Maximum plaintext bytes that one vault lease may expose.
 pub const MAX_SECRET_BYTES: usize = 64 * 1024;
 /// Maximum ciphertext bytes retained by one encrypted envelope.
-pub const MAX_CIPHERTEXT_BYTES: usize = MAX_SECRET_BYTES + 4 * 1024;
+///
+/// The binary ceiling leaves authenticated-envelope overhead and algorithm
+/// migration room without turning a decimal benchmark workload into a
+/// production capacity limit.
+pub const MAX_CIPHERTEXT_BYTES: usize = 1 << 17;
 /// Nonce width reserved for the reviewed vault adapter algorithm.
 pub const ENVELOPE_NONCE_BYTES: usize = 24;
 /// Maximum lifetime of a plaintext lease.
