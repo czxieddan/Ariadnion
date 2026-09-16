@@ -55,7 +55,104 @@ use ariadnion_provider_mock::{
     MOCK_PROVIDER_IMAGE_MODEL_ID, MOCK_PROVIDER_MODEL_ID, MOCK_PROVIDER_TEXT_MODEL_ID,
 };
 use ariadnion_provider_sdk::{ProviderModelId, ProviderPort};
+use ariadnion_routing_admission::RoutingAdmissionCoordinator;
+use ariadnion_routing_coordinator::{MAX_CANDIDATES, RoutingCoordinator};
 use ariadnion_storage_asset::LocalVolumeAssetStoragePort;
+
+/// Describes where an assembled routing coordinator keeps admission state.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum RoutingCoordinatorStateScope {
+    /// Rate, concurrency, and budget state lives only in the current process.
+    ProcessLocal,
+}
+
+impl RoutingCoordinatorStateScope {
+    /// Returns the stable report value for this state scope.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ProcessLocal => "process-local",
+        }
+    }
+}
+
+/// Typed facts about one complete-bundle routing coordinator assembly.
+///
+/// The report deliberately distinguishes compile-time composition from durable
+/// runtime integration. `ProcessLocal` means that the supplied admission engine
+/// does not survive process loss and does not provide cross-process reconciliation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RoutingCoordinatorAssemblyReport {
+    state_scope: RoutingCoordinatorStateScope,
+    max_candidates: usize,
+}
+
+impl RoutingCoordinatorAssemblyReport {
+    /// Returns the coordinator's admission-state scope.
+    #[must_use]
+    pub const fn state_scope(self) -> RoutingCoordinatorStateScope {
+        self.state_scope
+    }
+
+    /// Returns the binary candidate limit enforced by the coordinator.
+    #[must_use]
+    pub const fn max_candidates(self) -> usize {
+        self.max_candidates
+    }
+
+    /// Reports whether this assembly includes durable admission state.
+    #[must_use]
+    pub const fn has_durable_admission(self) -> bool {
+        false
+    }
+}
+
+/// Owns the complete bundle's shared in-process routing coordinator and report.
+#[derive(Clone, Debug)]
+pub struct RoutingCoordinatorAssembly {
+    coordinator: Arc<RoutingCoordinator>,
+    report: RoutingCoordinatorAssemblyReport,
+}
+
+impl RoutingCoordinatorAssembly {
+    /// Returns the shared coordinator for dependency injection into runtime adapters.
+    #[must_use]
+    pub const fn coordinator(&self) -> &Arc<RoutingCoordinator> {
+        &self.coordinator
+    }
+
+    /// Returns the typed assembly facts without performing runtime work.
+    #[must_use]
+    pub const fn report(&self) -> RoutingCoordinatorAssemblyReport {
+        self.report
+    }
+
+    /// Consumes the assembly and returns the shared coordinator.
+    #[must_use]
+    pub fn into_coordinator(self) -> Arc<RoutingCoordinator> {
+        self.coordinator
+    }
+}
+
+/// Assembles the complete bundle's existing routing coordinator in process.
+///
+/// The caller supplies an already configured coupled admission engine. This
+/// function performs no storage access, creates no policies or account state,
+/// and does not claim durable recovery. Immutable pool, model, health, circuit,
+/// quota, schedule, proxy, affinity, and pricing snapshots remain explicit
+/// inputs to each coordinator decision.
+#[must_use = "retain the coordinator assembly for runtime dependency injection"]
+pub fn assemble_in_process_routing_coordinator(
+    admission: RoutingAdmissionCoordinator,
+) -> RoutingCoordinatorAssembly {
+    RoutingCoordinatorAssembly {
+        coordinator: Arc::new(RoutingCoordinator::new(admission)),
+        report: RoutingCoordinatorAssemblyReport {
+            state_scope: RoutingCoordinatorStateScope::ProcessLocal,
+            max_candidates: MAX_CANDIDATES,
+        },
+    }
+}
 
 /// Selects the single public API route family assembled by the complete bundle.
 ///

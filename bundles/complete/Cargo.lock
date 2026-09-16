@@ -59,6 +59,73 @@ dependencies = [
 ]
 
 [[package]]
+name = "ariadnion-account-affinity"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+ "sha2 0.10.9",
+]
+
+[[package]]
+name = "ariadnion-account-budget"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-account-domain",
+ "ariadnion-core",
+]
+
+[[package]]
+name = "ariadnion-account-circuit"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-account-domain",
+]
+
+[[package]]
+name = "ariadnion-account-domain"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+]
+
+[[package]]
+name = "ariadnion-account-health"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-account-domain",
+]
+
+[[package]]
+name = "ariadnion-account-pool"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-account-domain",
+ "ariadnion-core",
+ "ariadnion-routing-domain",
+]
+
+[[package]]
+name = "ariadnion-account-proxy"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-account-domain",
+]
+
+[[package]]
+name = "ariadnion-account-quota"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-account-domain",
+]
+
+[[package]]
+name = "ariadnion-account-schedule"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-account-domain",
+]
+
+[[package]]
 name = "ariadnion-api-admin"
 version = "0.1.0"
 dependencies = [
@@ -201,6 +268,8 @@ dependencies = [
  "ariadnion-provider-http",
  "ariadnion-provider-mock",
  "ariadnion-provider-sdk",
+ "ariadnion-routing-admission",
+ "ariadnion-routing-coordinator",
  "ariadnion-storage-asset",
  "ariadnion-storage-backup",
  "ariadnion-storage-domain",
@@ -271,6 +340,22 @@ dependencies = [
  "ariadnion-core",
  "ariadnion-principal-binding",
 ]
+
+[[package]]
+name = "ariadnion-model-catalog"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+ "ariadnion-model-domain",
+]
+
+[[package]]
+name = "ariadnion-model-domain"
+version = "0.1.0"
+
+[[package]]
+name = "ariadnion-model-pricing"
+version = "0.1.0"
 
 [[package]]
 name = "ariadnion-organization"
@@ -363,12 +448,78 @@ dependencies = [
 ]
 
 [[package]]
+name = "ariadnion-rate-limit"
+version = "0.1.0"
+
+[[package]]
 name = "ariadnion-rbac"
 version = "0.1.0"
 dependencies = [
  "ariadnion-core",
  "ariadnion-organization",
  "ariadnion-user-domain",
+]
+
+[[package]]
+name = "ariadnion-routing-admission"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-account-budget",
+ "ariadnion-rate-limit",
+]
+
+[[package]]
+name = "ariadnion-routing-coordinator"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-account-affinity",
+ "ariadnion-account-budget",
+ "ariadnion-account-circuit",
+ "ariadnion-account-domain",
+ "ariadnion-account-health",
+ "ariadnion-account-pool",
+ "ariadnion-account-proxy",
+ "ariadnion-account-quota",
+ "ariadnion-account-schedule",
+ "ariadnion-core",
+ "ariadnion-model-catalog",
+ "ariadnion-model-domain",
+ "ariadnion-model-pricing",
+ "ariadnion-rate-limit",
+ "ariadnion-routing-admission",
+ "ariadnion-routing-cost",
+ "ariadnion-routing-domain",
+ "ariadnion-routing-failover",
+ "ariadnion-routing-policy",
+ "ariadnion-routing-usage",
+]
+
+[[package]]
+name = "ariadnion-routing-cost"
+version = "0.1.0"
+
+[[package]]
+name = "ariadnion-routing-domain"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-account-domain",
+ "ariadnion-core",
+]
+
+[[package]]
+name = "ariadnion-routing-failover"
+version = "0.1.0"
+
+[[package]]
+name = "ariadnion-routing-policy"
+version = "0.1.0"
+
+[[package]]
+name = "ariadnion-routing-usage"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-account-domain",
+ "ariadnion-core",
 ]
 
 [[package]]
