@@ -43,6 +43,8 @@ use std::fmt::{self, Debug, Display, Formatter};
 use std::num::{NonZeroU8, NonZeroU16};
 
 mod execution;
+mod lifecycle;
+pub mod migrations;
 mod paging;
 mod port;
 
@@ -52,6 +54,7 @@ pub use execution::{
     ClaimBatchItems, ClaimReceipt, ClaimedBatchItem, CompleteClaimedItem, ItemCompletionReceipt,
     MAX_CLAIM_LEASE_SECONDS, SubmissionReceipt, SubmitBatch, TransitionBatch, TransitionReceipt,
 };
+pub use lifecycle::{BatchLifecycle, BatchTerminalState, BatchTransition};
 pub use paging::{
     MAX_OUTCOME_PAGE_ITEMS, OutcomeCursor, OutcomePage, OutcomePageLimit, OutcomePageRequest,
 };
@@ -1082,161 +1085,5 @@ impl BatchIdentity {
 impl Debug for BatchIdentity {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         formatter.write_str("BatchIdentity(<opaque>)")
-    }
-}
-
-/// Coarse batch lifecycle with explicit terminal detail.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum BatchLifecycle {
-    /// The immutable plan is durable but no item has started.
-    Planned,
-    /// One or more items may be claimed or executing.
-    Running,
-    /// Cancellation is durable and no new item may be claimed.
-    Cancelling,
-    /// No further state or item-outcome mutation is permitted.
-    Terminal(BatchTerminalState),
-}
-
-impl BatchLifecycle {
-    /// Starts a planned batch before its deadline.
-    ///
-    /// # Errors
-    /// Returns [`BatchErrorCode::DeadlineExceeded`] at or after the deadline and
-    /// [`BatchErrorCode::InvalidTransition`] from any state other than planned.
-    pub fn start(self, now: UtcSeconds, deadline: UtcSeconds) -> Result<Self, BatchError> {
-        if now >= deadline {
-            return Err(error(BatchErrorCode::DeadlineExceeded));
-        }
-        match self {
-            Self::Planned => Ok(Self::Running),
-            _ => Err(error(BatchErrorCode::InvalidTransition)),
-        }
-    }
-
-    /// Requests cancellation with exact terminal replay.
-    ///
-    /// Planned work becomes terminal immediately, running work enters the
-    /// cancelling state, and repeated cancelling or cancelled requests preserve
-    /// state.
-    ///
-    /// # Errors
-    /// Returns [`BatchErrorCode::InvalidTransition`] when another terminal
-    /// result is already durable.
-    pub const fn request_cancellation(self) -> Result<Self, BatchError> {
-        match self {
-            Self::Planned => Ok(Self::Terminal(BatchTerminalState::Cancelled)),
-            Self::Running => Ok(Self::Cancelling),
-            Self::Cancelling | Self::Terminal(BatchTerminalState::Cancelled) => Ok(self),
-            Self::Terminal(_) => Err(error(BatchErrorCode::InvalidTransition)),
-        }
-    }
-
-    /// Moves running or cancelling work to coherent terminal detail.
-    ///
-    /// Running work may complete or fail. Cancellation must first enter
-    /// [`Self::Cancelling`] before it becomes cancelled. Deadline termination is
-    /// produced only by [`Self::expire`]. Exact terminal replay is idempotent.
-    ///
-    /// # Errors
-    /// Returns [`BatchErrorCode::InvalidTransition`] for contradictory state.
-    pub fn finish(self, terminal: BatchTerminalState) -> Result<Self, BatchError> {
-        match self {
-            Self::Running => finish_running(terminal),
-            Self::Cancelling => finish_cancelling(terminal),
-            Self::Terminal(existing) if existing == terminal => Ok(self),
-            Self::Planned | Self::Terminal(_) => Err(error(BatchErrorCode::InvalidTransition)),
-        }
-    }
-
-    /// Expires non-terminal work at or after its deadline.
-    ///
-    /// # Errors
-    /// Returns [`BatchErrorCode::InvalidTransition`] before the deadline.
-    pub fn expire(self, now: UtcSeconds, deadline: UtcSeconds) -> Result<Self, BatchError> {
-        if now < deadline {
-            return Err(error(BatchErrorCode::InvalidTransition));
-        }
-        match self {
-            Self::Terminal(BatchTerminalState::DeadlineExceeded) => Ok(self),
-            Self::Terminal(_) => Err(error(BatchErrorCode::InvalidTransition)),
-            Self::Planned | Self::Running | Self::Cancelling => {
-                Ok(Self::Terminal(BatchTerminalState::DeadlineExceeded))
-            }
-        }
-    }
-}
-
-fn finish_running(terminal: BatchTerminalState) -> Result<BatchLifecycle, BatchError> {
-    match terminal {
-        BatchTerminalState::Succeeded
-        | BatchTerminalState::CompletedWithFailures
-        | BatchTerminalState::Failed => Ok(BatchLifecycle::Terminal(terminal)),
-        BatchTerminalState::Cancelled | BatchTerminalState::DeadlineExceeded => {
-            Err(error(BatchErrorCode::InvalidTransition))
-        }
-    }
-}
-
-fn finish_cancelling(terminal: BatchTerminalState) -> Result<BatchLifecycle, BatchError> {
-    match terminal {
-        BatchTerminalState::Cancelled | BatchTerminalState::Failed => {
-            Ok(BatchLifecycle::Terminal(terminal))
-        }
-        BatchTerminalState::Succeeded
-        | BatchTerminalState::CompletedWithFailures
-        | BatchTerminalState::DeadlineExceeded => Err(error(BatchErrorCode::InvalidTransition)),
-    }
-}
-
-/// Immutable terminal detail for an account batch.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum BatchTerminalState {
-    /// Every item produced a successful outcome for the selected intent.
-    Succeeded,
-    /// All items are terminal and at least one was rejected.
-    CompletedWithFailures,
-    /// Cancellation stopped remaining work.
-    Cancelled,
-    /// The absolute deadline stopped remaining work.
-    DeadlineExceeded,
-    /// A durable adapter failure prevented safe continuation.
-    Failed,
-}
-
-/// Version-checked durable batch lifecycle mutation.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum BatchTransition {
-    /// Move a planned batch to running before its deadline.
-    Start,
-    /// Persist cancellation before preventing new claims.
-    RequestCancellation,
-    /// Expire work whose deadline has been reached.
-    Expire,
-    /// Persist coherent terminal completion detail.
-    Finish(BatchTerminalState),
-}
-
-impl BatchTransition {
-    /// Validates transition timing against the immutable batch deadline.
-    ///
-    /// Start and cancellation must be observed before the deadline. Expiry is
-    /// valid only at or after it; finish timing remains adapter-specific because
-    /// an item may complete at any instant before terminal publication.
-    pub fn validate_observed_at(
-        self,
-        observed_at: UtcSeconds,
-        deadline: UtcSeconds,
-    ) -> Result<(), BatchError> {
-        let valid = match self {
-            Self::Start | Self::RequestCancellation => observed_at < deadline,
-            Self::Expire => observed_at >= deadline,
-            Self::Finish(_) => true,
-        };
-        if valid {
-            Ok(())
-        } else {
-            Err(error(BatchErrorCode::DeadlineExceeded))
-        }
     }
 }

@@ -1076,6 +1076,12 @@ impl TransitionBatch {
     pub const fn transition(&self) -> BatchTransition {
         self.transition
     }
+
+    /// Returns the immutable deadline supplied for adapter validation.
+    #[must_use]
+    pub const fn deadline(&self) -> Option<UtcSeconds> {
+        self.deadline
+    }
 }
 
 /// Durable receipt for one lifecycle mutation.
