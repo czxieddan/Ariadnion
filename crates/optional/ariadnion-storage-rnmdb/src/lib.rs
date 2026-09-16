@@ -33,6 +33,8 @@
 
 use std::any::type_name;
 
+mod account_batch_repository;
+mod account_import_repository;
 mod admin_execution;
 mod admin_repository;
 mod api_key_repository;
@@ -71,7 +73,14 @@ mod transaction;
 mod udf;
 mod upgrade;
 mod user_repository;
+mod vault_repository;
 
+pub use account_batch_repository::RnmdbAccountBatchRepository;
+pub use account_import_repository::{
+    AccountImportAccess, AccountImportAuthorizationPort, AccountImportClock,
+    AccountImportFingerprintKeyMaterial, AccountImportSecretPathKeyMaterial,
+    RnmdbAccountImportRepository,
+};
 pub use admin_repository::RnmdbAdminCommandRepository;
 pub use api_key_repository::RnmdbApiKeyRepository;
 pub use audit_repository::{MAX_AUDIT_MEMBERSHIP_DISTANCE, RnmdbAuditRepository};
@@ -98,7 +107,8 @@ pub use maintenance::{
     VerificationSummary,
 };
 pub use migration::{
-    MigrationApplyStatus, RnmdbMigrationRunner, file_catalog_migration,
+    MigrationApplyStatus, RnmdbMigrationRunner, account_batch_migration,
+    account_registry_migration, account_vault_migration, file_catalog_migration,
     identity_admin_command_migration, identity_api_key_migration,
     identity_api_key_request_evidence_migration, identity_audit_migration,
     identity_invitation_migration, identity_organization_event_replay_migration,
@@ -153,9 +163,13 @@ pub use upgrade::{
     RnmdbUpgradeEnvironment,
 };
 pub use user_repository::{AuditSubjectKeyMaterial, RnmdbUserRepository};
+pub use vault_repository::{
+    MAX_VAULT_CUSTODY_KEYS, RnmdbVaultKeyCustody, RnmdbVaultRepository, VaultAccessPolicy,
+    VaultAuthorizationRequest, VaultColumnKeySet, VaultCustodyKey, VaultKeyCustody, VaultOperation,
+};
 
 /// The reviewed upstream source revision compiled by this adapter.
-pub const REVIEWED_RNMDB_COMMIT: &str = "f20040a127a56ec8c37b3398283df36f024a1dd2";
+pub const REVIEWED_RNMDB_COMMIT: &str = "9414642b794bd87bd40731d4b03b88e1535d9f11";
 
 /// One compile-time link between an RNMDB package and an adapter boundary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
