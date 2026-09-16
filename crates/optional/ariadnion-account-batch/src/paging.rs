@@ -90,7 +90,8 @@ pub struct OutcomePageRequest {
 }
 
 impl OutcomePageRequest {
-    /// Creates a stable ordered outcome-page request.
+    /// Creates a stable ordered outcome-page request bound to the immutable
+    /// batch item count.
     #[must_use]
     pub const fn new(
         identity: BatchIdentity,
@@ -242,7 +243,7 @@ fn validate_page_order(
         if previous.is_some_and(|ordinal| outcome.ordinal() <= ordinal) {
             return Err(error(BatchErrorCode::InvalidPage));
         }
-        if request.total_items.le(&outcome.ordinal().get()) {
+        if request.total_items <= outcome.ordinal().get() {
             return Err(error(BatchErrorCode::InvalidPage));
         }
         previous = Some(outcome.ordinal());
