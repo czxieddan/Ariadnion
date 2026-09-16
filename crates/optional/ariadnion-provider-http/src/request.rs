@@ -65,6 +65,13 @@ impl CredentialFraming {
             Self::Raw => b"",
         }
     }
+
+    fn material_is_valid(self, material: &[u8]) -> bool {
+        match self {
+            Self::Bearer => bearer_material_is_valid(material),
+            Self::Raw => credential_material_is_header_safe(material),
+        }
+    }
 }
 
 /// A short-lived vault lease bound to one request-scoped provider header.
@@ -133,7 +140,7 @@ impl ProviderHttpCredential {
             .checked_add(material.len())
             .ok_or_else(credential_error)?;
         if value_len > MAX_PROVIDER_HTTP_HEADER_VALUE_BYTES
-            || !credential_material_is_header_safe(material.as_bytes())
+            || !framing.material_is_valid(material.as_bytes())
         {
             return Err(credential_error());
         }
@@ -218,13 +225,7 @@ impl ProviderHttpRequest {
         body: &[u8],
         credential: ProviderHttpCredential,
     ) -> Result<Self, ProviderHttpError> {
-        if profile
-            .headers()
-            .iter()
-            .any(|header| header.name().eq_ignore_ascii_case(credential.header_name()))
-        {
-            return Err(credential_error());
-        }
+        validate_credential_header(profile, &credential)?;
         let mut request = Self::new(profile, body)?;
         request.credential = Some(credential);
         Ok(request)
@@ -361,8 +362,25 @@ fn insert_credential_header(
     credential: Option<ProviderHttpCredential>,
 ) -> Result<(), ProviderHttpError> {
     if let Some(credential) = credential {
+        if request.headers().contains_key(&credential.header_name) {
+            return Err(credential_error());
+        }
         let (name, value) = credential.into_header()?;
         request.headers_mut().insert(name, value);
+    }
+    Ok(())
+}
+
+fn validate_credential_header(
+    profile: &ProviderHttpProfile,
+    credential: &ProviderHttpCredential,
+) -> Result<(), ProviderHttpError> {
+    if profile
+        .headers()
+        .iter()
+        .any(|header| header.name().eq_ignore_ascii_case(credential.header_name()))
+    {
+        return Err(credential_error());
     }
     Ok(())
 }
@@ -381,6 +399,21 @@ fn credential_material_is_header_safe(material: &[u8]) -> bool {
         && material
             .iter()
             .all(|byte| *byte == b'\t' || (0x20..=0x7e).contains(byte) || *byte >= 0x80)
+}
+
+fn bearer_material_is_valid(material: &[u8]) -> bool {
+    // RFC 6750 permits padding only after at least one bearer-alphabet byte.
+    let content_len = material
+        .iter()
+        .position(|byte| *byte == b'=')
+        .unwrap_or(material.len());
+    content_len > 0
+        && material[..content_len].iter().all(bearer_alphabet_byte)
+        && material[content_len..].iter().all(|byte| *byte == b'=')
+}
+
+fn bearer_alphabet_byte(byte: &u8) -> bool {
+    byte.is_ascii_alphanumeric() || b"-._~+/".contains(byte)
 }
 
 fn credential_header_is_forbidden(name: &HeaderName) -> bool {
