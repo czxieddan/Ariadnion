@@ -3,6 +3,22 @@
 version = 4
 
 [[package]]
+name = "ariadnion-account-domain"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-core",
+]
+
+[[package]]
+name = "ariadnion-account-vault"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-account-domain",
+ "ariadnion-core",
+ "zeroize",
+]
+
+[[package]]
 name = "ariadnion-api-domain"
 version = "0.1.0"
 dependencies = [
@@ -20,6 +36,7 @@ dependencies = [
 name = "ariadnion-provider-http"
 version = "0.1.0"
 dependencies = [
+ "ariadnion-account-vault",
  "ariadnion-core",
  "ariadnion-provider-sdk",
  "bytes",
@@ -32,6 +49,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "webpki-roots",
+ "zeroize",
 ]
 
 [[package]]

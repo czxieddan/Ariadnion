@@ -37,6 +37,7 @@ publish = false
 [workspace]
 
 [dependencies]
+ariadnion-account-vault = { path = "../ariadnion-account-vault" }
 ariadnion-core = { path = "../../ariadnion-core" }
 ariadnion-provider-sdk = { path = "../ariadnion-provider-sdk" }
 bytes = "=1.12.1"
@@ -49,6 +50,7 @@ rustls = { version = "=0.23.41", default-features = false, features = ["ring", "
 tokio = { version = "=1.52.3", default-features = false, features = ["io-util", "net", "rt", "sync", "time"] }
 tokio-rustls = { version = "=0.26.4", default-features = false }
 webpki-roots = "=1.0.8"
+zeroize = { version = "=1.9.0", features = ["alloc"] }
 
 [dev-dependencies]
 tokio = { version = "=1.52.3", default-features = false, features = ["macros", "rt-multi-thread", "sync", "time"] }
