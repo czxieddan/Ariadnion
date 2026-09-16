@@ -37,6 +37,10 @@ publish = false
 
 [workspace]
 
+[features]
+default = []
+wasm-policy = ["dep:ariadnion-routing-wasm"]
+
 [dependencies]
 ariadnion-account-affinity = { path = "../ariadnion-account-affinity" }
 ariadnion-account-budget = { path = "../ariadnion-account-budget" }
@@ -58,6 +62,7 @@ ariadnion-routing-domain = { path = "../ariadnion-routing-domain" }
 ariadnion-routing-failover = { path = "../ariadnion-routing-failover" }
 ariadnion-routing-policy = { path = "../ariadnion-routing-policy" }
 ariadnion-routing-usage = { path = "../ariadnion-routing-usage" }
+ariadnion-routing-wasm = { path = "../ariadnion-routing-wasm", optional = true }
 
 [lints.rust]
 unsafe_code = "forbid"
