@@ -636,6 +636,68 @@ impl AccountLifecycleEvent {
     }
 }
 
+/// A validated lifecycle change derived from persisted non-secret account state.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccountLifecycleChange {
+    version: AccountVersion,
+    status: AccountStatus,
+    event: AccountLifecycleEvent,
+}
+
+impl AccountLifecycleChange {
+    /// Returns the account version assigned by the lifecycle change.
+    #[must_use]
+    pub const fn version(&self) -> AccountVersion {
+        self.version
+    }
+
+    /// Returns the account status assigned by the lifecycle change.
+    #[must_use]
+    pub const fn status(&self) -> AccountStatus {
+        self.status
+    }
+
+    /// Returns the immutable lifecycle event emitted by the change.
+    #[must_use]
+    pub const fn event(&self) -> &AccountLifecycleEvent {
+        &self.event
+    }
+}
+
+/// Applies a lifecycle command to persisted non-secret account state.
+///
+/// This boundary lets storage adapters validate a lifecycle mutation without
+/// loading account configuration or resolving secret references.
+///
+/// # Errors
+/// Returns [`AccountDomainErrorCode::InvalidArgument`] for an impossible
+/// deleted-at-initial-version snapshot, or the same stable version and
+/// transition errors returned by [`Account::apply`].
+pub fn apply_account_lifecycle(
+    account_id: &AccountId,
+    current_version: AccountVersion,
+    current_status: AccountStatus,
+    command: AccountTransitionCommand,
+) -> Result<AccountLifecycleChange, AccountDomainError> {
+    validate_lifecycle_snapshot(current_version, current_status)?;
+    if command.expected_version != current_version {
+        return Err(error(AccountDomainErrorCode::VersionConflict));
+    }
+    let status = next_status(current_status, command.action)?;
+    let version = current_version.next()?;
+    let event = AccountLifecycleEvent {
+        account_id: account_id.clone(),
+        from: current_status,
+        to: status,
+        version,
+    };
+    Ok(AccountLifecycleChange {
+        version,
+        status,
+        event,
+    })
+}
+
 /// An accepted account transition containing the new snapshot and emitted fact.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AccountTransition {
@@ -692,9 +754,7 @@ impl Account {
         version: AccountVersion,
         status: AccountStatus,
     ) -> Result<Self, AccountDomainError> {
-        if status == AccountStatus::Deleted && version == AccountVersion::initial() {
-            return Err(error(AccountDomainErrorCode::InvalidArgument));
-        }
+        validate_lifecycle_snapshot(version, status)?;
         Ok(Self {
             id,
             tenant_id,
@@ -782,24 +842,27 @@ impl Account {
         &self,
         command: AccountTransitionCommand,
     ) -> Result<AccountTransition, AccountDomainError> {
-        if command.expected_version != self.version {
-            return Err(error(AccountDomainErrorCode::VersionConflict));
-        }
-        let next_status = next_status(self.status, command.action)?;
-        let next_version = self.version.next()?;
+        let change = apply_account_lifecycle(&self.id, self.version, self.status, command)?;
         let account = Self {
-            status: next_status,
-            version: next_version,
+            status: change.status,
+            version: change.version,
             ..self.clone()
         };
-        let event = AccountLifecycleEvent {
-            account_id: self.id.clone(),
-            from: self.status,
-            to: next_status,
-            version: next_version,
-        };
-        Ok(AccountTransition { account, event })
+        Ok(AccountTransition {
+            account,
+            event: change.event,
+        })
     }
+}
+
+fn validate_lifecycle_snapshot(
+    version: AccountVersion,
+    status: AccountStatus,
+) -> Result<(), AccountDomainError> {
+    if status == AccountStatus::Deleted && version == AccountVersion::initial() {
+        return Err(error(AccountDomainErrorCode::InvalidArgument));
+    }
+    Ok(())
 }
 
 fn next_status(
