@@ -35,7 +35,7 @@ use ariadnion_account_domain::AccountId;
 use std::fmt;
 use std::sync::{Arc, RwLock};
 
-const MAX_THRESHOLD: u32 = 1_000_000;
+const MAX_THRESHOLD: u32 = 1 << 20;
 
 /// Stable machine-readable account-health failure codes.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
