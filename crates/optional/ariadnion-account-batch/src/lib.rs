@@ -58,7 +58,10 @@ pub use lifecycle::{BatchLifecycle, BatchTerminalState, BatchTransition};
 pub use paging::{
     MAX_OUTCOME_PAGE_ITEMS, OutcomeCursor, OutcomePage, OutcomePageLimit, OutcomePageRequest,
 };
-pub use port::{AccountBatchPort, BatchPortError, BatchPortErrorCode};
+pub use port::{
+    AccountBatchAccess, AccountBatchAuthorizationPort, AccountBatchPort, BatchPortError,
+    BatchPortErrorCode,
+};
 
 /// Maximum number of items accepted by one account batch.
 pub const MAX_BATCH_ITEMS: usize = 1 << 17;

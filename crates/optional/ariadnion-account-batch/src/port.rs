@@ -33,13 +33,17 @@ use crate::execution::{
     ItemCompletionReceipt, SubmissionReceipt, SubmitBatch, TransitionBatch, TransitionReceipt,
 };
 use crate::{BatchIdentity, BatchStatus, MutationId, OutcomePage, OutcomePageRequest};
-use ariadnion_core::TenantId;
+use ariadnion_core::{RequestContext, TenantId};
 use std::fmt::{self, Display, Formatter};
 
 /// Stable machine-readable failures from the durable batch adapter.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum BatchPortErrorCode {
+    /// The request has no authenticated principal.
+    Unauthenticated,
+    /// The authenticated principal is not authorized for the requested access.
+    PermissionDenied,
     /// The tenant-scoped batch does not exist.
     NotFound,
     /// The expected revision or mutation binding conflicts with durable state.
@@ -65,9 +69,12 @@ impl BatchPortErrorCode {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::NotFound | Self::Conflict | Self::ClaimExpired | Self::Cancelled => {
-                coordination_error_code(self)
-            }
+            Self::Unauthenticated
+            | Self::PermissionDenied
+            | Self::NotFound
+            | Self::Conflict
+            | Self::ClaimExpired
+            | Self::Cancelled => coordination_error_code(self),
             Self::DeadlineExceeded
             | Self::ResourceExhausted
             | Self::Unavailable
@@ -79,6 +86,8 @@ impl BatchPortErrorCode {
 
 const fn coordination_error_code(code: BatchPortErrorCode) -> &'static str {
     match code {
+        BatchPortErrorCode::Unauthenticated => "ACCOUNT_BATCH_PORT_UNAUTHENTICATED",
+        BatchPortErrorCode::PermissionDenied => "ACCOUNT_BATCH_PORT_PERMISSION_DENIED",
         BatchPortErrorCode::NotFound => "ACCOUNT_BATCH_PORT_NOT_FOUND",
         BatchPortErrorCode::Conflict => "ACCOUNT_BATCH_PORT_CONFLICT",
         BatchPortErrorCode::ClaimExpired => "ACCOUNT_BATCH_PORT_CLAIM_EXPIRED",
@@ -132,6 +141,47 @@ impl Display for BatchPortError {
 
 impl std::error::Error for BatchPortError {}
 
+/// One least-privilege durable account-batch access decision.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum AccountBatchAccess {
+    /// Creates or exactly replays one immutable administrative batch plan.
+    Submit,
+    /// Reads one administrative batch status without item payloads.
+    Load,
+    /// Claims bounded work for an authenticated batch worker.
+    Claim,
+    /// Completes one item previously assigned to an authenticated batch worker.
+    Complete,
+    /// Applies one administrative batch lifecycle transition.
+    Transition,
+    /// Reads one tenant-local mutation receipt after response loss.
+    Reconcile,
+    /// Lists administrative terminal outcome evidence.
+    ListOutcomes,
+}
+
+/// Fail-closed authorization boundary for durable account-batch access.
+///
+/// Implementations evaluate the authenticated principal and exact tenant from
+/// `context` against authoritative policy. Authentication alone is not
+/// permission. The RNMDB adapter invokes this synchronous port before every
+/// storage access and again immediately before each mutation transaction may
+/// commit. A precommit invocation holds the repository session lock, so policy
+/// implementations must not reenter the same owner or invert its lock order.
+/// The precommit decision must remain valid through the immediately following
+/// durable commit because the adapter cannot interpose another policy call
+/// inside RNMDB's commit operation.
+/// A decision that cannot be established must return a stable redacted error;
+/// an ordinary denial should return [`BatchPortErrorCode::PermissionDenied`].
+pub trait AccountBatchAuthorizationPort: Send + Sync {
+    /// Authorizes exactly one access using current authoritative policy.
+    fn authorize(
+        &self,
+        access: AccountBatchAccess,
+        context: &RequestContext,
+    ) -> Result<(), BatchPortError>;
+}
+
 /// Durable persistence and authoritative execution boundary for account batches.
 ///
 /// Every mutation identity is tenant scoped and must be bound atomically to the
@@ -142,10 +192,18 @@ impl std::error::Error for BatchPortError {}
 /// repeat side effects; it reopens the adapter and calls [`Self::reconcile_mutation`].
 pub trait AccountBatchPort: Send + Sync {
     /// Atomically creates a plan or returns its existing idempotent binding.
-    fn submit(&self, command: SubmitBatch) -> Result<SubmissionReceipt, BatchPortError>;
+    fn submit(
+        &self,
+        command: SubmitBatch,
+        context: &RequestContext,
+    ) -> Result<SubmissionReceipt, BatchPortError>;
 
     /// Loads the tenant-scoped durable status without item payloads.
-    fn load(&self, identity: &BatchIdentity) -> Result<Option<BatchStatus>, BatchPortError>;
+    fn load(
+        &self,
+        identity: &BatchIdentity,
+        context: &RequestContext,
+    ) -> Result<Option<BatchStatus>, BatchPortError>;
 
     /// Atomically recovers expired claims and creates one bounded durable claim.
     ///
@@ -153,7 +211,11 @@ pub trait AccountBatchPort: Send + Sync {
     /// reassigned. At its exclusive expiry the item becomes eligible, and its
     /// adapter-assigned attempt advances exactly once. The adapter must stop at
     /// the plan attempt bound and must not acknowledge a claim before commit.
-    fn claim(&self, command: ClaimBatchItems) -> Result<ClaimReceipt, BatchPortError>;
+    fn claim(
+        &self,
+        command: ClaimBatchItems,
+        context: &RequestContext,
+    ) -> Result<ClaimReceipt, BatchPortError>;
 
     /// Atomically completes one claimed immutable account command.
     ///
@@ -169,10 +231,15 @@ pub trait AccountBatchPort: Send + Sync {
     fn complete_claimed_item(
         &self,
         command: CompleteClaimedItem,
+        context: &RequestContext,
     ) -> Result<ItemCompletionReceipt, BatchPortError>;
 
     /// Atomically applies one revision-checked lifecycle transition.
-    fn transition(&self, command: TransitionBatch) -> Result<TransitionReceipt, BatchPortError>;
+    fn transition(
+        &self,
+        command: TransitionBatch,
+        context: &RequestContext,
+    ) -> Result<TransitionReceipt, BatchPortError>;
 
     /// Recovers the exact committed result of any mutation after response loss.
     ///
@@ -184,6 +251,7 @@ pub trait AccountBatchPort: Send + Sync {
         &self,
         tenant_id: &TenantId,
         mutation_id: &MutationId,
+        context: &RequestContext,
     ) -> Result<Option<BatchMutationReceipt>, BatchPortError>;
 
     /// Reconciles a mutation and rejects a receipt of another typed kind.
@@ -197,9 +265,10 @@ pub trait AccountBatchPort: Send + Sync {
         tenant_id: &TenantId,
         mutation_id: &MutationId,
         expected_kind: BatchMutationKind,
+        context: &RequestContext,
     ) -> Result<Option<BatchMutationReceipt>, BatchPortError> {
         Ok(self
-            .reconcile_mutation(tenant_id, mutation_id)?
+            .reconcile_mutation(tenant_id, mutation_id, context)?
             .filter(|receipt| receipt.kind() == expected_kind))
     }
 
@@ -209,5 +278,9 @@ pub trait AccountBatchPort: Send + Sync {
     /// revision before reading outcomes and returns `Conflict` on mismatch. A
     /// caller restarts paging from the newest revision after any intervening
     /// completion, preventing late lower ordinals from being skipped.
-    fn list_outcomes(&self, request: OutcomePageRequest) -> Result<OutcomePage, BatchPortError>;
+    fn list_outcomes(
+        &self,
+        request: OutcomePageRequest,
+        context: &RequestContext,
+    ) -> Result<OutcomePage, BatchPortError>;
 }
