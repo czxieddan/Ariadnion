@@ -76,7 +76,10 @@ pub use pool::{
     ProviderHttpConnectionPool, ProviderHttpPartition, ProviderHttpPoolMetrics,
     ProviderHttpPooledResponse,
 };
-pub use request::ProviderHttpRequest;
+pub use request::{
+    PROVIDER_HTTP_CREDENTIAL_MODULE, PROVIDER_HTTP_CREDENTIAL_PURPOSE, ProviderHttpCredential,
+    ProviderHttpRequest,
+};
 pub use shutdown::ProviderHttpShutdownReport;
 pub use timeout::bounded_timeout;
 

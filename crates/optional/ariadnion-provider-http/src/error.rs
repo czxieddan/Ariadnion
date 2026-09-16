@@ -32,7 +32,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 
 use ariadnion_provider_sdk::{ProviderFailure, ProviderFailureClass};
 
-const HTTP_ERROR_CODES: [&str; 26] = [
+const HTTP_ERROR_CODES: [&str; 27] = [
     "provider_http_invalid_origin",
     "provider_http_invalid_path_and_query",
     "provider_http_invalid_header",
@@ -59,6 +59,7 @@ const HTTP_ERROR_CODES: [&str; 26] = [
     "provider_http_attempt_timeout",
     "provider_http_pool_exhausted",
     "provider_http_pool_shutdown",
+    "provider_http_credential_rejected",
 ];
 
 /// Stable classifications for provider HTTP failures.
@@ -118,6 +119,8 @@ pub enum ProviderHttpErrorCode {
     PoolExhausted = 24,
     /// The pool has stopped accepting new exchanges.
     PoolShutdown = 25,
+    /// A request-scoped credential failed its lease or header boundary.
+    CredentialRejected = 26,
 }
 
 impl ProviderHttpErrorCode {
@@ -263,6 +266,7 @@ const fn primary_failure_class(code: ProviderHttpErrorCode) -> ProviderFailureCl
         ProviderHttpErrorCode::Cancelled => ProviderFailureClass::Cancelled,
         ProviderHttpErrorCode::DeadlineExceeded => ProviderFailureClass::DeadlineExceeded,
         ProviderHttpErrorCode::AttemptTimeout => ProviderFailureClass::AttemptTimeout,
+        ProviderHttpErrorCode::CredentialRejected => ProviderFailureClass::Authentication,
         ProviderHttpErrorCode::InvalidPathAndQuery
         | ProviderHttpErrorCode::InvalidHeader
         | ProviderHttpErrorCode::SensitiveHeader
@@ -316,6 +320,7 @@ const fn secondary_failure_class(code: ProviderHttpErrorCode) -> ProviderFailure
         | ProviderHttpErrorCode::InvalidHeader
         | ProviderHttpErrorCode::SensitiveHeader
         | ProviderHttpErrorCode::LimitExceeded
+        | ProviderHttpErrorCode::CredentialRejected
         | ProviderHttpErrorCode::RedirectRejected
         | ProviderHttpErrorCode::ProtocolViolation => primary_failure_class(code),
     }
