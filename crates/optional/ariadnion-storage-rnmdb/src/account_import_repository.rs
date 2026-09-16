@@ -43,8 +43,9 @@ use std::thread::{self, JoinHandle};
 use std::time::SystemTime;
 
 use ariadnion_account_import::{
-    AccountImportPort, BoxImportFuture, DurablePublishReceipt, DurablePublishRequest,
-    ImportGeneration, ImportMutationId, ImportPortError, ImportPortErrorCode,
+    AccountImportPort, AccountProjectionPort, AccountProjectionRequest, AccountProjectionSnapshot,
+    BoxImportFuture, DurablePublishReceipt, DurablePublishRequest, ImportGeneration,
+    ImportMutationId, ImportPortError, ImportPortErrorCode,
 };
 use ariadnion_core::{ErrorCode, RequestContext, TenantId};
 use ariadnion_rbac::migrations::IDENTITY_RUNTIME_ROLE;
@@ -135,6 +136,8 @@ pub enum AccountImportAccess {
     Reconcile,
     /// Reads the authenticated tenant's publication generation.
     Generation,
+    /// Reads a complete secret-free account projection snapshot.
+    Projection,
 }
 
 /// Trusted, fail-closed authorization boundary for account-store access.
@@ -297,6 +300,20 @@ impl AccountImportPort for RnmdbAccountImportRepository {
     }
 }
 
+impl AccountProjectionPort for RnmdbAccountImportRepository {
+    fn account_projection<'a>(
+        &'a self,
+        request: AccountProjectionRequest,
+        context: &'a RequestContext,
+    ) -> BoxImportFuture<'a, AccountProjectionSnapshot> {
+        let tenant = match admitted_tenant(context) {
+            Ok(tenant) => tenant,
+            Err(error) => return Box::pin(ready(Err(error))),
+        };
+        self.worker.projection(request, context.clone(), tenant)
+    }
+}
+
 fn authenticated_tenant(context: &RequestContext) -> Result<TenantId, ImportPortError> {
     context
         .principal()
@@ -348,6 +365,17 @@ fn execute_job(
         ImportJobKind::Generation { context, tenant } => {
             ImportJobResponse::Generation(execute_generation(session, environment, context, tenant))
         }
+        ImportJobKind::Projection {
+            request,
+            context,
+            tenant,
+        } => ImportJobResponse::Projection(execute_projection(
+            session,
+            environment,
+            request,
+            context,
+            tenant,
+        )),
     }
 }
 
@@ -444,6 +472,33 @@ fn execute_generation(
             codec::load_generation(local, &tenant)
         })
         .map_err(map_storage_error)
+}
+
+fn execute_projection(
+    session: &Arc<RnmdbSessionOwner>,
+    environment: &ImportEnvironment,
+    request: AccountProjectionRequest,
+    context: RequestContext,
+    tenant: TenantId,
+) -> Result<AccountProjectionSnapshot, ImportPortError> {
+    authorize_current(environment, AccountImportAccess::Projection, &context)?;
+    session
+        .with_identity_transaction_session(&context, &tenant, |local| {
+            run_identity_transaction(local, &context, |local| {
+                codec::load_projection_snapshot(local, &tenant, &request, &context)
+            })
+        })
+        .map_err(map_projection_error)
+}
+
+fn map_projection_error(error: StorageError) -> ImportPortError {
+    if error.code() == StorageErrorCode::Conflict {
+        import_error(ImportPortErrorCode::ProjectionConflict)
+    } else if error.code() == StorageErrorCode::CommitIndeterminate {
+        import_error(ImportPortErrorCode::Unavailable)
+    } else {
+        map_storage_error(error)
+    }
 }
 
 fn map_storage_error(error: StorageError) -> ImportPortError {
@@ -547,6 +602,20 @@ impl ImportWorker {
         )
     }
 
+    fn projection<'a>(
+        &'a self,
+        request: AccountProjectionRequest,
+        context: RequestContext,
+        tenant: TenantId,
+    ) -> BoxImportFuture<'a, AccountProjectionSnapshot> {
+        let kind = ImportJobKind::Projection {
+            request,
+            context,
+            tenant,
+        };
+        self.submit(kind, project_projection)
+    }
+
     fn submit<'a, T>(
         &'a self,
         kind: ImportJobKind,
@@ -619,6 +688,11 @@ enum ImportJobKind {
         context: RequestContext,
         tenant: TenantId,
     },
+    Projection {
+        request: AccountProjectionRequest,
+        context: RequestContext,
+        tenant: TenantId,
+    },
 }
 
 impl ImportJobKind {
@@ -626,7 +700,8 @@ impl ImportJobKind {
         match self {
             Self::Publish { context, .. }
             | Self::Reconcile { context, .. }
-            | Self::Generation { context, .. } => context,
+            | Self::Generation { context, .. }
+            | Self::Projection { context, .. } => context,
         }
     }
 }
@@ -635,6 +710,7 @@ enum ImportJobResponse {
     Publish(Result<DurablePublishReceipt, ImportPortError>),
     Reconcile(Result<Option<DurablePublishReceipt>, ImportPortError>),
     Generation(Result<ImportGeneration, ImportPortError>),
+    Projection(Result<AccountProjectionSnapshot, ImportPortError>),
 }
 
 fn project_publish(response: ImportJobResponse) -> Result<DurablePublishReceipt, ImportPortError> {
@@ -656,6 +732,15 @@ fn project_reconcile(
 fn project_generation(response: ImportJobResponse) -> Result<ImportGeneration, ImportPortError> {
     match response {
         ImportJobResponse::Generation(result) => result,
+        _ => Err(import_error(ImportPortErrorCode::CorruptState)),
+    }
+}
+
+fn project_projection(
+    response: ImportJobResponse,
+) -> Result<AccountProjectionSnapshot, ImportPortError> {
+    match response {
+        ImportJobResponse::Projection(result) => result,
         _ => Err(import_error(ImportPortErrorCode::CorruptState)),
     }
 }
@@ -747,6 +832,7 @@ enum ImportResponseKind {
     Publish,
     Reconcile,
     Generation,
+    Projection,
 }
 
 impl From<&ImportJobKind> for ImportResponseKind {
@@ -755,6 +841,7 @@ impl From<&ImportJobKind> for ImportResponseKind {
             ImportJobKind::Publish { .. } => Self::Publish,
             ImportJobKind::Reconcile { .. } => Self::Reconcile,
             ImportJobKind::Generation { .. } => Self::Generation,
+            ImportJobKind::Projection { .. } => Self::Projection,
         }
     }
 }
@@ -765,6 +852,7 @@ impl ImportResponseKind {
             Self::Publish => ImportJobResponse::Publish(Err(import_error(code))),
             Self::Reconcile => ImportJobResponse::Reconcile(Err(import_error(code))),
             Self::Generation => ImportJobResponse::Generation(Err(import_error(code))),
+            Self::Projection => ImportJobResponse::Projection(Err(import_error(code))),
         }
     }
 }

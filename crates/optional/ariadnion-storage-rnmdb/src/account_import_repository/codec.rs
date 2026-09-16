@@ -30,10 +30,12 @@
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use ariadnion_account_domain::{AccountId, AccountStatus};
+use ariadnion_account_domain::{AccountId, AccountStatus, ModelName, ProviderId};
 use ariadnion_account_import::{
-    ConflictStrategy, DurablePublishReceipt, DurablePublishRequest, ImportEntry, ImportGeneration,
-    ImportMutationId, MAX_IMPORT_ENTRIES, OpaqueDigest,
+    AccountProjectionRequest, AccountProjectionSnapshot, ConflictStrategy, DurableAccountIdentity,
+    DurableAccountProjection, DurableAccountState, DurablePublishReceipt, DurablePublishRequest,
+    ImportEntry, ImportGeneration, ImportMutationId, MAX_ACCOUNT_PROJECTION_ACCOUNTS,
+    MAX_IMPORT_ENTRIES, OpaqueDigest,
 };
 use ariadnion_core::{RequestContext, TenantId};
 use ariadnion_storage_domain::StorageError;
@@ -51,6 +53,7 @@ const GENERATION_PROJECTION: &str = "tenant_id, generation, published_at";
 const MUTATION_PROJECTION: &str = "tenant_id, mutation_id, request_fingerprint_hex, expected_generation, committed_generation, published_count, committed_at";
 const ACCOUNT_STATE_PROJECTION: &str =
     "tenant_id, account_id, config_version, account_version, account_status, import_generation";
+const ROUTING_PROJECTION: &str = "tenant_id, account_id, provider_id, default_model, max_concurrency, config_version, account_version, account_status, import_generation";
 const FINGERPRINT_DOMAIN: &[u8] = b"ariadnion.account-import.publish-intent.hmac-sha256.v2";
 const PROVISIONING_POLICY: &[u8] = b"minimal-provisioning-v1";
 const REPLACEMENT_POLICY: &[u8] = b"advance-config-and-account-versions-preserve-status-v1";
@@ -109,6 +112,152 @@ pub(super) fn publish(
         &fingerprint,
         publication_boundary,
     )
+}
+
+pub(super) fn load_projection_snapshot(
+    session: &mut LocalSession,
+    tenant: &TenantId,
+    request: &AccountProjectionRequest,
+    context: &RequestContext,
+) -> Result<AccountProjectionSnapshot, StorageError> {
+    require_active_identity_transaction(session)?;
+    let generation = require_projection_generation(session, tenant, request)?;
+    let batch = load_projection_rows(session, tenant)?;
+    let accounts = decode_projection_rows(batch.rows(), tenant, generation, context)?;
+    AccountProjectionSnapshot::new(generation, accounts).map_err(|_| sql::integrity())
+}
+
+fn require_projection_generation(
+    session: &mut LocalSession,
+    tenant: &TenantId,
+    request: &AccountProjectionRequest,
+) -> Result<ImportGeneration, StorageError> {
+    let generation = load_generation(session, tenant)?;
+    if generation != request.expected_generation() {
+        return Err(sql::conflict());
+    }
+    Ok(generation)
+}
+
+fn load_projection_rows(
+    session: &mut LocalSession,
+    tenant: &TenantId,
+) -> Result<rnmdb_executor::vector::VectorBatch, StorageError> {
+    let limit = MAX_ACCOUNT_PROJECTION_ACCOUNTS
+        .checked_add(1)
+        .ok_or_else(sql::exhausted)?;
+    let query = format!(
+        "SELECT {ROUTING_PROJECTION} FROM account_registry_accounts WHERE tenant_id = {} ORDER BY account_id LIMIT {limit};",
+        sql::text(tenant.as_str()),
+    );
+    let batch = sql::rows(sql::execute(session, query)?)?;
+    if batch.rows().len() > MAX_ACCOUNT_PROJECTION_ACCOUNTS {
+        return Err(sql::exhausted());
+    }
+    Ok(batch)
+}
+
+fn decode_projection_rows(
+    rows: &[Row],
+    tenant: &TenantId,
+    generation: ImportGeneration,
+    context: &RequestContext,
+) -> Result<Vec<DurableAccountProjection>, StorageError> {
+    let mut accounts = Vec::with_capacity(rows.len());
+    for row in rows {
+        check_context(context)?;
+        accounts.push(decode_projection(row, tenant, generation)?);
+    }
+    Ok(accounts)
+}
+
+fn decode_projection(
+    row: &Row,
+    tenant: &TenantId,
+    generation: ImportGeneration,
+) -> Result<DurableAccountProjection, StorageError> {
+    let values = sql::row_values::<9>(row)?;
+    let identity = decode_projection_identity(values, tenant)?;
+    let state = decode_projection_state(values, generation)?;
+    Ok(DurableAccountProjection::new(identity, state))
+}
+
+fn decode_projection_identity(
+    values: &[rnmdb_types::SqlValue; 9],
+    tenant: &TenantId,
+) -> Result<DurableAccountIdentity, StorageError> {
+    require_tenant(&values[0], tenant)?;
+    let account = parse_account_id(&values[1])?;
+    let provider = parse_provider_id(&values[2])?;
+    let model = decode_model(&values[3])?;
+    Ok(DurableAccountIdentity::new(
+        tenant.clone(),
+        account,
+        provider,
+        model,
+    ))
+}
+
+fn decode_projection_state(
+    values: &[rnmdb_types::SqlValue; 9],
+    generation: ImportGeneration,
+) -> Result<DurableAccountState, StorageError> {
+    let (max_concurrency, config_version, account_version, import_generation) =
+        decode_projection_versions(values)?;
+    let status = decode_status(sql::text_value(&values[7])?)?;
+    require_projection_row_generation(import_generation, generation)?;
+    DurableAccountState::new(
+        max_concurrency,
+        config_version,
+        account_version,
+        status,
+        import_generation,
+    )
+    .map_err(|_| sql::integrity())
+}
+
+fn decode_projection_versions(
+    values: &[rnmdb_types::SqlValue; 9],
+) -> Result<(u32, u64, u64, ImportGeneration), StorageError> {
+    let raw_concurrency = sql::i64_value(&values[4])?;
+    let max_concurrency = u32::try_from(raw_concurrency).map_err(|_| sql::integrity())?;
+    let config_version = nonzero_text_version(&values[5])?;
+    let account_version = nonzero_text_version(&values[6])?;
+    let import_generation = ImportGeneration::new(nonzero_text_version(&values[8])?);
+    Ok((
+        max_concurrency,
+        config_version,
+        account_version,
+        import_generation,
+    ))
+}
+
+fn require_projection_row_generation(
+    row_generation: ImportGeneration,
+    snapshot_generation: ImportGeneration,
+) -> Result<(), StorageError> {
+    if row_generation > snapshot_generation {
+        return Err(sql::integrity());
+    }
+    Ok(())
+}
+
+fn parse_account_id(value: &rnmdb_types::SqlValue) -> Result<AccountId, StorageError> {
+    AccountId::parse(sql::text_value(value)?).map_err(|_| sql::integrity())
+}
+
+fn parse_provider_id(value: &rnmdb_types::SqlValue) -> Result<ProviderId, StorageError> {
+    ProviderId::parse(sql::text_value(value)?).map_err(|_| sql::integrity())
+}
+
+fn decode_model(value: &rnmdb_types::SqlValue) -> Result<Option<ModelName>, StorageError> {
+    match value {
+        rnmdb_types::SqlValue::Null => Ok(None),
+        rnmdb_types::SqlValue::Text(value) => ModelName::parse(value)
+            .map(Some)
+            .map_err(|_| sql::integrity()),
+        _ => Err(sql::integrity()),
+    }
 }
 
 fn publish_new(
