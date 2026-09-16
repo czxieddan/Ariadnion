@@ -33,12 +33,15 @@ use std::future::Future;
 use std::pin::Pin;
 use std::time::SystemTime;
 
-use ariadnion_core::RequestContext;
+use ariadnion_account_domain::{AccountId, AccountStatus, ModelName, ProviderId};
+use ariadnion_core::{RequestContext, TenantId};
 
 use crate::{ImportGeneration, MAX_IMPORT_ENTRIES, PublishIntent};
 
 /// Maximum bytes in one caller-stable import mutation identity.
 pub const MAX_IMPORT_MUTATION_ID_BYTES: usize = 1 << 7;
+/// Maximum accounts returned by one authoritative projection snapshot.
+pub const MAX_ACCOUNT_PROJECTION_ACCOUNTS: usize = MAX_IMPORT_ENTRIES;
 
 /// A boxed, sendable durable import operation future.
 pub type BoxImportFuture<'a, T> =
@@ -54,6 +57,8 @@ pub enum ImportPortErrorCode {
     Unauthenticated,
     /// The authenticated principal cannot publish account configuration.
     PermissionDenied,
+    /// The requested durable projection is from a different generation.
+    ProjectionConflict,
     /// The mutation identity or expected generation conflicts with durable state.
     Conflict,
     /// Cancellation won before a new durable effect began.
@@ -90,6 +95,7 @@ const fn request_error_code(code: ImportPortErrorCode) -> Option<&'static str> {
         ImportPortErrorCode::Unauthenticated => Some("ACCOUNT_IMPORT_PORT_UNAUTHENTICATED"),
         ImportPortErrorCode::PermissionDenied => Some("ACCOUNT_IMPORT_PORT_PERMISSION_DENIED"),
         ImportPortErrorCode::Conflict => Some("ACCOUNT_IMPORT_PORT_CONFLICT"),
+        ImportPortErrorCode::ProjectionConflict => Some("ACCOUNT_IMPORT_PORT_PROJECTION_CONFLICT"),
         _ => None,
     }
 }
@@ -191,6 +197,236 @@ impl Debug for ImportMutationId {
 impl Display for ImportMutationId {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
+    }
+}
+
+/// A request for one tenant-scoped durable account projection snapshot.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccountProjectionRequest {
+    expected_generation: ImportGeneration,
+}
+
+impl AccountProjectionRequest {
+    /// Creates a snapshot request bound to one immutable import generation.
+    #[must_use]
+    pub const fn new(expected_generation: ImportGeneration) -> Self {
+        Self {
+            expected_generation,
+        }
+    }
+
+    /// Returns the generation that all projected rows must not exceed.
+    #[must_use]
+    pub const fn expected_generation(&self) -> ImportGeneration {
+        self.expected_generation
+    }
+}
+
+/// Secret-free account state reconstructed from the durable account registry.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DurableAccountIdentity {
+    tenant_id: TenantId,
+    account_id: AccountId,
+    provider_id: ProviderId,
+    default_model: Option<ModelName>,
+}
+
+impl DurableAccountIdentity {
+    /// Creates the non-secret identity and routing selector fields.
+    #[must_use]
+    pub const fn new(
+        tenant_id: TenantId,
+        account_id: AccountId,
+        provider_id: ProviderId,
+        default_model: Option<ModelName>,
+    ) -> Self {
+        Self {
+            tenant_id,
+            account_id,
+            provider_id,
+            default_model,
+        }
+    }
+}
+
+/// Bounded persisted state required to rebuild an account candidate.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DurableAccountState {
+    max_concurrency: u32,
+    config_version: u64,
+    account_version: u64,
+    status: AccountStatus,
+    import_generation: ImportGeneration,
+}
+
+impl DurableAccountState {
+    /// Creates validated persisted routing and lifecycle state.
+    ///
+    /// # Errors
+    /// Returns [`ImportPortErrorCode::InvalidArgument`] for zero versions,
+    /// zero concurrency, or generation zero.
+    pub fn new(
+        max_concurrency: u32,
+        config_version: u64,
+        account_version: u64,
+        status: AccountStatus,
+        import_generation: ImportGeneration,
+    ) -> Result<Self, ImportPortError> {
+        if max_concurrency == 0
+            || config_version == 0
+            || account_version == 0
+            || import_generation == ImportGeneration::initial()
+            || (status == AccountStatus::Deleted && account_version == 1)
+        {
+            return Err(ImportPortError::new(ImportPortErrorCode::InvalidArgument));
+        }
+        Ok(Self {
+            max_concurrency,
+            config_version,
+            account_version,
+            status,
+            import_generation,
+        })
+    }
+}
+
+/// Secret-free account state reconstructed from the durable account registry.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DurableAccountProjection {
+    tenant_id: TenantId,
+    account_id: AccountId,
+    provider_id: ProviderId,
+    default_model: Option<ModelName>,
+    max_concurrency: u32,
+    config_version: u64,
+    account_version: u64,
+    status: AccountStatus,
+    import_generation: ImportGeneration,
+}
+
+impl DurableAccountProjection {
+    /// Creates a validated secret-free persisted account projection.
+    /// The component constructors validate every bounded persisted field.
+    #[must_use]
+    pub fn new(identity: DurableAccountIdentity, state: DurableAccountState) -> Self {
+        Self {
+            tenant_id: identity.tenant_id,
+            account_id: identity.account_id,
+            provider_id: identity.provider_id,
+            default_model: identity.default_model,
+            max_concurrency: state.max_concurrency,
+            config_version: state.config_version,
+            account_version: state.account_version,
+            status: state.status,
+            import_generation: state.import_generation,
+        }
+    }
+
+    /// Returns the owning tenant.
+    #[must_use]
+    pub const fn tenant_id(&self) -> &TenantId {
+        &self.tenant_id
+    }
+
+    /// Returns the stable account identity.
+    #[must_use]
+    pub const fn account_id(&self) -> &AccountId {
+        &self.account_id
+    }
+
+    /// Returns the provider identity.
+    #[must_use]
+    pub const fn provider_id(&self) -> &ProviderId {
+        &self.provider_id
+    }
+
+    /// Returns the optional default model selector.
+    #[must_use]
+    pub const fn default_model(&self) -> Option<&ModelName> {
+        self.default_model.as_ref()
+    }
+
+    /// Returns the persisted concurrency limit.
+    #[must_use]
+    pub const fn max_concurrency(&self) -> u32 {
+        self.max_concurrency
+    }
+
+    /// Returns the persisted configuration version.
+    #[must_use]
+    pub const fn config_version(&self) -> u64 {
+        self.config_version
+    }
+
+    /// Returns the persisted account version.
+    #[must_use]
+    pub const fn account_version(&self) -> u64 {
+        self.account_version
+    }
+
+    /// Returns the persisted lifecycle status.
+    #[must_use]
+    pub const fn status(&self) -> AccountStatus {
+        self.status
+    }
+
+    /// Returns the durable import generation that last changed this row.
+    #[must_use]
+    pub const fn import_generation(&self) -> ImportGeneration {
+        self.import_generation
+    }
+}
+
+/// One bounded authoritative durable account projection snapshot.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccountProjectionSnapshot {
+    generation: ImportGeneration,
+    accounts: Vec<DurableAccountProjection>,
+}
+
+impl AccountProjectionSnapshot {
+    /// Creates a validated projection snapshot in deterministic account-ID order.
+    ///
+    /// # Errors
+    /// Returns [`ImportPortErrorCode::InvalidArgument`] when the snapshot exceeds
+    /// [`MAX_ACCOUNT_PROJECTION_ACCOUNTS`], is unordered, or contains a future row.
+    pub fn new(
+        generation: ImportGeneration,
+        accounts: Vec<DurableAccountProjection>,
+    ) -> Result<Self, ImportPortError> {
+        if accounts.len() > MAX_ACCOUNT_PROJECTION_ACCOUNTS
+            || (generation == ImportGeneration::initial() && !accounts.is_empty())
+            || accounts
+                .iter()
+                .any(|row| row.import_generation > generation)
+            || accounts.windows(2).any(|rows| {
+                rows[0].tenant_id != rows[1].tenant_id || rows[0].account_id >= rows[1].account_id
+            })
+        {
+            return Err(ImportPortError::new(ImportPortErrorCode::InvalidArgument));
+        }
+        Ok(Self {
+            generation,
+            accounts,
+        })
+    }
+
+    /// Returns the authoritative generation used for this snapshot.
+    #[must_use]
+    pub const fn generation(&self) -> ImportGeneration {
+        self.generation
+    }
+
+    /// Returns rows in strictly ascending account-ID order.
+    #[must_use]
+    pub fn accounts(&self) -> &[DurableAccountProjection] {
+        &self.accounts
+    }
+
+    /// Consumes the snapshot into its generation and ordered account rows.
+    #[must_use]
+    pub fn into_parts(self) -> (ImportGeneration, Vec<DurableAccountProjection>) {
+        (self.generation, self.accounts)
     }
 }
 
@@ -316,6 +552,22 @@ pub trait AccountImportPort: Send + Sync {
         &'a self,
         context: &'a RequestContext,
     ) -> BoxImportFuture<'a, ImportGeneration>;
+}
+
+/// Authenticated tenant-scoped read port for rebuilding durable account state.
+///
+/// Implementations must authorize every snapshot independently and return only the
+/// authenticated tenant's rows. A request generation is an immutable snapshot
+/// token: adapters return [`ImportPortErrorCode::ProjectionConflict`] when the
+/// current generation differs, rather than mixing rows from different states.
+/// Returned values contain no secret reference, credential digest, or key data.
+pub trait AccountProjectionPort: Send + Sync {
+    /// Loads one deterministic account-ID ordered projection snapshot.
+    fn account_projection<'a>(
+        &'a self,
+        request: AccountProjectionRequest,
+        context: &'a RequestContext,
+    ) -> BoxImportFuture<'a, AccountProjectionSnapshot>;
 }
 
 fn valid_mutation_id(value: &str) -> bool {

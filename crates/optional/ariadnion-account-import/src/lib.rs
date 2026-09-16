@@ -48,8 +48,10 @@ pub mod migrations;
 mod port;
 
 pub use port::{
-    AccountImportPort, BoxImportFuture, DurablePublishReceipt, DurablePublishRequest,
-    ImportMutationId, ImportPortError, ImportPortErrorCode, MAX_IMPORT_MUTATION_ID_BYTES,
+    AccountImportPort, AccountProjectionPort, AccountProjectionRequest, AccountProjectionSnapshot,
+    BoxImportFuture, DurableAccountIdentity, DurableAccountProjection, DurableAccountState,
+    DurablePublishReceipt, DurablePublishRequest, ImportMutationId, ImportPortError,
+    ImportPortErrorCode, MAX_ACCOUNT_PROJECTION_ACCOUNTS, MAX_IMPORT_MUTATION_ID_BYTES,
 };
 
 /// Maximum entries accepted by one import batch.
