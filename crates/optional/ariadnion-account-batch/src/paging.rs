@@ -237,16 +237,23 @@ fn validate_page_order(
     }
     let mut previous = request.after.map(OutcomeCursor::ordinal);
     for outcome in outcomes {
-        if outcome.identity() != &request.identity {
-            return Err(error(BatchErrorCode::InvalidPage));
-        }
-        if previous.is_some_and(|ordinal| outcome.ordinal() <= ordinal) {
-            return Err(error(BatchErrorCode::InvalidPage));
-        }
-        if request.total_items <= outcome.ordinal().get() {
-            return Err(error(BatchErrorCode::InvalidPage));
-        }
+        validate_page_entry(request, outcome, previous)?;
         previous = Some(outcome.ordinal());
     }
     Ok(())
+}
+
+fn validate_page_entry(
+    request: &OutcomePageRequest,
+    outcome: &BatchItemOutcome,
+    previous: Option<crate::BatchItemOrdinal>,
+) -> Result<(), BatchError> {
+    let valid = outcome.identity() == &request.identity
+        && request.total_items > outcome.ordinal().get()
+        && previous.is_none_or(|ordinal| outcome.ordinal() > ordinal);
+    if valid {
+        Ok(())
+    } else {
+        Err(error(BatchErrorCode::InvalidPage))
+    }
 }
