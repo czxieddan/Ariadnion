@@ -29,6 +29,7 @@
 //! Bounded dedicated worker and cancellation-aware future ownership.
 
 use std::future::Future;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
@@ -172,7 +173,7 @@ impl<T> Cell<T> {
             state.waker.take()
         };
         if let Some(waker) = waker {
-            waker.wake();
+            let _wake = catch_unwind(AssertUnwindSafe(|| waker.wake()));
         }
     }
 }
@@ -191,11 +192,24 @@ impl<T> Future for ResultFuture<T> {
     type Output = Result<T, VaultError>;
 
     fn poll(self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut state = lock(&self.cell.state);
-        if let Some(result) = state.result.take() {
-            return Poll::Ready(result);
+        let this = self.get_mut();
+        match poll_result(&this.cell, context.waker()) {
+            Ok(Some(result)) => return Poll::Ready(result),
+            Ok(None) => {}
+            Err(()) => return Poll::Ready(fail_result_future(this)),
         }
-        state.waker = Some(context.waker().clone());
+        let cancelled = match cancellation_observed(&this.cancellation, context.waker()) {
+            Ok(cancelled) => cancelled,
+            Err(()) => return Poll::Ready(fail_result_future(this)),
+        };
+        if cancelled {
+            if let Some(result) = take_result(&this.cell) {
+                return Poll::Ready(result);
+            }
+            clear_result_waker(&this.cell);
+            this.cell.abandoned.store(true, Ordering::Release);
+            return Poll::Ready(Err(error(VaultErrorCode::Cancelled)));
+        }
         Poll::Pending
     }
 }
@@ -216,4 +230,38 @@ fn lock<T>(state: &Mutex<State<T>>) -> MutexGuard<'_, State<T>> {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     }
+}
+
+fn take_result<T>(cell: &Cell<T>) -> Option<Result<T, VaultError>> {
+    lock(&cell.state).result.take()
+}
+
+fn poll_result<T>(cell: &Cell<T>, waker: &Waker) -> Result<Option<Result<T, VaultError>>, ()> {
+    let replacement = catch_unwind(AssertUnwindSafe(|| waker.clone())).map_err(|_| ())?;
+    let mut state = lock(&cell.state);
+    if let Some(result) = state.result.take() {
+        return Ok(Some(result));
+    }
+    let replace = state
+        .waker
+        .as_ref()
+        .is_none_or(|registered| !registered.will_wake(waker));
+    if replace {
+        state.waker = Some(replacement);
+    }
+    Ok(None)
+}
+
+fn cancellation_observed(cancellation: &CancellationToken, waker: &Waker) -> Result<bool, ()> {
+    catch_unwind(AssertUnwindSafe(|| cancellation.register_waker(waker))).map_err(|_| ())
+}
+
+fn clear_result_waker<T>(cell: &Cell<T>) {
+    lock(&cell.state).waker = None;
+}
+
+fn fail_result_future<T>(future: &ResultFuture<T>) -> Result<T, VaultError> {
+    future.cell.abandoned.store(true, Ordering::Release);
+    future.cancellation.cancel();
+    Err(error(VaultErrorCode::IntegrityFailure))
 }
