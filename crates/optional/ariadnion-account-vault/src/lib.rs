@@ -37,6 +37,7 @@
 #![deny(missing_docs)]
 
 mod error;
+pub mod migrations;
 mod port;
 mod rotation;
 mod secret;
