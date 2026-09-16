@@ -39,6 +39,12 @@ publish = false
 
 [dependencies]
 ariadnion-core = { path = "../../ariadnion-core" }
+wasmtime = { version = "=46.0.0", default-features = false, features = ["anyhow", "component-model", "cranelift", "runtime", "std"] }
+
+[dev-dependencies]
+wat = "=1.251.0"
+wit-component = { version = "=0.251.0", features = ["dummy-module"] }
+wit-parser = "=0.251.0"
 
 [lints.rust]
 unsafe_code = "forbid"
