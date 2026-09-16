@@ -44,7 +44,7 @@ pub const MAX_CANDIDATES: usize = 1 << 17;
 /// Maximum UTF-8 byte length of one candidate identifier.
 pub const MAX_CANDIDATE_ID_BYTES: usize = 128;
 /// Maximum representable abstract cost in one estimate or constraint.
-pub const MAX_COST_UNITS: u64 = 1_000_000_000_000;
+pub const MAX_COST_UNITS: u64 = 1 << 40;
 
 /// Stable machine-readable routing-cost failures.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
