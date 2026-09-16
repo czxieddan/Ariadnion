@@ -345,11 +345,6 @@ impl VaultPort for RnmdbVaultRepository {
             context,
             move |owner, tenant, context, custody| {
                 let digest = custody.reference_digest(tenant, request.reference())?;
-                context.check_active().map_err(VaultError::from)?;
-                let authenticated =
-                    custody.decrypt(tenant, request.reference(), request.envelope())?;
-                drop(authenticated);
-                context.check_active().map_err(VaultError::from)?;
                 owner
                     .with_identity_transaction_session(context, tenant, |local| {
                         run_identity_transaction(local, context, |local| {

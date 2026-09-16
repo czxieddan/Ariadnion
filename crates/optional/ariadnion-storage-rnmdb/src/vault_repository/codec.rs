@@ -80,8 +80,23 @@ pub(super) fn store(
     if let Some(mutation) = load_mutation(local, tenant, request.reference(), digest, context)? {
         return replay_store(mutation, &fingerprint);
     }
+    authenticate_store_request(tenant, request, context, custody)?;
     require_new_secret(local, tenant, request.reference(), digest)?;
     persist_store(local, tenant, request, digest, context, &fingerprint)
+}
+
+fn authenticate_store_request(
+    tenant: &TenantId,
+    request: &SecretStoreRequest,
+    context: &RequestContext,
+    custody: &dyn VaultKeyCustody,
+) -> Result<(), StorageError> {
+    check_context(context)?;
+    let authenticated = custody
+        .decrypt(tenant, request.reference(), request.envelope())
+        .map_err(custody_storage_error)?;
+    drop(authenticated);
+    check_context(context)
 }
 
 fn require_new_secret(
