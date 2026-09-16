@@ -208,6 +208,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
 
 use ariadnion_account_domain::{Account, AccountId, ModelName, ProviderId};
+use ariadnion_account_import::{AccountProjectionSnapshot, DurableAccountProjection};
 use ariadnion_core::TenantId;
 use ariadnion_routing_domain::{CandidateRef, RouteModel, RouteSnapshot, RouteSnapshotVersion};
 
@@ -589,6 +590,33 @@ impl CandidateMetadata {
         candidate
     }
 
+    fn from_durable_account(account: DurableAccountProjection) -> Result<Self, AccountPoolError> {
+        let availability =
+            if account.status() == AccountStatus::Active && account.default_model().is_some() {
+                Availability::Available
+            } else {
+                Availability::Unavailable
+            };
+        let routing = CandidateRoutingMetadata::new(
+            Priority::new(0),
+            Weight::new(1)?,
+            Load::new(0)?,
+            availability,
+        );
+        let id = CandidateId::from_account(account.account_id());
+        Ok(Self {
+            id,
+            tenant_id: Some(account.tenant_id().clone()),
+            account_id: account.account_id().clone(),
+            provider_id: account.provider_id().clone(),
+            model: account.default_model().cloned(),
+            priority: routing.priority,
+            weight: routing.weight,
+            load: routing.load,
+            availability: routing.availability,
+        })
+    }
+
     /// Returns the stable candidate identity.
     #[must_use]
     pub const fn id(&self) -> &CandidateId {
@@ -713,6 +741,36 @@ impl CandidateSnapshot {
             version,
             candidates: candidates.into(),
         })
+    }
+
+    /// Rebuilds an immutable candidate snapshot from durable account rows.
+    ///
+    /// The authoritative import generation becomes both snapshot identity and
+    /// version. Account IDs determine candidate IDs and final ordering. Active
+    /// accounts are available with priority zero, weight one, and zero captured
+    /// load when a default model is configured. Model-less and non-active
+    /// accounts remain visible but unavailable. No credential or secret-reference
+    /// data crosses this boundary.
+    ///
+    /// # Errors
+    /// Returns a stable bound, duplicate, or generation error when the durable
+    /// projection cannot form one deterministic snapshot.
+    pub fn from_durable_projection(
+        projection: AccountProjectionSnapshot,
+    ) -> Result<Self, AccountPoolError> {
+        let (generation, accounts) = projection.into_parts();
+        let mut candidates = Vec::with_capacity(accounts.len());
+        for account in accounts {
+            if account.import_generation() > generation {
+                return Err(error(AccountPoolErrorCode::GenerationConflict));
+            }
+            candidates.push(CandidateMetadata::from_durable_account(account)?);
+        }
+        Self::new(
+            SnapshotId::new(generation.get()),
+            SnapshotVersion::new(generation.get()),
+            candidates,
+        )
     }
 
     /// Returns the stable snapshot identity.

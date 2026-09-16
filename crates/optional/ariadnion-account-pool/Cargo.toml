@@ -39,6 +39,7 @@ publish = false
 
 [dependencies]
 ariadnion-account-domain = { path = "../ariadnion-account-domain" }
+ariadnion-account-import = { path = "../ariadnion-account-import" }
 ariadnion-core = { path = "../../ariadnion-core" }
 ariadnion-routing-domain = { path = "../ariadnion-routing-domain" }
 

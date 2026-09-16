@@ -10,10 +10,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ariadnion-account-import"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-account-domain",
+ "ariadnion-core",
+]
+
+[[package]]
 name = "ariadnion-account-pool"
 version = "0.1.0"
 dependencies = [
  "ariadnion-account-domain",
+ "ariadnion-account-import",
  "ariadnion-core",
  "ariadnion-routing-domain",
 ]
