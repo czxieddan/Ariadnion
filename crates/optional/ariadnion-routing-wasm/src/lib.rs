@@ -36,6 +36,14 @@ use std::time::Duration;
 
 use ariadnion_core::{CoreError, WasmBudget, WasmBudgetInput};
 
+mod runtime;
+
+pub use runtime::{
+    MAX_COMPONENT_BYTES, MAX_COMPONENT_INSTANCES, MAX_COMPONENT_MEMORIES,
+    MAX_COMPONENT_TABLE_ELEMENTS, MAX_COMPONENT_TABLES, ROUTING_WASM_ABI_VERSION, ROUTING_WASM_WIT,
+    WasmtimeRoutingRuntime,
+};
+
 /// Maximum candidate records accepted by one component invocation.
 pub const MAX_CANDIDATES: usize = 1 << 12;
 /// Maximum feature values carried by one candidate.
@@ -329,6 +337,8 @@ pub enum RoutingWasmOutput {
 pub enum RoutingWasmDegradation {
     /// No component capability was installed.
     Unavailable,
+    /// The component exceeded a runtime resource budget; native policy must apply.
+    ResourceExhausted,
     /// The invocation exceeded the epoch deadline.
     Timeout,
     /// The runtime trapped.
@@ -351,7 +361,9 @@ pub trait RoutingWasmEvaluator: Send + Sync {
     /// Evaluates one bounded deterministic input.
     ///
     /// Implementations must enforce the descriptor's fuel, memory, and epoch
-    /// policy. They must not expose WASI or ambient host capabilities.
+    /// policy. Guest budget exhaustion must return an explicit degradation so
+    /// the caller can apply its configured safe native policy. Implementations
+    /// must not expose WASI or ambient host capabilities.
     fn evaluate(&self, input: &RoutingWasmInput) -> Result<RoutingWasmResult, RoutingWasmError>;
 }
 
