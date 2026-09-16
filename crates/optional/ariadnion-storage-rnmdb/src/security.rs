@@ -114,6 +114,7 @@ impl RnmdbColumnSecurity {
         self.session.configure_column_encryption_once(
             SECRET_LOCATOR_TARGET,
             key.into_upstream_key(),
+            None,
             context,
         )
     }

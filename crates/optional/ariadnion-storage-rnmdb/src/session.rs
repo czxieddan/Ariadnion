@@ -569,14 +569,17 @@ impl RnmdbSessionOwner {
         }
     }
 
-    /// Configures one managed column while holding the configuration lock.
+    /// Configures one managed column and optional decrypt grant while locked.
     ///
     /// The lock order is configured-columns then session. No adapter path may
-    /// acquire these locks in the reverse order.
+    /// acquire these locks in the reverse order. A grant failure after key
+    /// installation taints the owner because the operation cannot be retried
+    /// safely within this session.
     pub(crate) fn configure_column_encryption_once(
         &self,
         target: ColumnEncryptionTarget,
         key: UpstreamColumnKeyMaterial,
+        decrypt_role: Option<&str>,
         context: &RequestContext,
     ) -> Result<(), StorageError> {
         let mut configured = lock_configured_columns(&self.configured_columns);
@@ -584,7 +587,13 @@ impl RnmdbSessionOwner {
             return Err(StorageError::new(StorageErrorCode::Conflict));
         }
         self.with_session(context, |session| {
-            session.configure_column_encryption(target.schema, target.table, target.column, key)
+            session.configure_column_encryption(target.schema, target.table, target.column, key)?;
+            if let Some(role) = decrypt_role {
+                session
+                    .grant_column_decrypt(target.schema, target.table, target.column, role)
+                    .inspect_err(|_| self.mark_tainted())?;
+            }
+            Ok(())
         })?;
         configured.insert(target);
         Ok(())
