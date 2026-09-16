@@ -35,6 +35,8 @@ mod engine;
 
 use std::fmt::{self, Display, Formatter};
 use std::num::{NonZeroU32, NonZeroU64};
+#[cfg(feature = "wasm-policy")]
+use std::sync::Arc;
 use std::time::Duration;
 
 use ariadnion_account_affinity::{AffinityKey, AffinitySnapshot, UtcSeconds as AffinityTime};
@@ -60,6 +62,8 @@ use ariadnion_routing_failover::{
     MAX_ATTEMPTS, OperationSafety, StreamCommitment,
 };
 use ariadnion_routing_usage::UsageConfirmationId;
+#[cfg(feature = "wasm-policy")]
+use ariadnion_routing_wasm::RoutingWasmEvaluator;
 
 /// Maximum candidates accepted by one complete coordination request.
 pub const MAX_CANDIDATES: usize = 1 << 17;
@@ -94,6 +98,8 @@ pub enum CoordinatorErrorCode {
     BudgetRejected,
     /// Admission state could not complete without risking duplicate effects.
     AdmissionUnavailable,
+    /// An installed routing policy component could not produce a safe decision.
+    PolicyUnavailable,
     /// A component snapshot or state engine returned invalid state.
     StateUnavailable,
 }
@@ -114,6 +120,7 @@ impl CoordinatorErrorCode {
             | Self::ConcurrencyLimited
             | Self::BudgetRejected
             | Self::AdmissionUnavailable
+            | Self::PolicyUnavailable
             | Self::StateUnavailable => runtime_code(self),
         }
     }
@@ -144,6 +151,7 @@ const fn runtime_code(code: CoordinatorErrorCode) -> &'static str {
         CoordinatorErrorCode::ConcurrencyLimited => "ROUTING_COORDINATOR_CONCURRENCY_LIMITED",
         CoordinatorErrorCode::BudgetRejected => "ROUTING_COORDINATOR_BUDGET_REJECTED",
         CoordinatorErrorCode::AdmissionUnavailable => "ROUTING_COORDINATOR_ADMISSION_UNAVAILABLE",
+        CoordinatorErrorCode::PolicyUnavailable => "ROUTING_COORDINATOR_POLICY_UNAVAILABLE",
         CoordinatorErrorCode::StateUnavailable => "ROUTING_COORDINATOR_STATE_UNAVAILABLE",
         _ => "ROUTING_COORDINATOR_INVALID_ARGUMENT",
     }
@@ -311,6 +319,8 @@ pub enum SignalKind {
     Affinity,
     /// Versioned model pricing required for admission.
     Pricing,
+    /// Isolated routing policy evaluation was unavailable or degraded.
+    RoutingPolicy,
 }
 
 /// Why one candidate was excluded from the complete routing pipeline.
@@ -351,6 +361,8 @@ pub enum CandidateExclusionReason {
     StableTieBreak,
     /// A live affinity binding selected a different candidate.
     AffinityPreferred,
+    /// An installed isolated policy component selected a different candidate.
+    WasmPolicyPreferred,
 }
 
 /// One deterministic candidate exclusion retained for audit projection.
@@ -385,6 +397,8 @@ pub enum SelectionBasis {
     WeightedLeastLoad,
     /// A live tenant-bound affinity binding selected an otherwise eligible account.
     Affinity,
+    /// An isolated routing component selected from the fully eligible candidate set.
+    WasmPolicy,
 }
 
 /// Complete explainable evidence for one routing decision.
@@ -993,16 +1007,47 @@ impl CoordinatedRoute {
 }
 
 /// Stateless routing pipeline paired with the authoritative admission engines.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct RoutingCoordinator {
     admission: RoutingAdmissionCoordinator,
+    #[cfg(feature = "wasm-policy")]
+    wasm_policy: Option<Arc<dyn RoutingWasmEvaluator>>,
+}
+
+impl fmt::Debug for RoutingCoordinator {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        let mut debug = formatter.debug_struct("RoutingCoordinator");
+        debug.field("admission", &self.admission);
+        #[cfg(feature = "wasm-policy")]
+        debug.field("wasm_policy_installed", &self.wasm_policy.is_some());
+        debug.finish()
+    }
 }
 
 impl RoutingCoordinator {
     /// Creates a coordinator from the coupled rate, concurrency, and budget engine.
     #[must_use]
     pub const fn new(admission: RoutingAdmissionCoordinator) -> Self {
-        Self { admission }
+        Self {
+            admission,
+            #[cfg(feature = "wasm-policy")]
+            wasm_policy: None,
+        }
+    }
+
+    /// Installs one isolated optional routing policy evaluator.
+    ///
+    /// The evaluator receives only sorted candidate identifiers plus the
+    /// non-secret priority, weight, and load values of candidates that passed
+    /// native eligibility and cost checks. A validated selection overrides the
+    /// native weighted policy after affinity lookup, while an explicit decline
+    /// preserves native routing. Evaluation errors, degradation, invalid output,
+    /// traps, timeouts, and resource exhaustion fail closed before admission.
+    #[cfg(feature = "wasm-policy")]
+    #[must_use]
+    pub fn with_wasm_policy(mut self, evaluator: Arc<dyn RoutingWasmEvaluator>) -> Self {
+        self.wasm_policy = Some(evaluator);
+        self
     }
 
     /// Filters, prices, selects, explains, and admits one request.
@@ -1020,7 +1065,13 @@ impl RoutingCoordinator {
         request: CoordinationRequest,
         snapshots: CoordinationSnapshots<'_>,
     ) -> Result<CoordinatedRoute, CoordinatorError> {
-        engine::coordinate(&self.admission, request, snapshots)
+        engine::coordinate(
+            &self.admission,
+            #[cfg(feature = "wasm-policy")]
+            self.wasm_policy.as_deref(),
+            request,
+            snapshots,
+        )
     }
 }
 

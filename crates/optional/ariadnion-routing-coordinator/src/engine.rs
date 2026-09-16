@@ -56,6 +56,11 @@ use ariadnion_routing_policy::{
     Availability, Candidate, CandidateId, ExclusionReason as PolicyExclusionReason, Load,
     PreparedCandidateSet, Priority, Weight, WeightedLeastLoadPolicy,
 };
+#[cfg(feature = "wasm-policy")]
+use ariadnion_routing_wasm::{
+    CandidateFeatures, RoutingWasmEvaluator, RoutingWasmInput, RoutingWasmOutput,
+    RoutingWasmResult, validate_output,
+};
 
 use crate::{
     CandidateExclusion, CandidateExclusionReason, CoordinatedRoute, CoordinatedRouteParts,
@@ -95,10 +100,16 @@ impl CandidateState<'_> {
 
 pub(crate) fn coordinate(
     admission: &RoutingAdmissionCoordinator,
+    #[cfg(feature = "wasm-policy")] wasm_policy: Option<&dyn RoutingWasmEvaluator>,
     request: CoordinationRequest,
     snapshots: CoordinationSnapshots<'_>,
 ) -> Result<CoordinatedRoute, CoordinatorError> {
-    let selection = prepare_selection(&request, snapshots)?;
+    let selection = prepare_selection(
+        &request,
+        snapshots,
+        #[cfg(feature = "wasm-policy")]
+        wasm_policy,
+    )?;
     let RouteSelection {
         states,
         degradations,
@@ -137,12 +148,19 @@ pub(crate) fn coordinate(
 fn prepare_selection<'a>(
     request: &CoordinationRequest,
     snapshots: CoordinationSnapshots<'a>,
+    #[cfg(feature = "wasm-policy")] wasm_policy: Option<&dyn RoutingWasmEvaluator>,
 ) -> Result<RouteSelection<'a>, CoordinatorError> {
     validate_model(request, snapshots.models())?;
     let (mut states, mut degradations) = prepare_state(request, snapshots)?;
     apply_pricing(request, snapshots.pricing(), &mut states, &mut degradations)?;
-    let (selected_index, basis, policy_exclusions) =
-        select_candidate(request, snapshots.affinity(), &states, &mut degradations)?;
+    let (selected_index, basis, policy_exclusions) = select_candidate(
+        request,
+        snapshots.affinity(),
+        &states,
+        &mut degradations,
+        #[cfg(feature = "wasm-policy")]
+        wasm_policy,
+    )?;
     let (exclusions, exclusions_truncated) = collect_exclusions(&states, policy_exclusions)?;
     Ok(RouteSelection {
         states,
@@ -702,14 +720,150 @@ fn select_candidate(
     affinity: OptionalSnapshot<'_, AffinitySnapshot>,
     states: &[CandidateState<'_>],
     degradations: &mut BTreeSet<SignalKind>,
+    #[cfg(feature = "wasm-policy")] wasm_policy: Option<&dyn RoutingWasmEvaluator>,
 ) -> Result<(usize, SelectionBasis, Vec<CandidateExclusion>), CoordinatorError> {
-    if let Some((key, now)) = request.affinity()
-        && let Some(selected) = select_affinity(key, *now, affinity, states, degradations)?
-    {
-        let exclusions = affinity_exclusions(states, selected)?;
-        return Ok((selected, SelectionBasis::Affinity, exclusions));
+    if let Some(selection) = select_affinity_candidate(request, affinity, states, degradations)? {
+        return Ok(selection);
     }
+    select_without_affinity(
+        states,
+        degradations,
+        #[cfg(feature = "wasm-policy")]
+        wasm_policy,
+    )
+}
+
+fn select_affinity_candidate(
+    request: &CoordinationRequest,
+    affinity: OptionalSnapshot<'_, AffinitySnapshot>,
+    states: &[CandidateState<'_>],
+    degradations: &mut BTreeSet<SignalKind>,
+) -> Result<Option<(usize, SelectionBasis, Vec<CandidateExclusion>)>, CoordinatorError> {
+    let Some((key, now)) = request.affinity() else {
+        return Ok(None);
+    };
+    let Some(selected) = select_affinity(key, *now, affinity, states, degradations)? else {
+        return Ok(None);
+    };
+    let exclusions = affinity_exclusions(states, selected)?;
+    Ok(Some((selected, SelectionBasis::Affinity, exclusions)))
+}
+
+fn select_without_affinity(
+    states: &[CandidateState<'_>],
+    degradations: &mut BTreeSet<SignalKind>,
+    #[cfg(feature = "wasm-policy")] wasm_policy: Option<&dyn RoutingWasmEvaluator>,
+) -> Result<(usize, SelectionBasis, Vec<CandidateExclusion>), CoordinatorError> {
+    #[cfg(feature = "wasm-policy")]
+    if let Some(selection) = select_wasm_policy(wasm_policy, states, degradations)? {
+        return Ok(selection);
+    }
+    #[cfg(not(feature = "wasm-policy"))]
+    let _ = degradations;
     select_weighted(states)
+}
+
+#[cfg(feature = "wasm-policy")]
+fn select_wasm_policy(
+    evaluator: Option<&dyn RoutingWasmEvaluator>,
+    states: &[CandidateState<'_>],
+    degradations: &mut BTreeSet<SignalKind>,
+) -> Result<Option<(usize, SelectionBasis, Vec<CandidateExclusion>)>, CoordinatorError> {
+    match evaluator {
+        Some(evaluator) => evaluate_installed_wasm_policy(evaluator, states, degradations),
+        None => Ok(None),
+    }
+}
+
+#[cfg(feature = "wasm-policy")]
+fn evaluate_installed_wasm_policy(
+    evaluator: &dyn RoutingWasmEvaluator,
+    states: &[CandidateState<'_>],
+    degradations: &mut BTreeSet<SignalKind>,
+) -> Result<Option<(usize, SelectionBasis, Vec<CandidateExclusion>)>, CoordinatorError> {
+    wasm_input(states)?.map_or(Ok(None), |input| {
+        evaluate_wasm_input(evaluator, &input, states, degradations)
+    })
+}
+
+#[cfg(feature = "wasm-policy")]
+fn evaluate_wasm_input(
+    evaluator: &dyn RoutingWasmEvaluator,
+    input: &RoutingWasmInput,
+    states: &[CandidateState<'_>],
+    degradations: &mut BTreeSet<SignalKind>,
+) -> Result<Option<(usize, SelectionBasis, Vec<CandidateExclusion>)>, CoordinatorError> {
+    let result = evaluator.evaluate(input).map_err(|_| policy_error())?;
+    let RoutingWasmResult::Applied(output) = result else {
+        degradations.insert(SignalKind::RoutingPolicy);
+        return Ok(None);
+    };
+    let output = validate_output(input, output).map_err(|_| policy_error())?;
+    apply_wasm_output(output, states)
+}
+
+#[cfg(feature = "wasm-policy")]
+fn wasm_input(states: &[CandidateState<'_>]) -> Result<Option<RoutingWasmInput>, CoordinatorError> {
+    let mut candidates = states
+        .iter()
+        .filter(|state| state.eligible())
+        .map(wasm_candidate)
+        .collect::<Result<Vec<_>, _>>()?;
+    if candidates.is_empty() {
+        return Ok(None);
+    }
+    candidates.sort_by(|left, right| left.candidate_id().cmp(right.candidate_id()));
+    RoutingWasmInput::new(candidates)
+        .map(Some)
+        .map_err(|_| policy_error())
+}
+
+#[cfg(feature = "wasm-policy")]
+fn wasm_candidate(state: &CandidateState<'_>) -> Result<CandidateFeatures, CoordinatorError> {
+    let features = [
+        i64::from(state.source.priority().get()),
+        i64::from(state.source.weight().get()),
+        i64::from(state.source.load().get()),
+    ];
+    CandidateFeatures::new(state.key.as_str(), features).map_err(|_| policy_error())
+}
+
+#[cfg(feature = "wasm-policy")]
+fn apply_wasm_output(
+    output: RoutingWasmOutput,
+    states: &[CandidateState<'_>],
+) -> Result<Option<(usize, SelectionBasis, Vec<CandidateExclusion>)>, CoordinatorError> {
+    match output {
+        RoutingWasmOutput::Decline => Ok(None),
+        RoutingWasmOutput::Select(candidate) => {
+            let selected = states
+                .iter()
+                .position(|state| state.eligible() && state.key.as_str() == candidate.as_ref())
+                .ok_or_else(policy_error)?;
+            let exclusions = wasm_exclusions(states, selected);
+            Ok(Some((selected, SelectionBasis::WasmPolicy, exclusions)))
+        }
+    }
+}
+
+#[cfg(feature = "wasm-policy")]
+fn wasm_exclusions(states: &[CandidateState<'_>], selected: usize) -> Vec<CandidateExclusion> {
+    states
+        .iter()
+        .enumerate()
+        .filter(|(index, state)| *index != selected && state.eligible())
+        .map(|(_, state)| {
+            CandidateExclusion::new(
+                state.key.clone(),
+                CandidateExclusionReason::WasmPolicyPreferred,
+            )
+        })
+        .collect()
+}
+
+#[cfg(feature = "wasm-policy")]
+const fn policy_error() -> CoordinatorError {
+    CoordinatorError::new(CoordinatorErrorCode::PolicyUnavailable)
 }
 
 fn select_affinity(
