@@ -30,6 +30,8 @@
 
 use std::sync::Arc;
 
+use ariadnion_account_import::migrations::ACCOUNT_REGISTRY_MIGRATION_ID;
+use ariadnion_account_vault::migrations::ACCOUNT_VAULT_MIGRATION_ID;
 use ariadnion_api_admin::migrations::IDENTITY_ADMIN_COMMAND_MIGRATION_ID;
 use ariadnion_api_files::migrations::FILES_CATALOG_MIGRATION_ID;
 use ariadnion_audit_domain::migrations::IDENTITY_AUDIT_MIGRATION_ID;
@@ -59,8 +61,8 @@ use rnmdb_executor::vector::{ColumnSchema, Row, VectorBatch};
 use rnmdb_types::{SqlType, SqlValue};
 
 use crate::migration_definition::{
-    MigrationLookupOrder, PLATFORM_INITIAL_ID, PLATFORM_OUTBOX_ID, PLATFORM_SECRET_REFERENCES_ID,
-    RnmdbMigrationDefinition, compiled_migration_definitions,
+    ACCOUNT_BATCH_PLANS_ID, MigrationLookupOrder, PLATFORM_INITIAL_ID, PLATFORM_OUTBOX_ID,
+    PLATFORM_SECRET_REFERENCES_ID, RnmdbMigrationDefinition, compiled_migration_definitions,
 };
 use crate::session::map_rnmdb_error;
 use crate::{RnmdbSessionOwner, UtcTimestampMicros};
@@ -344,6 +346,36 @@ pub fn identity_api_key_request_evidence_migration() -> Result<MigrationDescript
 /// the frozen canonical checksum fail validation.
 pub fn file_catalog_migration() -> Result<MigrationDescriptor, StorageError> {
     compiled_migration_definitions()?.descriptor(FILES_CATALOG_MIGRATION_ID)
+}
+
+/// Returns the durable account-batch plan migration after digest verification.
+///
+/// The additive migration installs immutable plan items and mutation receipts.
+/// Account snapshot transitions, claims, outcomes, and terminal publication are
+/// intentionally not represented as complete until their transactional adapter
+/// paths are implemented.
+pub fn account_batch_migration() -> Result<MigrationDescriptor, StorageError> {
+    compiled_migration_definitions()?.descriptor(ACCOUNT_BATCH_PLANS_ID)
+}
+
+/// Returns the authoritative account-registry migration after digest verification.
+pub fn account_registry_migration() -> Result<MigrationDescriptor, StorageError> {
+    compiled_migration_definitions()?.descriptor(ACCOUNT_REGISTRY_MIGRATION_ID)
+}
+
+/// Returns the immutable encrypted account-vault migration after digest validation.
+///
+/// The version-twenty-two to version-twenty-three transition is explicit and
+/// remains outside module startup. This accessor performs no I/O, injects no
+/// keys, and has no cancellation boundary. Migration execution belongs to the
+/// retained-source, new-target migration runner.
+///
+/// # Errors
+///
+/// Returns a stable integrity error if fixed metadata, statements, or the
+/// canonical checksum do not match the compiled migration registry.
+pub fn account_vault_migration() -> Result<MigrationDescriptor, StorageError> {
+    compiled_migration_definitions()?.descriptor(ACCOUNT_VAULT_MIGRATION_ID)
 }
 
 fn migration_insert(

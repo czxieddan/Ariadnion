@@ -33,6 +33,24 @@ mod canonical;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
+use ariadnion_account_batch::migrations::{
+    ACCOUNT_BATCH_MIGRATION_CANONICAL_V1_SHA256, ACCOUNT_BATCH_MIGRATION_DOMAIN,
+    ACCOUNT_BATCH_MIGRATION_FROM_VERSION, ACCOUNT_BATCH_MIGRATION_ID,
+    ACCOUNT_BATCH_MIGRATION_REQUIRES_BACKUP, ACCOUNT_BATCH_MIGRATION_STATEMENTS,
+    ACCOUNT_BATCH_MIGRATION_TO_VERSION,
+};
+use ariadnion_account_import::migrations::{
+    ACCOUNT_REGISTRY_MIGRATION_CANONICAL_V1_SHA256, ACCOUNT_REGISTRY_MIGRATION_DOMAIN,
+    ACCOUNT_REGISTRY_MIGRATION_FROM_VERSION, ACCOUNT_REGISTRY_MIGRATION_ID,
+    ACCOUNT_REGISTRY_MIGRATION_REQUIRES_BACKUP, ACCOUNT_REGISTRY_MIGRATION_STATEMENTS,
+    ACCOUNT_REGISTRY_MIGRATION_TO_VERSION,
+};
+use ariadnion_account_vault::migrations::{
+    ACCOUNT_VAULT_MIGRATION_CANONICAL_V1_SHA256, ACCOUNT_VAULT_MIGRATION_DOMAIN,
+    ACCOUNT_VAULT_MIGRATION_FROM_VERSION, ACCOUNT_VAULT_MIGRATION_ID,
+    ACCOUNT_VAULT_MIGRATION_REQUIRES_BACKUP, ACCOUNT_VAULT_MIGRATION_STATEMENTS,
+    ACCOUNT_VAULT_MIGRATION_TO_VERSION,
+};
 use ariadnion_api_admin::migrations::{
     IDENTITY_ADMIN_COMMAND_MIGRATION_CANONICAL_V1_SHA256, IDENTITY_ADMIN_COMMAND_MIGRATION_DOMAIN,
     IDENTITY_ADMIN_COMMAND_MIGRATION_FROM_VERSION, IDENTITY_ADMIN_COMMAND_MIGRATION_ID,
@@ -141,6 +159,7 @@ use ariadnion_user_domain::migrations::{
 use sha2::{Digest, Sha256};
 
 use self::canonical::CanonicalAstV1;
+pub(crate) use ariadnion_account_batch::migrations::ACCOUNT_BATCH_MIGRATION_ID as ACCOUNT_BATCH_PLANS_ID;
 
 pub(crate) const PLATFORM_INITIAL_ID: &str = "platform.0001.initial";
 pub(crate) const PLATFORM_SECRET_REFERENCES_ID: &str = "platform.0002.secret-references";
@@ -299,6 +318,7 @@ impl RnmdbMigrationDefinitions {
         let (mut definitions, bootstrap_ids) = compile_bootstrap_definitions()?;
         compile_identity_definitions(&mut definitions)?;
         compile_file_definitions(&mut definitions)?;
+        compile_account_definitions(&mut definitions)?;
         Ok(Self {
             definitions,
             bootstrap_ids,
@@ -420,6 +440,19 @@ fn compile_file_definitions(
     definitions: &mut BTreeMap<MigrationId, RnmdbMigrationDefinition>,
 ) -> Result<(), StorageError> {
     insert_definition(definitions, compile_file_catalog_definition()?)
+}
+
+fn compile_account_definitions(
+    definitions: &mut BTreeMap<MigrationId, RnmdbMigrationDefinition>,
+) -> Result<(), StorageError> {
+    for definition in [
+        compile_account_registry_definition()?,
+        compile_account_batch_definition()?,
+        compile_account_vault_definition()?,
+    ] {
+        insert_definition(definitions, definition)?;
+    }
+    Ok(())
 }
 
 fn compile_identity_base_definitions(
@@ -812,6 +845,45 @@ fn compile_file_catalog_definition() -> Result<RnmdbMigrationDefinition, Storage
         statements: FILES_CATALOG_MIGRATION_STATEMENTS,
         expected_checksum: FILES_CATALOG_MIGRATION_CANONICAL_V1_SHA256,
         requires_backup: FILES_CATALOG_MIGRATION_REQUIRES_BACKUP,
+    };
+    compile_migration_definition(input, CanonicalAstV1)
+}
+
+fn compile_account_batch_definition() -> Result<RnmdbMigrationDefinition, StorageError> {
+    let input = CanonicalMigrationDefinitionInput {
+        id: ACCOUNT_BATCH_MIGRATION_ID,
+        domain: ACCOUNT_BATCH_MIGRATION_DOMAIN,
+        from: ACCOUNT_BATCH_MIGRATION_FROM_VERSION,
+        to: ACCOUNT_BATCH_MIGRATION_TO_VERSION,
+        statements: ACCOUNT_BATCH_MIGRATION_STATEMENTS,
+        expected_checksum: ACCOUNT_BATCH_MIGRATION_CANONICAL_V1_SHA256,
+        requires_backup: ACCOUNT_BATCH_MIGRATION_REQUIRES_BACKUP,
+    };
+    compile_migration_definition(input, CanonicalAstV1)
+}
+
+fn compile_account_registry_definition() -> Result<RnmdbMigrationDefinition, StorageError> {
+    let input = CanonicalMigrationDefinitionInput {
+        id: ACCOUNT_REGISTRY_MIGRATION_ID,
+        domain: ACCOUNT_REGISTRY_MIGRATION_DOMAIN,
+        from: ACCOUNT_REGISTRY_MIGRATION_FROM_VERSION,
+        to: ACCOUNT_REGISTRY_MIGRATION_TO_VERSION,
+        statements: ACCOUNT_REGISTRY_MIGRATION_STATEMENTS,
+        expected_checksum: ACCOUNT_REGISTRY_MIGRATION_CANONICAL_V1_SHA256,
+        requires_backup: ACCOUNT_REGISTRY_MIGRATION_REQUIRES_BACKUP,
+    };
+    compile_migration_definition(input, CanonicalAstV1)
+}
+
+fn compile_account_vault_definition() -> Result<RnmdbMigrationDefinition, StorageError> {
+    let input = CanonicalMigrationDefinitionInput {
+        id: ACCOUNT_VAULT_MIGRATION_ID,
+        domain: ACCOUNT_VAULT_MIGRATION_DOMAIN,
+        from: ACCOUNT_VAULT_MIGRATION_FROM_VERSION,
+        to: ACCOUNT_VAULT_MIGRATION_TO_VERSION,
+        statements: ACCOUNT_VAULT_MIGRATION_STATEMENTS,
+        expected_checksum: ACCOUNT_VAULT_MIGRATION_CANONICAL_V1_SHA256,
+        requires_backup: ACCOUNT_VAULT_MIGRATION_REQUIRES_BACKUP,
     };
     compile_migration_definition(input, CanonicalAstV1)
 }
