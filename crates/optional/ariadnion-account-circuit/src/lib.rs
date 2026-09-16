@@ -35,7 +35,7 @@ use ariadnion_account_domain::AccountId;
 use std::fmt;
 use std::sync::{Arc, RwLock};
 
-const MAX_THRESHOLD: u32 = 1_000_000;
+const MAX_THRESHOLD: u32 = 1 << 20;
 const MAX_WINDOW_MILLIS: u64 = 86_400_000;
 const MAX_LEASE_MILLIS: u64 = 300_000;
 const MAX_PROBES: u16 = 128;
