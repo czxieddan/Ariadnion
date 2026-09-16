@@ -3,7 +3,7 @@
 Ariadnion resolves RNovModularDB directly from the repository below:
 
 - Repository: `https://github.com/czxieddan/RNovModularDB.git`
-- Reviewed commit: `f20040a127a56ec8c37b3398283df36f024a1dd2`
+- Reviewed commit: `9414642b794bd87bd40731d4b03b88e1535d9f11`
 - Cargo selector: full Git `rev`, repeated for every approved `rnmdb-*` package
 - Selected license: `LicenseRef-AHCL-1.0`
 - Verbatim license copy: `.ahcl/AHCL-1.0.md`
