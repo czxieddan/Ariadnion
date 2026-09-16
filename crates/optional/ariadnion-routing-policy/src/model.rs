@@ -36,9 +36,9 @@ pub const MAX_CANDIDATES: usize = 1 << 17;
 /// Maximum UTF-8 byte length of a candidate identifier.
 pub const MAX_CANDIDATE_ID_BYTES: usize = 128;
 /// Maximum supported instantaneous load value.
-pub const MAX_LOAD: u32 = 1_000_000_000;
+pub const MAX_LOAD: u32 = 1 << 30;
 /// Maximum supported candidate weight.
-pub const MAX_WEIGHT: u32 = 1_000_000;
+pub const MAX_WEIGHT: u32 = 1 << 20;
 
 /// Stable identifier for a routable candidate.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Hash)]
