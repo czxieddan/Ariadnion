@@ -28,12 +28,15 @@
 //
 //! Bounded request identity, deadline, and cancellation context.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::task::Waker;
 use std::time::{Duration, SystemTime};
 
 use crate::error::{CoreError, ErrorCode};
 use crate::ids::{PrincipalId, RequestId, TenantId, TraceId};
+
+const MAX_CANCELLATION_WAITERS: usize = 1 << 8;
 
 /// A cloneable cancellation handle shared across request boundaries.
 #[derive(Clone, Debug)]
@@ -45,6 +48,20 @@ pub struct CancellationToken {
 struct CancellationState {
     cancelled: AtomicBool,
     parent: Option<Arc<CancellationState>>,
+    waiters: Mutex<Vec<CancellationWaiter>>,
+}
+
+#[derive(Debug)]
+struct CancellationWaiter {
+    owner: Weak<CancellationState>,
+    waker: Waker,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WakerRegistration {
+    Registered,
+    Cancelled,
+    Exhausted,
 }
 
 impl CancellationState {
@@ -54,6 +71,58 @@ impl CancellationState {
                 .parent
                 .as_ref()
                 .is_some_and(|parent| parent.is_cancelled())
+    }
+
+    fn register_local_waker(
+        &self,
+        owner: &Arc<CancellationState>,
+        waker: &Waker,
+    ) -> WakerRegistration {
+        if self.cancelled.load(Ordering::Acquire) {
+            return WakerRegistration::Cancelled;
+        }
+        self.remove_inactive_waiters();
+        let replacement = waker.clone();
+        let mut waiters = lock_waiters(&self.waiters);
+        if self.cancelled.load(Ordering::Acquire) {
+            return WakerRegistration::Cancelled;
+        }
+        let owner = Arc::downgrade(owner);
+        if let Some(index) = find_waiter_index(&waiters, &owner, waker) {
+            let previous = std::mem::replace(&mut waiters[index].waker, replacement);
+            drop(waiters);
+            drop(previous);
+            return WakerRegistration::Registered;
+        }
+        if waiters.len() >= MAX_CANCELLATION_WAITERS {
+            return WakerRegistration::Exhausted;
+        }
+        waiters.push(CancellationWaiter {
+            owner,
+            waker: replacement,
+        });
+        WakerRegistration::Registered
+    }
+
+    fn remove_owner_waiters(&self, owner: &Arc<CancellationState>) {
+        let owner = Arc::downgrade(owner);
+        remove_waiters_if(&self.waiters, |waiter| Weak::ptr_eq(&waiter.owner, &owner));
+    }
+
+    fn take_waiters(&self) -> Vec<CancellationWaiter> {
+        std::mem::take(&mut *lock_waiters(&self.waiters))
+    }
+
+    fn remove_inactive_waiters(&self) {
+        remove_waiters_if(&self.waiters, |waiter| !waiter.is_active());
+    }
+}
+
+impl CancellationWaiter {
+    fn is_active(&self) -> bool {
+        self.owner
+            .upgrade()
+            .is_some_and(|owner| !owner.is_cancelled())
     }
 }
 
@@ -65,6 +134,7 @@ impl CancellationToken {
             state: Arc::new(CancellationState {
                 cancelled: AtomicBool::new(false),
                 parent: None,
+                waiters: Mutex::new(Vec::new()),
             }),
         }
     }
@@ -80,13 +150,20 @@ impl CancellationToken {
             state: Arc::new(CancellationState {
                 cancelled: AtomicBool::new(false),
                 parent: Some(self.state.clone()),
+                waiters: Mutex::new(Vec::new()),
             }),
         }
     }
 
     /// Requests cancellation and returns `true` only for the first request.
     pub fn cancel(&self) -> bool {
-        !self.state.cancelled.swap(true, Ordering::AcqRel)
+        if self.state.cancelled.swap(true, Ordering::AcqRel) {
+            return false;
+        }
+        let waiters = self.state.take_waiters();
+        self.remove_waker_chain();
+        wake_waiters(waiters);
+        true
     }
 
     /// Returns whether cancellation has been requested.
@@ -95,12 +172,105 @@ impl CancellationToken {
         self.state.is_cancelled()
     }
 
+    /// Registers a task to be notified when this token becomes cancelled.
+    ///
+    /// This method returns `true` when cancellation is already observable. A
+    /// caller polling a future may then return `Poll::Ready`; otherwise it may
+    /// return `Poll::Pending` after this method returns `false`. Registration
+    /// covers this token and every ancestor, and a final cancellation check
+    /// prevents cancellation racing with registration from being missed.
+    ///
+    /// Each token node retains at most 256 distinct waker identities. Repeated
+    /// registration by the same task replaces its equivalent entry. If any
+    /// node in the parent chain is full, this token cancels itself rather than
+    /// silently dropping the notification. Cancelling a node wakes its local
+    /// registered tasks after releasing the internal lock.
+    #[must_use]
+    pub fn register_waker(&self, waker: &Waker) -> bool {
+        let cancelled = match self.register_waker_chain(waker) {
+            WakerRegistration::Registered => self.is_cancelled(),
+            WakerRegistration::Cancelled => true,
+            WakerRegistration::Exhausted => {
+                self.cancel();
+                true
+            }
+        };
+        if cancelled {
+            self.remove_waker_chain();
+        }
+        cancelled
+    }
+
     /// Returns a stable cancellation error when cancellation was requested.
     pub fn check_active(&self) -> Result<(), CoreError> {
         if self.is_cancelled() {
             return Err(CoreError::from_code(ErrorCode::Cancelled));
         }
         Ok(())
+    }
+
+    fn register_waker_chain(&self, waker: &Waker) -> WakerRegistration {
+        let mut current = Some(self.state.clone());
+        while let Some(state) = current {
+            match state.register_local_waker(&self.state, waker) {
+                WakerRegistration::Registered => current = state.parent.clone(),
+                outcome => return outcome,
+            }
+        }
+        WakerRegistration::Registered
+    }
+
+    fn remove_waker_chain(&self) {
+        let mut current = Some(self.state.clone());
+        while let Some(state) = current {
+            state.remove_owner_waiters(&self.state);
+            current = state.parent.clone();
+        }
+    }
+}
+
+fn find_waiter_index(
+    waiters: &[CancellationWaiter],
+    owner: &Weak<CancellationState>,
+    waker: &Waker,
+) -> Option<usize> {
+    waiters
+        .iter()
+        .enumerate()
+        .find(|(_, entry)| Weak::ptr_eq(&entry.owner, owner) && entry.waker.will_wake(waker))
+        .map(|(index, _)| index)
+}
+
+fn remove_waiters_if(
+    waiters: &Mutex<Vec<CancellationWaiter>>,
+    mut should_remove: impl FnMut(&CancellationWaiter) -> bool,
+) {
+    let mut guard = lock_waiters(waiters);
+    let entries = std::mem::take(&mut *guard);
+    let (removed, retained): (Vec<_>, Vec<_>) = entries
+        .into_iter()
+        .partition(|waiter| should_remove(waiter));
+    *guard = retained;
+    drop(guard);
+    drop(removed);
+}
+
+fn lock_waiters(
+    waiters: &Mutex<Vec<CancellationWaiter>>,
+) -> MutexGuard<'_, Vec<CancellationWaiter>> {
+    match waiters.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
+fn wake_waiters(waiters: Vec<CancellationWaiter>) {
+    for waiter in waiters {
+        // Executor wakers are outside the core trust boundary. One malformed
+        // waker must not prevent cancellation from reaching remaining tasks.
+        let _wake = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            waiter.waker.wake();
+        }));
     }
 }
 
