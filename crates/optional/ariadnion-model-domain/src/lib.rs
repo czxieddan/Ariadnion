@@ -49,9 +49,9 @@ pub const MAX_MAPPINGS_PER_MODEL: usize = 32;
 /// Maximum capability count represented by the bitset.
 pub const MAX_CAPABILITIES: usize = 32;
 /// Maximum context-token limit accepted by the domain.
-pub const MAX_CONTEXT_TOKENS: u32 = 2_000_000;
+pub const MAX_CONTEXT_TOKENS: u32 = 1 << 21;
 /// Maximum output-token limit accepted by the domain.
-pub const MAX_OUTPUT_TOKENS: u32 = 1_000_000;
+pub const MAX_OUTPUT_TOKENS: u32 = 1 << 20;
 /// Maximum byte limit accepted for one request or response body.
 pub const MAX_BODY_BYTES: u32 = 256 * 1024 * 1024;
 
