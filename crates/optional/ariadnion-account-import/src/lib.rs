@@ -44,6 +44,7 @@ use std::sync::RwLock;
 
 pub use ariadnion_account_domain::{AccountId, ProviderId, SecretRef};
 
+pub mod migrations;
 mod port;
 
 pub use port::{
