@@ -90,6 +90,7 @@ zeroize = "1.9.0"
 [dev-dependencies]
 ariadnion-api-http = { path = "../ariadnion-api-http" }
 ariadnion-cli-user = { path = "../ariadnion-cli-user" }
+ariadnion-provider-http = { path = "../ariadnion-provider-http" }
 
 [lints.rust]
 unsafe_code = "forbid"
