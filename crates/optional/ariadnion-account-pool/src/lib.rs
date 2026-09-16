@@ -216,9 +216,9 @@ pub const MAX_IMPORT_RECORDS: usize = 1 << 17;
 /// Maximum candidates held by one immutable snapshot.
 pub const MAX_SNAPSHOT_CANDIDATES: usize = 1 << 17;
 /// Maximum supported candidate weight.
-pub const MAX_WEIGHT: u32 = 1_000_000;
+pub const MAX_WEIGHT: u32 = 1 << 20;
 /// Maximum supported instantaneous load value.
-pub const MAX_LOAD: u32 = 1_000_000_000;
+pub const MAX_LOAD: u32 = 1 << 30;
 const MAX_CANDIDATE_ID_BYTES: usize = 128;
 const CURRENT_SCHEMA_VERSION: u16 = 1;
 
