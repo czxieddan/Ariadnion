@@ -50,7 +50,7 @@ use std::fmt;
 /// Maximum candidates accepted by one simulation input.
 pub const MAX_CANDIDATES: usize = 1 << 17;
 /// Maximum projected requests or capacity units in one forecast.
-pub const MAX_FORECAST_UNITS: u64 = 1_000_000_000_000;
+pub const MAX_FORECAST_UNITS: u64 = 1 << 40;
 
 /// Stable machine-readable simulator failures.
 #[repr(u8)]
