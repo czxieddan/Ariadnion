@@ -261,6 +261,71 @@ impl SecretRevokeReceipt {
     }
 }
 
+/// Durable evidence recovered for an ambiguous vault mutation.
+#[derive(Clone, Eq, PartialEq)]
+pub enum VaultMutationReceipt {
+    /// The reconciled mutation stored one encrypted secret version.
+    Stored(SecretStoreReceipt),
+    /// The reconciled mutation revoked one exact secret version.
+    Revoked(SecretRevokeReceipt),
+}
+
+impl VaultMutationReceipt {
+    /// Returns the exact secret locator affected by the reconciled mutation.
+    #[must_use]
+    pub const fn reference(&self) -> &SecretRef {
+        match self {
+            Self::Stored(receipt) => receipt.reference(),
+            Self::Revoked(receipt) => receipt.reference(),
+        }
+    }
+
+    /// Returns the adapter-reported UTC commit time.
+    #[must_use]
+    pub const fn committed_at(&self) -> SystemTime {
+        match self {
+            Self::Stored(receipt) => receipt.committed_at(),
+            Self::Revoked(receipt) => receipt.committed_at(),
+        }
+    }
+
+    /// Returns the store receipt when reconciliation recovered a store commit.
+    #[must_use]
+    pub const fn stored(&self) -> Option<&SecretStoreReceipt> {
+        match self {
+            Self::Stored(receipt) => Some(receipt),
+            Self::Revoked(_) => None,
+        }
+    }
+
+    /// Returns the revoke receipt when reconciliation recovered a revoke commit.
+    #[must_use]
+    pub const fn revoked(&self) -> Option<&SecretRevokeReceipt> {
+        match self {
+            Self::Stored(_) => None,
+            Self::Revoked(receipt) => Some(receipt),
+        }
+    }
+}
+
+impl std::fmt::Debug for VaultMutationReceipt {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Stored(receipt) => formatter
+                .debug_struct("Stored")
+                .field("version", &receipt.version())
+                .field("key_version", &receipt.key_version())
+                .field("committed_at", &receipt.committed_at())
+                .finish(),
+            Self::Revoked(receipt) => formatter
+                .debug_struct("Revoked")
+                .field("version", &receipt.version())
+                .field("committed_at", &receipt.committed_at())
+                .finish(),
+        }
+    }
+}
+
 /// Port implemented by a vault adapter backed by encrypted durable storage.
 pub trait VaultPort: Send + Sync {
     /// Reads one secret through a short, module- and purpose-bound lease.
@@ -300,7 +365,7 @@ pub trait VaultPort: Send + Sync {
         &'a self,
         reference: SecretRef,
         context: &'a RequestContext,
-    ) -> BoxVaultFuture<'a, Option<SecretStoreReceipt>>;
+    ) -> BoxVaultFuture<'a, Option<VaultMutationReceipt>>;
 
     /// Generates a lease identity using adapter-owned cryptographically secure
     /// randomness. This helper keeps entropy generation out of domain callers.

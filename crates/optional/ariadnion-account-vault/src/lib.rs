@@ -44,7 +44,7 @@ mod secret;
 pub use error::{VaultError, VaultErrorCode};
 pub use port::{
     BoxVaultFuture, SecretReadRequest, SecretRevokeReceipt, SecretStoreReceipt, SecretStoreRequest,
-    VaultPort, VaultRevokeReason, VaultRevokeRequest,
+    VaultMutationReceipt, VaultPort, VaultRevokeReason, VaultRevokeRequest,
 };
 pub use rotation::{
     CredentialRotationPlan, MAX_ROTATION_ID_BYTES, MAX_ROTATION_OVERLAP, RotationJournal,
