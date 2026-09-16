@@ -42,7 +42,7 @@ selected_license = "LicenseRef-AHCL-1.0"
 license_copy = ".ahcl/AHCL-1.0.md"
 additional_restrictions = "none"
 repository = "https://github.com/czxieddan/RNovModularDB.git"
-commit = "f20040a127a56ec8c37b3398283df36f024a1dd2"
+commit = "9414642b794bd87bd40731d4b03b88e1535d9f11"
 package_prefix = "rnmdb-"
 packages = ["rnmdb-common", "rnmdb-types", "rnmdb-sql", "rnmdb-planner", "rnmdb-executor", "rnmdb-txn", "rnmdb-index", "rnmdb-fts", "rnmdb-catalog", "rnmdb-storage", "rnmdb-udf", "rnmdb-security", "rnmdb-instance", "rnmdb-server", "rnmdb-cli"]
 

@@ -36,7 +36,7 @@ const CANONICAL_DEPENDENCY_TABLE: &str = concat!(
     "license_copy = \".ahcl/AHCL-1.0.md\"\n",
     "additional_restrictions = \"none\"\n",
     "repository = \"https://github.com/czxieddan/RNovModularDB.git\"\n",
-    "commit = \"f20040a127a56ec8c37b3398283df36f024a1dd2\"\n",
+    "commit = \"9414642b794bd87bd40731d4b03b88e1535d9f11\"\n",
     "package_prefix = \"rnmdb-\"\n",
     "packages = [\"rnmdb-common\", \"rnmdb-types\", \"rnmdb-sql\", \"rnmdb-planner\", \"rnmdb-executor\", \"rnmdb-txn\", \"rnmdb-index\", \"rnmdb-fts\", \"rnmdb-catalog\", \"rnmdb-storage\", \"rnmdb-udf\", \"rnmdb-security\", \"rnmdb-instance\", \"rnmdb-server\", \"rnmdb-cli\"]\n\n",
 );

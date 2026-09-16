@@ -48,7 +48,7 @@ const RNMDB_SELECTED_LICENSE: &str = "LicenseRef-AHCL-1.0";
 const RNMDB_LICENSE_COPY: &str = ".ahcl/AHCL-1.0.md";
 const RNMDB_ADDITIONAL_RESTRICTIONS: &str = "none";
 const RNMDB_REPOSITORY: &str = "https://github.com/czxieddan/RNovModularDB.git";
-const RNMDB_COMMIT: &str = "f20040a127a56ec8c37b3398283df36f024a1dd2";
+const RNMDB_COMMIT: &str = "9414642b794bd87bd40731d4b03b88e1535d9f11";
 const RNMDB_PACKAGE_PREFIX: &str = "rnmdb-";
 const RNMDB_PACKAGES: [&str; 15] = [
     "rnmdb-catalog",
