@@ -141,14 +141,6 @@ pub(super) fn hex(bytes: &[u8]) -> String {
     output
 }
 
-pub(super) fn internal_context() -> Result<RequestContext, BatchPortError> {
-    Ok(RequestContext::anonymous(
-        RequestId::parse("account-batch-rnmdb").map_err(|_| corrupt())?,
-        TraceId::parse("account-batch-rnmdb").map_err(|_| corrupt())?,
-        None,
-    ))
-}
-
 pub(super) fn trusted_now() -> Result<UtcSeconds, StorageError> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -452,9 +444,6 @@ const fn map_adapter_error_code(code: StorageErrorCode) -> BatchPortErrorCode {
         StorageErrorCode::IntegrityFailure => BatchPortErrorCode::CorruptState,
         _ => BatchPortErrorCode::Unavailable,
     }
-}
-pub(super) const fn corrupt() -> BatchPortError {
-    BatchPortError::new(BatchPortErrorCode::CorruptState)
 }
 pub(super) const fn integrity() -> StorageError {
     StorageError::new(StorageErrorCode::IntegrityFailure)

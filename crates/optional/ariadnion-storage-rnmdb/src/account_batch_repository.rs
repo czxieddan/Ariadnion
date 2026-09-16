@@ -35,7 +35,7 @@ mod receipt;
 mod reconstruction;
 mod sql;
 
-use codec::{internal_context, map_storage_error};
+use codec::map_storage_error;
 use implementation::{claim_tx, complete_tx, submit_tx, transition_tx};
 use persistence::{load_mutation, load_plan};
 use reconstruction::{list_outcomes, reconstruct_mutation};
@@ -44,21 +44,21 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ariadnion_account_batch::{
-    AccountBatchPort, BatchAttempt, BatchClaim, BatchClaimLimit, BatchIdentity, BatchIntent,
-    BatchItem, BatchItemFailureCode, BatchItemId, BatchItemOrdinal, BatchItemOutcome,
-    BatchItemResult, BatchLifecycle, BatchMutationKind, BatchMutationReceipt, BatchPlan,
-    BatchPortError, BatchPortErrorCode, BatchResourceLimits, BatchRevision, BatchStatus,
-    BatchSubmission, BatchSubmitDisposition, BatchTerminalState, BatchTransition, ClaimAssignment,
-    ClaimBatchItems, ClaimId, ClaimReceipt, CompleteClaimedItem, IdempotencyKey,
-    ItemCompletionReceipt, MutationId, NoLiveClaims, OperationId, OutcomePage, OutcomePageRequest,
-    RevisionEvidence, SubmissionReceipt, SubmitBatch, TransitionBatch, TransitionReceipt,
-    UtcSeconds,
+    AccountBatchAccess, AccountBatchAuthorizationPort, AccountBatchPort, BatchAttempt, BatchClaim,
+    BatchClaimLimit, BatchIdentity, BatchIntent, BatchItem, BatchItemFailureCode, BatchItemId,
+    BatchItemOrdinal, BatchItemOutcome, BatchItemResult, BatchLifecycle, BatchMutationKind,
+    BatchMutationReceipt, BatchPlan, BatchPortError, BatchPortErrorCode, BatchResourceLimits,
+    BatchRevision, BatchStatus, BatchSubmission, BatchSubmitDisposition, BatchTerminalState,
+    BatchTransition, ClaimAssignment, ClaimBatchItems, ClaimId, ClaimReceipt, CompleteClaimedItem,
+    IdempotencyKey, ItemCompletionReceipt, MutationId, NoLiveClaims, OperationId, OutcomePage,
+    OutcomePageRequest, RevisionEvidence, SubmissionReceipt, SubmitBatch, TransitionBatch,
+    TransitionReceipt, UtcSeconds,
 };
 use ariadnion_account_domain::{
     AccountDomainErrorCode, AccountId, AccountLifecycleChange, AccountStatus,
     AccountTransitionAction, AccountTransitionCommand, AccountVersion, apply_account_lifecycle,
 };
-use ariadnion_core::{RequestContext, RequestId, TenantId, TraceId};
+use ariadnion_core::{ErrorCode, RequestContext, TenantId};
 use ariadnion_storage_domain::{StorageError, StorageErrorCode};
 use rnmdb_cli::{CommandOutput, LocalSession};
 use rnmdb_executor::vector::{Row, VectorBatch};
@@ -75,10 +75,9 @@ const ACCOUNT_LIFECYCLE_PROJECTION: &str = "account_id, account_version, account
 
 /// Durable account-batch adapter over one serialized embedded RNMDB session.
 ///
-/// The trait does not carry a request context. Callers must authorize the
-/// administrative operation before entering this port. Every database access is
-/// still executed under RNMDB's tenant context, so cross-tenant rows remain
-/// inaccessible even when identifiers collide.
+/// Every access requires an active authenticated request for the exact target
+/// tenant and a current decision from the injected fail-closed policy. Mutations
+/// are authorized again inside the transaction immediately before commit.
 ///
 /// This synchronous adapter performs blocking embedded storage operations and
 /// must run on a blocking worker, never on an asynchronous executor thread.
@@ -87,13 +86,20 @@ const ACCOUNT_LIFECYCLE_PROJECTION: &str = "account_id, account_version, account
 /// session; it must not be treated as permission to issue a new mutation.
 pub struct RnmdbAccountBatchRepository {
     session: Arc<RnmdbSessionOwner>,
+    authorization: Arc<dyn AccountBatchAuthorizationPort>,
 }
 
 impl RnmdbAccountBatchRepository {
-    /// Creates an adapter over the supplied serialized session owner.
+    /// Creates an adapter over a serialized session and fail-closed policy.
     #[must_use]
-    pub const fn new(session: Arc<RnmdbSessionOwner>) -> Self {
-        Self { session }
+    pub fn new(
+        session: Arc<RnmdbSessionOwner>,
+        authorization: Arc<dyn AccountBatchAuthorizationPort>,
+    ) -> Self {
+        Self {
+            session,
+            authorization,
+        }
     }
 
     /// Returns the underlying embedded session owner.
@@ -104,83 +110,191 @@ impl RnmdbAccountBatchRepository {
 }
 
 impl AccountBatchPort for RnmdbAccountBatchRepository {
-    fn submit(&self, command: SubmitBatch) -> Result<SubmissionReceipt, BatchPortError> {
+    fn submit(
+        &self,
+        command: SubmitBatch,
+        context: &RequestContext,
+    ) -> Result<SubmissionReceipt, BatchPortError> {
         let tenant = command.plan().submission().tenant_id().clone();
-        let context = internal_context()?;
-        self.session
-            .with_identity_transaction_session(&context, &tenant, |session| {
-                run_identity_transaction(session, &context, |session| submit_tx(session, &command))
-            })
-            .map_err(map_storage_error)
+        self.execute_mutation(AccountBatchAccess::Submit, &tenant, context, |session| {
+            submit_tx(session, &command)
+        })
     }
 
-    fn load(&self, identity: &BatchIdentity) -> Result<Option<BatchStatus>, BatchPortError> {
-        let context = internal_context()?;
-        self.session
-            .with_identity_storage_session(&context, identity.tenant_id(), |session| {
-                load_plan(session, identity).map(|plan| plan.map(|value| value.status))
-            })
-            .map_err(map_storage_error)
+    fn load(
+        &self,
+        identity: &BatchIdentity,
+        context: &RequestContext,
+    ) -> Result<Option<BatchStatus>, BatchPortError> {
+        self.execute_read(
+            AccountBatchAccess::Load,
+            identity.tenant_id(),
+            context,
+            |session| load_plan(session, identity).map(|plan| plan.map(|value| value.status)),
+        )
     }
 
-    fn claim(&self, command: ClaimBatchItems) -> Result<ClaimReceipt, BatchPortError> {
+    fn claim(
+        &self,
+        command: ClaimBatchItems,
+        context: &RequestContext,
+    ) -> Result<ClaimReceipt, BatchPortError> {
         let tenant = command.identity().tenant_id().clone();
-        let context = internal_context()?;
-        self.session
-            .with_identity_transaction_session(&context, &tenant, |session| {
-                run_identity_transaction(session, &context, |session| claim_tx(session, &command))
-            })
-            .map_err(map_storage_error)
+        self.execute_mutation(AccountBatchAccess::Claim, &tenant, context, |session| {
+            claim_tx(session, &command)
+        })
     }
 
     fn complete_claimed_item(
         &self,
         command: CompleteClaimedItem,
+        context: &RequestContext,
     ) -> Result<ItemCompletionReceipt, BatchPortError> {
         let tenant = command.claimed_item().identity().tenant_id().clone();
-        let context = internal_context()?;
-        self.session
-            .with_identity_transaction_session(&context, &tenant, |session| {
-                run_identity_transaction(session, &context, |session| {
-                    complete_tx(session, &command)
-                })
-            })
-            .map_err(map_storage_error)
+        self.execute_mutation(AccountBatchAccess::Complete, &tenant, context, |session| {
+            complete_tx(session, &command)
+        })
     }
 
-    fn transition(&self, command: TransitionBatch) -> Result<TransitionReceipt, BatchPortError> {
+    fn transition(
+        &self,
+        command: TransitionBatch,
+        context: &RequestContext,
+    ) -> Result<TransitionReceipt, BatchPortError> {
         let tenant = command.identity().tenant_id().clone();
-        let context = internal_context()?;
-        self.session
-            .with_identity_transaction_session(&context, &tenant, |session| {
-                run_identity_transaction(session, &context, |session| {
-                    transition_tx(session, &command)
-                })
-            })
-            .map_err(map_storage_error)
+        self.execute_mutation(
+            AccountBatchAccess::Transition,
+            &tenant,
+            context,
+            |session| transition_tx(session, &command),
+        )
     }
 
     fn reconcile_mutation(
         &self,
         tenant_id: &TenantId,
         mutation_id: &MutationId,
+        context: &RequestContext,
     ) -> Result<Option<BatchMutationReceipt>, BatchPortError> {
-        let context = internal_context()?;
-        self.session
-            .with_identity_storage_session(&context, tenant_id, |session| {
+        self.execute_read(
+            AccountBatchAccess::Reconcile,
+            tenant_id,
+            context,
+            |session| {
                 load_mutation(session, tenant_id, mutation_id)?
                     .map(|mutation| reconstruct_mutation(session, mutation))
                     .transpose()
-            })
+            },
+        )
+    }
+
+    fn list_outcomes(
+        &self,
+        request: OutcomePageRequest,
+        context: &RequestContext,
+    ) -> Result<OutcomePage, BatchPortError> {
+        self.execute_read(
+            AccountBatchAccess::ListOutcomes,
+            request.identity().tenant_id(),
+            context,
+            |session| list_outcomes(session, &request),
+        )
+    }
+}
+
+impl RnmdbAccountBatchRepository {
+    fn execute_read<T>(
+        &self,
+        access: AccountBatchAccess,
+        tenant: &TenantId,
+        context: &RequestContext,
+        operation: impl FnOnce(&mut LocalSession) -> Result<T, StorageError>,
+    ) -> Result<T, BatchPortError> {
+        authorize_request(self.authorization.as_ref(), access, tenant, context)?;
+        self.session
+            .with_identity_storage_session(context, tenant, operation)
             .map_err(map_storage_error)
     }
 
-    fn list_outcomes(&self, request: OutcomePageRequest) -> Result<OutcomePage, BatchPortError> {
-        let context = internal_context()?;
-        self.session
-            .with_identity_storage_session(&context, request.identity().tenant_id(), |session| {
-                list_outcomes(session, &request)
-            })
-            .map_err(map_storage_error)
+    fn execute_mutation<T>(
+        &self,
+        access: AccountBatchAccess,
+        tenant: &TenantId,
+        context: &RequestContext,
+        operation: impl FnOnce(&mut LocalSession) -> Result<T, StorageError>,
+    ) -> Result<T, BatchPortError> {
+        authorize_request(self.authorization.as_ref(), access, tenant, context)?;
+        let mut boundary_error = None;
+        let result = self
+            .session
+            .with_identity_transaction_session(context, tenant, |session| {
+                run_identity_transaction(session, context, |session| {
+                    let value = operation(session)?;
+                    record_authorization_boundary(
+                        self.authorization.as_ref(),
+                        access,
+                        tenant,
+                        context,
+                        &mut boundary_error,
+                    )?;
+                    Ok(value)
+                })
+            });
+        project_mutation_result(result, boundary_error)
     }
+}
+
+fn authorize_request(
+    authorization: &dyn AccountBatchAuthorizationPort,
+    access: AccountBatchAccess,
+    tenant: &TenantId,
+    context: &RequestContext,
+) -> Result<(), BatchPortError> {
+    check_request_context(context)?;
+    let principal = context
+        .principal()
+        .ok_or_else(|| port_error(BatchPortErrorCode::Unauthenticated))?;
+    if principal.tenant_id() != tenant {
+        return Err(port_error(BatchPortErrorCode::PermissionDenied));
+    }
+    let decision = authorization.authorize(access, context);
+    check_request_context(context)?;
+    decision
+}
+
+fn check_request_context(context: &RequestContext) -> Result<(), BatchPortError> {
+    context.check_active().map_err(|error| match error.code() {
+        ErrorCode::Cancelled => port_error(BatchPortErrorCode::Cancelled),
+        ErrorCode::DeadlineExceeded => port_error(BatchPortErrorCode::DeadlineExceeded),
+        _ => port_error(BatchPortErrorCode::CorruptState),
+    })
+}
+
+fn record_authorization_boundary(
+    authorization: &dyn AccountBatchAuthorizationPort,
+    access: AccountBatchAccess,
+    tenant: &TenantId,
+    context: &RequestContext,
+    boundary_error: &mut Option<BatchPortError>,
+) -> Result<(), StorageError> {
+    authorize_request(authorization, access, tenant, context).map_err(|error| {
+        *boundary_error = Some(error);
+        StorageError::new(StorageErrorCode::InvalidArgument)
+    })
+}
+
+fn project_mutation_result<T>(
+    result: Result<T, StorageError>,
+    boundary_error: Option<BatchPortError>,
+) -> Result<T, BatchPortError> {
+    match result {
+        Err(error) if error.code() == StorageErrorCode::InvalidArgument => {
+            Err(boundary_error.unwrap_or_else(|| map_storage_error(error)))
+        }
+        result => result.map_err(map_storage_error),
+    }
+}
+
+const fn port_error(code: BatchPortErrorCode) -> BatchPortError {
+    BatchPortError::new(code)
 }
