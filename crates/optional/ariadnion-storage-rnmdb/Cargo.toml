@@ -43,6 +43,10 @@ test-hooks = ["rnmdb-cli/test-hooks"]
 [dependencies]
 ariadnion-api-admin = { path = "../ariadnion-api-admin" }
 ariadnion-api-files = { path = "../ariadnion-api-files" }
+ariadnion-account-batch = { path = "../ariadnion-account-batch" }
+ariadnion-account-domain = { path = "../ariadnion-account-domain" }
+ariadnion-account-import = { path = "../ariadnion-account-import" }
+ariadnion-account-vault = { path = "../ariadnion-account-vault" }
 ariadnion-audit-domain = { path = "../ariadnion-audit-domain" }
 ariadnion-audit-store = { path = "../ariadnion-audit-store" }
 ariadnion-auth-password = { path = "../ariadnion-auth-password" }
@@ -64,6 +68,7 @@ ariadnion-storage-upgrade = { path = "../ariadnion-storage-upgrade" }
 ariadnion-user-domain = { path = "../ariadnion-user-domain" }
 ariadnion-user-service = { path = "../ariadnion-user-service" }
 hmac = "0.12.1"
+getrandom = "=0.4.3"
 rnmdb-common = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "f20040a127a56ec8c37b3398283df36f024a1dd2", package = "rnmdb-common" }
 rnmdb-types = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "f20040a127a56ec8c37b3398283df36f024a1dd2", package = "rnmdb-types" }
 rnmdb-sql = { git = "https://github.com/czxieddan/RNovModularDB.git", rev = "f20040a127a56ec8c37b3398283df36f024a1dd2", package = "rnmdb-sql" }
