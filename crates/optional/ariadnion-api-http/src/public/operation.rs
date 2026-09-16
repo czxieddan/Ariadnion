@@ -67,9 +67,8 @@ pub enum ProtocolOperationResponse {
 }
 
 /// A boxed authenticated protocol operation future.
-pub type BoxProtocolOperationFuture<'a> = Pin<
-    Box<dyn Future<Output = Result<ProtocolOperationResponse, ProtocolFailure>> + Send + 'a>,
->;
+pub type BoxProtocolOperationFuture<'a> =
+    Pin<Box<dyn Future<Output = Result<ProtocolOperationResponse, ProtocolFailure>> + Send + 'a>>;
 
 /// Executes one protocol-owned REST operation after common authentication.
 ///
@@ -108,10 +107,7 @@ pub struct ProtocolOperationExecutionState {
 impl ProtocolOperationExecutionState {
     /// Creates operation state over shared public HTTP capabilities.
     #[must_use]
-    pub const fn new(
-        http: HttpApiState,
-        protocol: Arc<dyn HttpOperationProtocolAdapter>,
-    ) -> Self {
+    pub const fn new(http: HttpApiState, protocol: Arc<dyn HttpOperationProtocolAdapter>) -> Self {
         Self { http, protocol }
     }
 }
@@ -214,9 +210,8 @@ async fn authenticate_request(
     )
     .await
     .map_err(|error| OperationFailure::domain(admission.identity.clone(), error))?;
-    let evidence = result.map_err(|error| {
-        OperationFailure::authentication(admission.identity.clone(), error)
-    })?;
+    let evidence = result
+        .map_err(|error| OperationFailure::authentication(admission.identity.clone(), error))?;
     let principal = PrincipalContext::new(
         evidence.tenant_id().clone(),
         evidence.principal_id().clone(),

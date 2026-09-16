@@ -77,9 +77,9 @@ use error::{
 pub use execution::PresentedBearer;
 pub use identity::MonotonicRequestIdentityIssuer;
 pub use operation::{
-    BoxProtocolOperationFuture, HttpOperationProtocolAdapter,
-    ProtocolOperationExecutionState, ProtocolOperationResponse, protocol_operation_delete_route,
-    protocol_operation_get_route, protocol_operation_post_route,
+    BoxProtocolOperationFuture, HttpOperationProtocolAdapter, ProtocolOperationExecutionState,
+    ProtocolOperationResponse, protocol_operation_delete_route, protocol_operation_get_route,
+    protocol_operation_post_route,
 };
 pub use protocol::{
     HttpGetProtocolAdapter, HttpProtocolAdapter, HttpProtocolProjection, ProtocolBufferedResponse,
