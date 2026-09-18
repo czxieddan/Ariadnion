@@ -108,8 +108,8 @@ pub use maintenance::{
 };
 pub use migration::{
     MigrationApplyStatus, RnmdbMigrationRunner, account_batch_migration,
-    account_registry_migration, account_vault_migration, file_catalog_migration,
-    identity_admin_command_migration, identity_api_key_migration,
+    account_registry_migration, account_vault_migration, account_vault_rotation_migration,
+    file_catalog_migration, identity_admin_command_migration, identity_api_key_migration,
     identity_api_key_request_evidence_migration, identity_audit_migration,
     identity_invitation_migration, identity_organization_event_replay_migration,
     identity_organization_migration, identity_password_commit_evidence_migration,
@@ -164,8 +164,11 @@ pub use upgrade::{
 };
 pub use user_repository::{AuditSubjectKeyMaterial, RnmdbUserRepository};
 pub use vault_repository::{
-    MAX_VAULT_CUSTODY_KEYS, RnmdbVaultKeyCustody, RnmdbVaultRepository, VaultAccessPolicy,
-    VaultAuthorizationRequest, VaultColumnKeySet, VaultCustodyKey, VaultKeyCustody, VaultOperation,
+    MAX_VAULT_CUSTODY_KEYS, RnmdbCredentialRotationRepository, RnmdbVaultKeyCustody,
+    RnmdbVaultRepository, SystemVaultRotationClock, VaultAccessPolicy, VaultAuthorizationRequest,
+    VaultColumnKeySet, VaultCustodyKey, VaultKeyCustody, VaultOperation, VaultRotationAccess,
+    VaultRotationAccessPolicy, VaultRotationAuthorizationRequest, VaultRotationClock,
+    VaultRotationKeyMaterial,
 };
 
 /// The reviewed upstream source revision compiled by this adapter.
