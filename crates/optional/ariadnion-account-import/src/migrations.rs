@@ -77,3 +77,34 @@ pub const ACCOUNT_REGISTRY_MIGRATION_CANONICAL_V1_SHA256: [u8; 32] = [
     0x08, 0xef, 0x75, 0xdb, 0x22, 0xac, 0x97, 0xe9, 0xfa, 0x79, 0xce, 0x4c, 0x94, 0xda, 0x9d, 0xa2,
     0x82, 0xa0, 0xd3, 0x0b, 0x89, 0x8d, 0x20, 0x20, 0x5c, 0x9f, 0x5f, 0x7b, 0x88, 0x0b, 0x82, 0x3e,
 ];
+
+/// Stable identifier of the additive durable routing-policy migration.
+pub const ACCOUNT_ROUTING_POLICY_MIGRATION_ID: &str = "account.0002.routing-policy";
+
+/// Stable domain recorded for durable account routing policy.
+pub const ACCOUNT_ROUTING_POLICY_MIGRATION_DOMAIN: &str = "account";
+
+/// Global schema version required before durable routing policy is installed.
+pub const ACCOUNT_ROUTING_POLICY_MIGRATION_FROM_VERSION: u64 = 24;
+
+/// Global schema version produced by durable routing policy persistence.
+pub const ACCOUNT_ROUTING_POLICY_MIGRATION_TO_VERSION: u64 = 25;
+
+/// Whether the additive routing-policy migration requires another backup.
+pub const ACCOUNT_ROUTING_POLICY_MIGRATION_REQUIRES_BACKUP: bool = false;
+
+/// Fixed schema, tenant-policy, and runtime grant statements.
+pub const ACCOUNT_ROUTING_POLICY_MIGRATION_STATEMENTS: &[&str] = &[
+    "CREATE TABLE account_registry_routing_policy (tenant_id TEXT NOT NULL, account_id TEXT NOT NULL, config_version TEXT NOT NULL, priority INT64 NOT NULL, weight INT64 NOT NULL);",
+    "CREATE UNIQUE INDEX account_registry_routing_policy_identity_uq ON account_registry_routing_policy (tenant_id, account_id);",
+    "CREATE POLICY tenant_account_registry_routing_policy ON account_registry_routing_policy USING (tenant_id = current_tenant());",
+    "GRANT SELECT ON TABLE account_registry_routing_policy TO ariadnion_identity_runtime;",
+    "GRANT INSERT ON TABLE account_registry_routing_policy TO ariadnion_identity_runtime;",
+    "GRANT UPDATE ON TABLE account_registry_routing_policy TO ariadnion_identity_runtime;",
+];
+
+/// Canonical-AST-v1 SHA-256 of the ordered routing-policy statements.
+pub const ACCOUNT_ROUTING_POLICY_MIGRATION_CANONICAL_V1_SHA256: [u8; 32] = [
+    0x9a, 0x1b, 0xef, 0xa7, 0x38, 0xe3, 0x7c, 0x4e, 0xc7, 0xc8, 0x3f, 0xfa, 0x50, 0xdc, 0x90, 0xec,
+    0x20, 0x2c, 0x77, 0xc5, 0x80, 0xd0, 0x98, 0xb1, 0x0d, 0xe2, 0xc8, 0x1f, 0xac, 0x8a, 0x22, 0x34,
+];
