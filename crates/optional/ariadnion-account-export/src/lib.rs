@@ -26,12 +26,13 @@
 //
 // SPDX-License-Identifier: LicenseRef-AHCL-1.1
 //
-//! Authorized, bounded account export planning and opaque sealing contracts.
+//! Authorized, bounded, encrypted, and signed account export contracts.
 //!
 //! This crate validates tenant scope, approval state, record uniqueness, and
 //! expiry before an adapter receives an immutable plan. It never accepts
-//! plaintext credentials. Encryption and signing remain outside this domain
-//! boundary and are represented by bounded opaque types.
+//! plaintext credentials. A concrete memory-bounded XChaCha20-Poly1305 and
+//! Ed25519 implementation produces transportable artifacts while preserving
+//! the external adapter boundary for output storage and delivery.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -41,6 +42,13 @@ use ariadnion_core::{PrincipalId, TenantId};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::fmt::{self, Debug, Display, Formatter};
+
+mod crypto;
+
+pub use crypto::{
+    AccountExportSealer, AccountExportVerifier, CanonicalPayloadDigest, ExportEncryptionKey,
+    ExportNonce, ExportSigningKey, ExportVerificationKey, VerifiedExport,
+};
 
 /// Maximum number of account records in one export plan.
 pub const MAX_EXPORT_RECORDS: usize = 1 << 17;
@@ -80,6 +88,10 @@ pub enum ExportErrorCode {
     ArtifactTooLarge,
     /// A secret-reference export record omitted its external reference.
     MissingSecretReference,
+    /// An artifact signature is absent, malformed, or invalid.
+    SignatureInvalid,
+    /// Authenticated decryption or canonical payload validation failed.
+    AuthenticationFailed,
 }
 
 impl ExportErrorCode {
@@ -95,7 +107,9 @@ impl ExportErrorCode {
             Self::SecondaryApprovalRequired
             | Self::ScopeMismatch
             | Self::ArtifactTooLarge
-            | Self::MissingSecretReference => export_security_error_code(self),
+            | Self::MissingSecretReference
+            | Self::SignatureInvalid
+            | Self::AuthenticationFailed => export_security_error_code(self),
         }
     }
 }
@@ -117,6 +131,8 @@ const fn export_security_error_code(code: ExportErrorCode) -> &'static str {
         ExportErrorCode::ScopeMismatch => "ACCOUNT_EXPORT_SCOPE_MISMATCH",
         ExportErrorCode::ArtifactTooLarge => "ACCOUNT_EXPORT_ARTIFACT_TOO_LARGE",
         ExportErrorCode::MissingSecretReference => "ACCOUNT_EXPORT_MISSING_SECRET_REFERENCE",
+        ExportErrorCode::SignatureInvalid => "ACCOUNT_EXPORT_SIGNATURE_INVALID",
+        ExportErrorCode::AuthenticationFailed => "ACCOUNT_EXPORT_AUTHENTICATION_FAILED",
         _ => "ACCOUNT_EXPORT_INVALID_ARGUMENT",
     }
 }
@@ -749,6 +765,24 @@ pub struct SealedExport {
 }
 
 impl SealedExport {
+    /// Reconstructs an opaque artifact received through a transport adapter.
+    ///
+    /// This constructor makes no authenticity claim. Callers must pass the
+    /// result to [`AccountExportVerifier::verify_and_open`] before using its
+    /// payload. The ciphertext has already been bounded by [`OpaqueCiphertext`].
+    #[must_use]
+    pub const fn from_transport_parts(
+        manifest: ExportManifest,
+        ciphertext: OpaqueCiphertext,
+        signature: [u8; EXPORT_SIGNATURE_BYTES],
+    ) -> Self {
+        Self {
+            manifest,
+            ciphertext,
+            signature: ExportSignature::new(signature),
+        }
+    }
+
     /// Returns the manifest authenticated by the external signature.
     #[must_use]
     pub const fn manifest(&self) -> &ExportManifest {
@@ -938,6 +972,47 @@ fn manifest_digest(
         }
     }
     ManifestDigest(hasher.finalize().into())
+}
+
+fn manifest_digest_from_parts(
+    manifest: &ExportManifest,
+    records: &[ExportRecord],
+) -> ManifestDigest {
+    let mut hasher = Sha256::new();
+    hasher.update(b"ariadnion-account-export-v1\0");
+    hash_text(&mut hasher, manifest.tenant_id().as_str());
+    hash_text(&mut hasher, manifest.batch_id().as_str());
+    hasher.update([manifest.fields().tag()]);
+    hasher.update(manifest.expires_at().get().to_be_bytes());
+    hash_text(&mut hasher, manifest.watermark().as_str());
+    hasher.update(manifest.record_count().to_be_bytes());
+    hash_ordered_records(&mut hasher, records);
+    ManifestDigest(hasher.finalize().into())
+}
+
+fn hash_ordered_records(hasher: &mut Sha256, records: &[ExportRecord]) {
+    let mut ordered = records.to_vec();
+    ordered.sort_by(|left, right| left.account_id().cmp(right.account_id()));
+    for record in &ordered {
+        hash_record(hasher, record);
+    }
+}
+
+fn hash_record(hasher: &mut Sha256, record: &ExportRecord) {
+    hash_text(hasher, record.tenant_id().as_str());
+    hash_text(hasher, record.account_id().as_str());
+    hasher.update(record.account_version().get().to_be_bytes());
+    hasher.update(record.config_version().get().to_be_bytes());
+    match record.secret_ref() {
+        Some(secret_ref) => {
+            hasher.update([1]);
+            hash_text(hasher, secret_ref.provider().as_str());
+            hash_text(hasher, secret_ref.path().as_str());
+            hasher.update(secret_ref.version().get().to_be_bytes());
+            hash_text(hasher, secret_ref.purpose().as_str());
+        }
+        None => hasher.update([0]),
+    }
 }
 
 fn hash_text(hasher: &mut Sha256, value: &str) {
