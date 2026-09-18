@@ -277,9 +277,12 @@ impl RoutingAdmissionCoordinator {
 fn validate_tenant_binding(request: &RoutingAdmissionRequest) -> Result<(), RoutingAdmissionError> {
     let budget_tenant = request.budget().context().tenant_id().as_str();
     for key in request.rate().keys() {
-        if let ariadnion_rate_limit::LimitKey::Tenant(tenant) = key
-            && tenant.as_str() != budget_tenant
-        {
+        let key_tenant = match key {
+            ariadnion_rate_limit::LimitKey::Tenant(tenant) => Some(tenant.as_str()),
+            ariadnion_rate_limit::LimitKey::Account(account) => Some(account.tenant().as_str()),
+            _ => None,
+        };
+        if key_tenant.is_some_and(|tenant| tenant != budget_tenant) {
             return Err(error(RoutingAdmissionErrorCode::TenantMismatch));
         }
     }
@@ -318,28 +321,40 @@ impl RoutingAdmissionLease {
     /// transaction in this local coordinator.
     pub fn commit(&mut self, now: MonotonicTime) -> Result<(), RoutingAdmissionError> {
         self.ensure_open()?;
+        self.commit_budget()?;
+        self.commit_rate_and_release(now)?;
+        self.state = RoutingAdmissionLeaseState::Committed;
+        self.closed = true;
+        Ok(())
+    }
+
+    fn commit_budget(&mut self) -> Result<(), RoutingAdmissionError> {
         let receipt = self
             .budget
             .commit(self.reservation_id.clone())
             .map_err(map_budget_lifecycle_error)?;
         self.budget_receipt = receipt;
         self.budget_finalized = true;
+        Ok(())
+    }
+
+    fn commit_rate_and_release(&mut self, now: MonotonicTime) -> Result<(), RoutingAdmissionError> {
         let Some(mut rate) = self.rate.take() else {
-            self.mark_reconciliation_required();
-            return Err(error(RoutingAdmissionErrorCode::CommitIncomplete));
+            return self.commit_incomplete();
         };
         if rate.commit_rate(now).is_err() {
             drop(rate);
-            self.mark_reconciliation_required();
-            return Err(error(RoutingAdmissionErrorCode::CommitIncomplete));
+            return self.commit_incomplete();
         }
         if rate.release(now).is_err() {
-            self.mark_reconciliation_required();
-            return Err(error(RoutingAdmissionErrorCode::CommitIncomplete));
+            return self.commit_incomplete();
         }
-        self.state = RoutingAdmissionLeaseState::Committed;
-        self.closed = true;
         Ok(())
+    }
+
+    fn commit_incomplete(&mut self) -> Result<(), RoutingAdmissionError> {
+        self.mark_reconciliation_required();
+        Err(error(RoutingAdmissionErrorCode::CommitIncomplete))
     }
 
     /// Releases budget capacity and the rate/concurrency lease.
