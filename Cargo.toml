@@ -32,7 +32,6 @@ members = ["crates/ariadnion-core"]
 exclude = [
     "crates/optional/*",
     "bundles/*",
-    "tools/*",
 ]
 
 [workspace.package]
