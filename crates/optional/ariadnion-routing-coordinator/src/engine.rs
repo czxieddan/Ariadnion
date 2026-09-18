@@ -38,13 +38,16 @@ use ariadnion_account_circuit::{CircuitSnapshot, CircuitState};
 use ariadnion_account_domain::{AccountId, ProviderId};
 use ariadnion_account_health::{HealthSnapshot, HealthState};
 use ariadnion_account_pool::{Availability as PoolAvailability, CandidateMetadata};
+use ariadnion_account_proxy::AccountProxyProfile;
 use ariadnion_account_quota::{QuotaSnapshotSet, QuotaSubject, UnixTimeSeconds as QuotaTime};
 use ariadnion_account_schedule::UtcSeconds as ScheduleTime;
 use ariadnion_core::CapabilityId;
 use ariadnion_model_catalog::{CatalogEntry, ModelCatalogSnapshot};
 use ariadnion_model_domain::{ModelCapability, ProviderId as ModelProviderId, ProviderModelId};
 use ariadnion_model_pricing::{PriceQuote, PricingCatalog};
-use ariadnion_rate_limit::{AdmissionRequest, LimitKey, ModelLimitId, TenantLimitId};
+use ariadnion_rate_limit::{
+    AccountLimitId, AccountLimitKey, AdmissionRequest, LimitKey, ModelLimitId, TenantLimitId,
+};
 use ariadnion_routing_admission::{
     RoutingAdmissionCoordinator, RoutingAdmissionErrorCode, RoutingAdmissionRequest,
 };
@@ -73,6 +76,7 @@ struct CandidateState<'a> {
     source: &'a CandidateMetadata,
     key: CandidateKey,
     provider_model: Option<ProviderModelId>,
+    proxy_profile: Option<AccountProxyProfile>,
     quote: Option<PriceQuote>,
     exclusion: Option<CandidateExclusionReason>,
 }
@@ -137,6 +141,7 @@ pub(crate) fn coordinate(
         selected_candidate: selected.key.clone(),
         selected_account: selected.source.account_id().clone(),
         provider_model,
+        selected_proxy_profile: selected.proxy_profile.clone(),
         explanation,
         retry_plan,
         tenant_id: request.context().tenant_id().clone(),
@@ -275,6 +280,7 @@ fn prepare_candidates<'a>(
             source: candidate,
             key,
             provider_model,
+            proxy_profile: None,
             quote: None,
             exclusion,
         });
@@ -570,6 +576,8 @@ fn apply_proxy(
             state.exclude(CandidateExclusionReason::ProxyUnavailable);
         } else if destination.is_some_and(|region| !profile.regions().permits(region)) {
             state.exclude(CandidateExclusionReason::ProxyRegionDenied);
+        } else {
+            state.proxy_profile = Some(profile.profile().clone());
         }
     }
     Ok(())
@@ -1051,20 +1059,21 @@ fn admit(
         .as_ref()
         .ok_or_else(|| CoordinatorError::new(CoordinatorErrorCode::PricingUnavailable))?;
     let tenant = request.context().tenant_id();
-    let rate = AdmissionRequest::new(
-        vec![
-            LimitKey::Tenant(
-                TenantLimitId::parse(tenant.as_str())
-                    .map_err(|_| CoordinatorError::new(CoordinatorErrorCode::InvalidArgument))?,
-            ),
-            LimitKey::Model(
-                ModelLimitId::parse(request.context().model().as_str())
-                    .map_err(|_| CoordinatorError::new(CoordinatorErrorCode::InvalidArgument))?,
-            ),
-        ],
-        request.admission().units(),
-    )
-    .map_err(|_| CoordinatorError::new(CoordinatorErrorCode::InvalidArgument))?;
+    let tenant_limit = TenantLimitId::parse(tenant.as_str())
+        .map_err(|_| CoordinatorError::new(CoordinatorErrorCode::InvalidArgument))?;
+    let account_limit = AccountLimitId::parse(selected.source.account_id().as_str())
+        .map_err(|_| CoordinatorError::new(CoordinatorErrorCode::InvalidArgument))?;
+    let account_key = LimitKey::Account(AccountLimitKey::new(tenant_limit.clone(), account_limit));
+    let rate_keys = vec![
+        LimitKey::Tenant(tenant_limit),
+        LimitKey::Model(
+            ModelLimitId::parse(request.context().model().as_str())
+                .map_err(|_| CoordinatorError::new(CoordinatorErrorCode::InvalidArgument))?,
+        ),
+        account_key,
+    ];
+    let rate = AdmissionRequest::new(rate_keys, request.admission().units())
+        .map_err(|_| CoordinatorError::new(CoordinatorErrorCode::InvalidArgument))?;
     let currency = BudgetCurrency::parse(quote.currency().as_str())
         .map_err(|_| CoordinatorError::new(CoordinatorErrorCode::StateUnavailable))?;
     let budget = ReservationRequest::new(

@@ -33,6 +33,7 @@
 
 mod engine;
 
+use std::collections::BTreeMap;
 use std::fmt::{self, Display, Formatter};
 use std::num::{NonZeroU32, NonZeroU64};
 #[cfg(feature = "wasm-policy")]
@@ -44,15 +45,18 @@ use ariadnion_account_budget::{ReservationId, UnixTimeSeconds as BudgetTime};
 use ariadnion_account_circuit::CircuitSnapshot;
 use ariadnion_account_domain::AccountId;
 use ariadnion_account_health::HealthSnapshot;
-use ariadnion_account_pool::CandidateSnapshot;
-use ariadnion_account_proxy::{ProxyProfileId, RegionConstraint};
+use ariadnion_account_pool::{CandidateMetadata, CandidateSnapshot};
+use ariadnion_account_proxy::{AccountProxyProfile, ProxyProfileId, RegionConstraint};
 use ariadnion_account_quota::QuotaSnapshotSet;
 use ariadnion_account_schedule::ScheduleSnapshot;
 use ariadnion_core::{AttemptId, RequestId, TenantId};
 use ariadnion_model_catalog::ModelCatalogSnapshot;
 use ariadnion_model_domain::ProviderModelId;
 use ariadnion_model_pricing::{PriceDimension, PricingCatalog};
-use ariadnion_rate_limit::MonotonicTime;
+use ariadnion_rate_limit::{
+    AccountLimitId, AccountLimitKey, ConcurrencyRule, LimitKey, LimitPolicy, MonotonicTime,
+    TenantLimitId,
+};
 use ariadnion_routing_admission::{
     RoutingAdmissionCoordinator, RoutingAdmissionLease, RoutingAdmissionLeaseState,
 };
@@ -484,28 +488,25 @@ pub enum ProxyAvailability {
     Unavailable,
 }
 
-/// Immutable routing view of one account proxy profile.
+/// Immutable routing view of one account proxy execution snapshot.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProxyRoutingProfile {
     account_id: AccountId,
-    profile_id: ProxyProfileId,
-    regions: RegionConstraint,
+    profile: AccountProxyProfile,
     availability: ProxyAvailability,
 }
 
 impl ProxyRoutingProfile {
-    /// Creates a secret-free proxy routing view.
+    /// Creates a routing view that owns the exact metadata-only execution snapshot.
     #[must_use]
     pub const fn new(
         account_id: AccountId,
-        profile_id: ProxyProfileId,
-        regions: RegionConstraint,
+        profile: AccountProxyProfile,
         availability: ProxyAvailability,
     ) -> Self {
         Self {
             account_id,
-            profile_id,
-            regions,
+            profile,
             availability,
         }
     }
@@ -519,13 +520,19 @@ impl ProxyRoutingProfile {
     /// Returns the non-secret proxy profile identity.
     #[must_use]
     pub const fn profile_id(&self) -> &ProxyProfileId {
-        &self.profile_id
+        self.profile.id()
+    }
+
+    /// Returns the exact immutable proxy execution snapshot.
+    #[must_use]
+    pub const fn profile(&self) -> &AccountProxyProfile {
+        &self.profile
     }
 
     /// Returns the destination-region constraint.
     #[must_use]
     pub const fn regions(&self) -> &RegionConstraint {
-        &self.regions
+        self.profile.regions()
     }
 
     /// Returns the observed proxy availability.
@@ -533,6 +540,58 @@ impl ProxyRoutingProfile {
     pub const fn availability(&self) -> ProxyAvailability {
         self.availability
     }
+}
+
+/// Builds tenant-bound account concurrency policies from authoritative candidates.
+///
+/// The returned policies contain concurrency limits only. Callers combine them
+/// with tenant, model, user, or rate policies before constructing the admission
+/// controller. Every candidate must carry the tenant and persisted account bound
+/// produced by account import publication; incomplete metadata fails closed.
+///
+/// # Errors
+/// Returns a stable error for oversized input, missing authoritative metadata,
+/// duplicate tenant/account identities, malformed admission identities, or an
+/// invalid lease duration.
+pub fn build_account_concurrency_policies(
+    candidates: &[CandidateMetadata],
+    lease_duration: Duration,
+) -> Result<Vec<LimitPolicy>, CoordinatorError> {
+    if candidates.len() > MAX_CANDIDATES {
+        return Err(CoordinatorError::new(CoordinatorErrorCode::InvalidArgument));
+    }
+    let mut policies = BTreeMap::new();
+    for candidate in candidates {
+        let (key, policy) = account_concurrency_policy(candidate, lease_duration)?;
+        if policies.insert(key, policy).is_some() {
+            return Err(CoordinatorError::new(
+                CoordinatorErrorCode::StateUnavailable,
+            ));
+        }
+    }
+    Ok(policies.into_values().collect())
+}
+
+fn account_concurrency_policy(
+    candidate: &CandidateMetadata,
+    lease_duration: Duration,
+) -> Result<(LimitKey, LimitPolicy), CoordinatorError> {
+    let tenant = candidate
+        .tenant_id()
+        .ok_or_else(|| CoordinatorError::new(CoordinatorErrorCode::TenantMismatch))?;
+    let limit = candidate
+        .max_concurrency()
+        .ok_or_else(|| CoordinatorError::new(CoordinatorErrorCode::StateUnavailable))?;
+    let tenant = TenantLimitId::parse(tenant.as_str())
+        .map_err(|_| CoordinatorError::new(CoordinatorErrorCode::InvalidArgument))?;
+    let account = AccountLimitId::parse(candidate.account_id().as_str())
+        .map_err(|_| CoordinatorError::new(CoordinatorErrorCode::InvalidArgument))?;
+    let key = LimitKey::Account(AccountLimitKey::new(tenant, account));
+    let rule = ConcurrencyRule::new(limit, lease_duration)
+        .map_err(|_| CoordinatorError::new(CoordinatorErrorCode::InvalidArgument))?;
+    let policy = LimitPolicy::new(key.clone(), None, Some(rule))
+        .map_err(|_| CoordinatorError::new(CoordinatorErrorCode::InvalidArgument))?;
+    Ok((key, policy))
 }
 
 /// Explicit clocks used by rate and budget admission.
@@ -908,6 +967,7 @@ pub struct CoordinatedRoute {
     selected_candidate: CandidateKey,
     selected_account: AccountId,
     provider_model: ProviderModelId,
+    selected_proxy_profile: Option<AccountProxyProfile>,
     explanation: DecisionExplanation,
     retry_plan: RoutingRetryPlan,
     tenant_id: TenantId,
@@ -919,6 +979,7 @@ pub(crate) struct CoordinatedRouteParts {
     selected_candidate: CandidateKey,
     selected_account: AccountId,
     provider_model: ProviderModelId,
+    selected_proxy_profile: Option<AccountProxyProfile>,
     explanation: DecisionExplanation,
     retry_plan: RoutingRetryPlan,
     tenant_id: TenantId,
@@ -932,6 +993,7 @@ impl CoordinatedRoute {
             selected_candidate: parts.selected_candidate,
             selected_account: parts.selected_account,
             provider_model: parts.provider_model,
+            selected_proxy_profile: parts.selected_proxy_profile,
             explanation: parts.explanation,
             retry_plan: parts.retry_plan,
             tenant_id: parts.tenant_id,
@@ -956,6 +1018,16 @@ impl CoordinatedRoute {
     #[must_use]
     pub const fn provider_model(&self) -> &ProviderModelId {
         &self.provider_model
+    }
+
+    /// Returns the exact proxy profile approved by eligibility evaluation.
+    ///
+    /// `None` means the proxy signal was explicitly allowed to degrade or no
+    /// approved profile was supplied. Callers must not silently re-resolve a
+    /// different profile after this immutable routing decision.
+    #[must_use]
+    pub const fn selected_proxy_profile(&self) -> Option<&AccountProxyProfile> {
+        self.selected_proxy_profile.as_ref()
     }
 
     /// Returns the complete deterministic decision explanation.
