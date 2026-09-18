@@ -230,23 +230,47 @@ impl OpenAiBatchHttpAdapter {
                     .await
             }
             RouteKind::Retrieve(id) => {
-                if method != Method::GET {
-                    return Err(invalid());
-                }
-                require_no_query(query)?;
-                require_bodyless(&request)?;
-                self.retrieve(id, context).await
+                self.dispatch_retrieve(method, query, request, id, context)
+                    .await
             }
             RouteKind::Cancel(id) => {
-                if method != Method::POST {
-                    return Err(invalid());
-                }
-                require_no_query(query)?;
-                require_bodyless(&request)?;
-                self.cancel(id, context).await
+                self.dispatch_cancel(method, query, request, id, context)
+                    .await
             }
             RouteKind::Unsupported => Err(invalid()),
         }
+    }
+
+    async fn dispatch_retrieve(
+        &self,
+        method: Method,
+        query: Option<&str>,
+        request: Request<Body>,
+        id: &str,
+        context: &RequestContext,
+    ) -> Result<ProtocolBufferedResponse, ProtocolFailure> {
+        if method != Method::GET {
+            return Err(invalid());
+        }
+        require_no_query(query)?;
+        require_bodyless(&request)?;
+        self.retrieve(id, context).await
+    }
+
+    async fn dispatch_cancel(
+        &self,
+        method: Method,
+        query: Option<&str>,
+        request: Request<Body>,
+        id: &str,
+        context: &RequestContext,
+    ) -> Result<ProtocolBufferedResponse, ProtocolFailure> {
+        if method != Method::POST {
+            return Err(invalid());
+        }
+        require_no_query(query)?;
+        require_bodyless(&request)?;
+        self.cancel(id, context).await
     }
 
     async fn dispatch_collection(
@@ -269,7 +293,6 @@ impl OpenAiBatchHttpAdapter {
             _ => Err(invalid()),
         }
     }
-
 }
 
 #[derive(Clone, Copy)]
