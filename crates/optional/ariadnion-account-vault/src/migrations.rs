@@ -82,3 +82,42 @@ pub const ACCOUNT_VAULT_MIGRATION_CANONICAL_V1_SHA256: [u8; 32] = [
     0x38, 0x5b, 0x7d, 0x66, 0x42, 0xae, 0x73, 0x4a, 0x1d, 0xa0, 0x1d, 0x44, 0x04, 0x3d, 0xf6, 0x20,
     0x12, 0x71, 0xae, 0x8d, 0x85, 0xe5, 0x56, 0x43, 0xb6, 0x22, 0x4c, 0x44, 0x16, 0x4f, 0xc0, 0x8b,
 ];
+
+/// Stable identifier of the additive durable credential-rotation migration.
+pub const ACCOUNT_VAULT_ROTATION_MIGRATION_ID: &str = "account-vault.0002.rotations";
+
+/// Stable domain recorded for durable credential-rotation persistence.
+pub const ACCOUNT_VAULT_ROTATION_MIGRATION_DOMAIN: &str = "account-vault";
+
+/// Global schema version required before durable rotations are installed.
+pub const ACCOUNT_VAULT_ROTATION_MIGRATION_FROM_VERSION: u64 = 23;
+
+/// Global schema version produced by durable rotation persistence.
+pub const ACCOUNT_VAULT_ROTATION_MIGRATION_TO_VERSION: u64 = 24;
+
+/// Whether the additive durable rotation migration requires another backup.
+pub const ACCOUNT_VAULT_ROTATION_MIGRATION_REQUIRES_BACKUP: bool = false;
+
+/// Fixed journal, mutation-ledger, tenant-policy, and least-privilege statements.
+pub const ACCOUNT_VAULT_ROTATION_MIGRATION_STATEMENTS: &[&str] = &[
+    "CREATE TABLE account_vault_rotation_journals (tenant_id TEXT NOT NULL, rotation_id TEXT NOT NULL, account_id TEXT NOT NULL, previous_reference_digest_hex TEXT NOT NULL, previous_secret_provider TEXT NOT NULL, previous_secret_path TEXT NOT NULL ENCRYPTED, previous_secret_version TEXT NOT NULL, previous_secret_purpose TEXT NOT NULL, next_reference_digest_hex TEXT NOT NULL, next_secret_provider TEXT NOT NULL, next_secret_path TEXT NOT NULL ENCRYPTED, next_secret_version TEXT NOT NULL, next_secret_purpose TEXT NOT NULL, overlap_seconds INT64 NOT NULL, rotation_phase TEXT NOT NULL, revision TEXT NOT NULL, new_key_version INT64, new_stored_at INT64, activated_at INT64, overlap_ends_at INT64, previous_revoked_at INT64, compensation_revoked_at INT64, updated_at INT64 NOT NULL);",
+    "CREATE TABLE account_vault_rotation_mutations (tenant_id TEXT NOT NULL, mutation_id TEXT NOT NULL, rotation_id TEXT NOT NULL, request_fingerprint_hex TEXT NOT NULL, transition_kind TEXT NOT NULL, expected_revision TEXT NOT NULL, prior_revision TEXT NOT NULL, revision TEXT NOT NULL, rotation_phase TEXT NOT NULL, committed_at INT64 NOT NULL);",
+    "CREATE UNIQUE INDEX account_vault_rotation_journals_identity_uq ON account_vault_rotation_journals (tenant_id, rotation_id);",
+    "CREATE INDEX account_vault_rotation_journals_previous_ix ON account_vault_rotation_journals (tenant_id, previous_reference_digest_hex, rotation_phase);",
+    "CREATE INDEX account_vault_rotation_journals_next_ix ON account_vault_rotation_journals (tenant_id, next_reference_digest_hex, rotation_phase);",
+    "CREATE UNIQUE INDEX account_vault_rotation_mutations_identity_uq ON account_vault_rotation_mutations (tenant_id, mutation_id);",
+    "CREATE INDEX account_vault_rotation_mutations_rotation_ix ON account_vault_rotation_mutations (tenant_id, rotation_id, revision);",
+    "CREATE POLICY tenant_account_vault_rotation_journals ON account_vault_rotation_journals USING (tenant_id = current_tenant());",
+    "CREATE POLICY tenant_account_vault_rotation_mutations ON account_vault_rotation_mutations USING (tenant_id = current_tenant());",
+    "GRANT SELECT ON TABLE account_vault_rotation_journals TO ariadnion_identity_runtime;",
+    "GRANT INSERT ON TABLE account_vault_rotation_journals TO ariadnion_identity_runtime;",
+    "GRANT UPDATE ON TABLE account_vault_rotation_journals TO ariadnion_identity_runtime;",
+    "GRANT SELECT ON TABLE account_vault_rotation_mutations TO ariadnion_identity_runtime;",
+    "GRANT INSERT ON TABLE account_vault_rotation_mutations TO ariadnion_identity_runtime;",
+];
+
+/// Canonical-AST-v1 SHA-256 of the ordered durable rotation statements.
+pub const ACCOUNT_VAULT_ROTATION_MIGRATION_CANONICAL_V1_SHA256: [u8; 32] = [
+    0xed, 0x1c, 0x55, 0xfe, 0xae, 0xb9, 0x02, 0x6f, 0x32, 0x36, 0xf0, 0x00, 0x9c, 0xd8, 0x7f, 0x62,
+    0x24, 0x04, 0x3b, 0x3e, 0xf0, 0x84, 0x72, 0xb7, 0x72, 0x7a, 0xce, 0xe7, 0xef, 0xe0, 0x74, 0x74,
+];
