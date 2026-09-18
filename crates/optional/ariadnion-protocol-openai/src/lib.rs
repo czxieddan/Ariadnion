@@ -53,15 +53,20 @@ use std::fmt::{self, Debug, Formatter};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use ariadnion_api_domain::{ApiBatchError, ApiBatchErrorCode, BatchEndpoint, ServiceRequest};
+use ariadnion_api_domain::{
+    ApiBatchError, ApiBatchErrorCode, BatchEndpoint, IdempotencyKey, ServiceRequest,
+};
 use ariadnion_api_http::{
     ApiHttpError, ApiHttpErrorCode, HttpApiState, HttpProtocolAdapter, HttpRequestIdentity,
     ProtocolBufferedResponse, ProtocolExecutionState, ProtocolFailure, ProtocolRequest,
     ProtocolRequestBody, protocol_post_route,
 };
 use axum::Router;
+use axum::http::HeaderMap;
 
 use response::OpenAiProjection;
+
+const IDEMPOTENCY_HEADER: &str = "idempotency-key";
 
 pub use batch_http::OpenAiBatchHttpAdapter;
 pub use completions::{
@@ -213,7 +218,8 @@ impl Debug for OpenAiProtocol {
 
 impl HttpProtocolAdapter for OpenAiProtocol {
     fn decode(&self, body: ProtocolRequestBody) -> Result<ProtocolRequest, ProtocolFailure> {
-        let decoded = request::decode(body.bytes())?;
+        let idempotency = parse_optional_idempotency_key(body.headers())?;
+        let decoded = request::decode_with_idempotency(body.bytes(), idempotency)?;
         let created = self.clock.unix_seconds()?;
         let response_mode = decoded.request.response_mode();
         let projection = Arc::new(OpenAiProjection::new(
@@ -272,7 +278,8 @@ impl Debug for OpenAiResponsesProtocol {
 
 impl HttpProtocolAdapter for OpenAiResponsesProtocol {
     fn decode(&self, body: ProtocolRequestBody) -> Result<ProtocolRequest, ProtocolFailure> {
-        let decoded = responses::decode_request(body.bytes())?;
+        let idempotency = parse_optional_idempotency_key(body.headers())?;
+        let decoded = responses::decode_request_with_idempotency(body.bytes(), idempotency)?;
         let created_at = self.clock.unix_seconds()?;
         let mut projection = responses::OpenAiResponsesProjection::new(decoded.model);
         projection.created_at = created_at;
@@ -291,6 +298,26 @@ impl HttpProtocolAdapter for OpenAiResponsesProtocol {
     ) -> Result<ProtocolBufferedResponse, ProtocolFailure> {
         responses::project_failure(identity, failure)
     }
+}
+
+pub(crate) fn parse_optional_idempotency_key(
+    headers: &HeaderMap,
+) -> Result<Option<IdempotencyKey>, ProtocolFailure> {
+    let mut values = headers.get_all(IDEMPOTENCY_HEADER).iter();
+    let Some(value) = values.next() else {
+        return Ok(None);
+    };
+    if values.next().is_some() {
+        return Err(invalid_request());
+    }
+    let value = value.to_str().map_err(|_| invalid_request())?;
+    IdempotencyKey::new(value)
+        .map(Some)
+        .map_err(ProtocolFailure::from)
+}
+
+const fn invalid_request() -> ProtocolFailure {
+    ProtocolFailure::Http(ApiHttpError::new(ApiHttpErrorCode::InvalidRequest))
 }
 
 /// Mounts the OpenAI chat completions POST route over shared authenticated HTTP state.
