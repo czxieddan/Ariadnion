@@ -30,10 +30,16 @@
 
 mod codec;
 mod custody;
+mod rotation;
 mod sql;
 mod worker;
 
 pub use custody::{MAX_VAULT_CUSTODY_KEYS, RnmdbVaultKeyCustody, VaultCustodyKey};
+pub use rotation::{
+    RnmdbCredentialRotationRepository, SystemVaultRotationClock, VaultRotationAccess,
+    VaultRotationAccessPolicy, VaultRotationAuthorizationRequest, VaultRotationClock,
+    VaultRotationKeyMaterial,
+};
 
 use std::fmt::{self, Debug, Formatter};
 use std::sync::Arc;
