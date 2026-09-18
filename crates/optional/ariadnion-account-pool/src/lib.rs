@@ -208,7 +208,10 @@ use std::fmt::{Debug, Display, Formatter};
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
-use ariadnion_account_domain::{Account, AccountId, ModelName, ProviderId};
+pub use ariadnion_account_domain::MAX_ROUTING_WEIGHT as MAX_WEIGHT;
+use ariadnion_account_domain::{
+    Account, AccountId, ModelName, ProviderId, RoutingPriority, RoutingWeight,
+};
 use ariadnion_account_import::{AccountProjectionSnapshot, DurableAccountProjection};
 use ariadnion_core::TenantId;
 use ariadnion_routing_domain::{CandidateRef, RouteModel, RouteSnapshot, RouteSnapshotVersion};
@@ -217,8 +220,6 @@ use ariadnion_routing_domain::{CandidateRef, RouteModel, RouteSnapshot, RouteSna
 pub const MAX_IMPORT_RECORDS: usize = 1 << 17;
 /// Maximum candidates held by one immutable snapshot.
 pub const MAX_SNAPSHOT_CANDIDATES: usize = 1 << 17;
-/// Maximum supported candidate weight.
-pub const MAX_WEIGHT: u32 = 1 << 20;
 /// Maximum supported instantaneous load value.
 pub const MAX_LOAD: u32 = 1 << 30;
 const MAX_CANDIDATE_ID_BYTES: usize = 128;
@@ -377,9 +378,21 @@ impl Priority {
     }
 }
 
-/// Bounded relative routing weight.
+impl From<RoutingPriority> for Priority {
+    fn from(value: RoutingPriority) -> Self {
+        Self(value.get())
+    }
+}
+
+impl From<Priority> for RoutingPriority {
+    fn from(value: Priority) -> Self {
+        Self::new(value.get())
+    }
+}
+
+/// Bounded relative routing weight retained for account-pool API compatibility.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Weight(u32);
+pub struct Weight(RoutingWeight);
 
 impl Weight {
     /// Creates a bounded weight. Zero is retained for explicit policy exclusion.
@@ -387,17 +400,28 @@ impl Weight {
     /// # Errors
     /// Returns [`AccountPoolErrorCode::InvalidArgument`] above [`MAX_WEIGHT`].
     pub const fn new(value: u32) -> Result<Self, AccountPoolError> {
-        if value > MAX_WEIGHT {
-            Err(model_error(AccountPoolErrorCode::InvalidArgument))
-        } else {
-            Ok(Self(value))
+        match RoutingWeight::new(value) {
+            Ok(weight) => Ok(Self(weight)),
+            Err(_) => Err(model_error(AccountPoolErrorCode::InvalidArgument)),
         }
     }
 
     /// Returns the numeric weight.
     #[must_use]
     pub const fn get(self) -> u32 {
-        self.0
+        self.0.get()
+    }
+}
+
+impl From<RoutingWeight> for Weight {
+    fn from(value: RoutingWeight) -> Self {
+        Self(value)
+    }
+}
+
+impl From<Weight> for RoutingWeight {
+    fn from(value: Weight) -> Self {
+        value.0
     }
 }
 
@@ -602,8 +626,8 @@ impl CandidateMetadata {
                 Availability::Unavailable
             };
         let routing = CandidateRoutingMetadata::new(
-            Priority::new(0),
-            Weight::new(1)?,
+            account.routing_priority().into(),
+            account.routing_weight().into(),
             Load::new(0)?,
             availability,
         );
@@ -699,6 +723,9 @@ pub struct CandidateRoutingMetadata {
 
 impl CandidateRoutingMetadata {
     /// Creates routing metadata from validated bounded values.
+    ///
+    /// A zero weight is normalized to unavailable so affinity, custom policy,
+    /// and weighted selection all observe the same explicit exclusion.
     #[must_use]
     pub const fn new(
         priority: Priority,
@@ -706,6 +733,11 @@ impl CandidateRoutingMetadata {
         load: Load,
         availability: Availability,
     ) -> Self {
+        let availability = if weight.get() == 0 {
+            Availability::Unavailable
+        } else {
+            availability
+        };
         Self {
             priority,
             weight,
@@ -763,8 +795,8 @@ impl CandidateSnapshot {
     ///
     /// The authoritative import generation becomes both snapshot identity and
     /// version. Account IDs determine candidate IDs and final ordering. Active
-    /// accounts are available with priority zero, weight one, and zero captured
-    /// load when a default model is configured. Model-less and non-active
+    /// accounts with a configured model preserve their durable priority
+    /// and weight with zero captured load. Model-less, non-active, and zero-weight
     /// accounts remain visible but unavailable. No credential or secret-reference
     /// data crosses this boundary.
     ///
@@ -809,9 +841,9 @@ impl CandidateSnapshot {
 
     /// Projects this immutable candidate set into a tenant-bound routing snapshot.
     ///
-    /// Unavailable candidates are excluded before projection. Candidates retain
-    /// deterministic candidate-ID order, while the routing snapshot version is
-    /// copied without exposing account-pool internals.
+    /// Unavailable and zero-weight candidates are excluded before projection.
+    /// Candidates retain deterministic candidate-ID order, while the routing
+    /// snapshot version is copied without exposing account-pool internals.
     ///
     /// # Errors
     /// Returns a redacted account-pool error when a candidate crosses the
@@ -846,7 +878,7 @@ fn project_candidate(
     tenant_id: &TenantId,
 ) -> Result<Option<CandidateRef>, AccountPoolError> {
     ensure_candidate_tenant(candidate, tenant_id)?;
-    if candidate.availability() != Availability::Available {
+    if candidate.availability() != Availability::Available || candidate.weight().get() == 0 {
         return Ok(None);
     }
     build_route_candidate(candidate, tenant_id).map(Some)
