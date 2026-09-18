@@ -178,31 +178,78 @@ impl OpenAiFilesHttpAdapter {
         context: &'a RequestContext,
     ) -> Result<ProtocolOperationResponse, ProtocolFailure> {
         match route {
-            FileRoute::List => {
-                require_bodyless(&request)?;
-                self.list(query, context).await
-            }
-            FileRoute::Retrieve(id) => {
-                require_no_query(query)?;
-                require_bodyless(&request)?;
-                self.retrieve(id, context).await
-            }
-            FileRoute::Content(id) => {
-                require_no_query(query)?;
-                require_bodyless(&request)?;
-                self.content(id, context).await
-            }
+            FileRoute::List => self.dispatch_list(query, request, context).await,
+            FileRoute::Retrieve(id) => self.dispatch_retrieve(id, query, request, context).await,
+            FileRoute::Content(id) => self.dispatch_content(id, query, request, context).await,
             FileRoute::Delete(id) => {
-                require_no_query(query)?;
-                require_bodyless(&request)?;
-                self.delete(id, request.headers(), identity, context).await
+                self.dispatch_delete(id, query, request, identity, context)
+                    .await
             }
             FileRoute::Upload => {
-                require_no_query(query)?;
-                self.upload(request, identity, context).await
+                self.dispatch_upload(query, request, identity, context)
+                    .await
             }
             FileRoute::Unsupported => Err(invalid()),
         }
+    }
+
+    async fn dispatch_list(
+        &self,
+        query: Option<&str>,
+        request: Request<Body>,
+        context: &RequestContext,
+    ) -> Result<ProtocolOperationResponse, ProtocolFailure> {
+        require_bodyless(&request)?;
+        self.list(query, context).await
+    }
+
+    async fn dispatch_retrieve(
+        &self,
+        file_id: &str,
+        query: Option<&str>,
+        request: Request<Body>,
+        context: &RequestContext,
+    ) -> Result<ProtocolOperationResponse, ProtocolFailure> {
+        require_no_query(query)?;
+        require_bodyless(&request)?;
+        self.retrieve(file_id, context).await
+    }
+
+    async fn dispatch_content(
+        &self,
+        file_id: &str,
+        query: Option<&str>,
+        request: Request<Body>,
+        context: &RequestContext,
+    ) -> Result<ProtocolOperationResponse, ProtocolFailure> {
+        require_no_query(query)?;
+        require_bodyless(&request)?;
+        self.content(file_id, context).await
+    }
+
+    async fn dispatch_delete(
+        &self,
+        file_id: &str,
+        query: Option<&str>,
+        request: Request<Body>,
+        identity: &HttpRequestIdentity,
+        context: &RequestContext,
+    ) -> Result<ProtocolOperationResponse, ProtocolFailure> {
+        require_no_query(query)?;
+        require_bodyless(&request)?;
+        self.delete(file_id, request.headers(), identity, context)
+            .await
+    }
+
+    async fn dispatch_upload(
+        &self,
+        query: Option<&str>,
+        request: Request<Body>,
+        identity: &HttpRequestIdentity,
+        context: &RequestContext,
+    ) -> Result<ProtocolOperationResponse, ProtocolFailure> {
+        require_no_query(query)?;
+        self.upload(request, identity, context).await
     }
 }
 
@@ -438,32 +485,39 @@ pub(crate) fn require_no_query(query: Option<&str>) -> Result<(), ProtocolFailur
 }
 
 pub(crate) fn require_bodyless(request: &Request<Body>) -> Result<(), ProtocolFailure> {
-    if request.headers().contains_key(header::TRANSFER_ENCODING)
-        || !request.body().is_end_stream()
-    {
-        return Err(invalid());
-    }
-    let mut lengths = request.headers().get_all(header::CONTENT_LENGTH).iter();
-    let Some(value) = lengths.next() else {
+    require_bodyless_transport(request)?;
+    let Some(value) = single_content_length(request.headers())? else {
         return Ok(());
     };
+    require_zero_content_length(value)
+}
+
+fn require_bodyless_transport(request: &Request<Body>) -> Result<(), ProtocolFailure> {
+    (!request.headers().contains_key(header::TRANSFER_ENCODING) && request.body().is_end_stream())
+        .then_some(())
+        .ok_or_else(invalid)
+}
+
+fn single_content_length(headers: &HeaderMap) -> Result<Option<&HeaderValue>, ProtocolFailure> {
+    let mut lengths = headers.get_all(header::CONTENT_LENGTH).iter();
+    let value = lengths.next();
     if lengths.next().is_some() {
         return Err(invalid());
     }
+    Ok(value)
+}
+
+fn require_zero_content_length(value: &HeaderValue) -> Result<(), ProtocolFailure> {
     let bytes = value.as_bytes();
-    if bytes.is_empty() || bytes.iter().any(|byte| !byte.is_ascii_digit()) {
-        return Err(invalid());
-    }
+    (!bytes.is_empty() && bytes.iter().all(u8::is_ascii_digit))
+        .then_some(())
+        .ok_or_else(invalid)?;
     let length = value
         .to_str()
         .ok()
         .and_then(|text| text.parse::<u64>().ok())
         .ok_or_else(invalid)?;
-    if length == 0 {
-        Ok(())
-    } else {
-        Err(invalid())
-    }
+    (length == 0).then_some(()).ok_or_else(invalid)
 }
 
 fn request_idempotency(
