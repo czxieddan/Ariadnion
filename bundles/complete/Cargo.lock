@@ -279,6 +279,7 @@ dependencies = [
 name = "ariadnion-bundle-complete"
 version = "0.1.0"
 dependencies = [
+ "ariadnion-account-vault",
  "ariadnion-api-domain",
  "ariadnion-api-files",
  "ariadnion-api-http",
@@ -296,6 +297,7 @@ dependencies = [
  "ariadnion-provider-sdk",
  "ariadnion-routing-admission",
  "ariadnion-routing-coordinator",
+ "ariadnion-routing-runtime",
  "ariadnion-storage-asset",
  "ariadnion-storage-backup",
  "ariadnion-storage-domain",
@@ -541,6 +543,26 @@ version = "0.1.0"
 [[package]]
 name = "ariadnion-routing-policy"
 version = "0.1.0"
+
+[[package]]
+name = "ariadnion-routing-runtime"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-account-affinity",
+ "ariadnion-account-domain",
+ "ariadnion-account-import",
+ "ariadnion-account-pool",
+ "ariadnion-account-vault",
+ "ariadnion-core",
+ "ariadnion-model-catalog",
+ "ariadnion-model-domain",
+ "ariadnion-model-pricing",
+ "ariadnion-provider-http",
+ "ariadnion-rate-limit",
+ "ariadnion-routing-coordinator",
+ "ariadnion-routing-failover",
+ "ariadnion-routing-usage",
+]
 
 [[package]]
 name = "ariadnion-routing-usage"

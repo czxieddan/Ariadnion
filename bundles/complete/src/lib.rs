@@ -33,6 +33,7 @@
 
 use std::sync::Arc;
 
+use ariadnion_account_vault::SecretLeaseLifetime;
 use ariadnion_api_domain::{AudioOutputSpecification, ModelSelector};
 use ariadnion_api_files::{FileCatalogServicePort, FileReferenceIssuerPort, FileServicePort};
 use ariadnion_api_http::{
@@ -57,6 +58,9 @@ use ariadnion_provider_mock::{
 use ariadnion_provider_sdk::{ProviderModelId, ProviderPort};
 use ariadnion_routing_admission::RoutingAdmissionCoordinator;
 use ariadnion_routing_coordinator::{MAX_CANDIDATES, RoutingCoordinator};
+use ariadnion_routing_runtime::{
+    MAX_RUNTIME_ATTEMPTS, RoutingRuntime, RoutingRuntimeError, RuntimePorts,
+};
 use ariadnion_storage_asset::LocalVolumeAssetStoragePort;
 
 /// Describes where an assembled routing coordinator keeps admission state.
@@ -152,6 +156,92 @@ pub fn assemble_in_process_routing_coordinator(
             max_candidates: MAX_CANDIDATES,
         },
     }
+}
+
+/// Typed facts about one complete-bundle routing runtime assembly.
+///
+/// The report describes only the statically assembled runtime. The supplied
+/// ports retain responsibility for their own durability and availability.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RoutingRuntimeAssemblyReport {
+    coordinator: RoutingCoordinatorAssemblyReport,
+    max_attempts: usize,
+}
+
+impl RoutingRuntimeAssemblyReport {
+    /// Returns the coordinator facts inherited by the runtime.
+    #[must_use]
+    pub const fn coordinator(self) -> RoutingCoordinatorAssemblyReport {
+        self.coordinator
+    }
+
+    /// Returns the maximum physical attempts accepted by one runtime request.
+    #[must_use]
+    pub const fn max_attempts(self) -> usize {
+        self.max_attempts
+    }
+
+    /// Reports that all account, model, credential, vault, and clock ports are injected.
+    #[must_use]
+    pub const fn uses_injected_ports(self) -> bool {
+        true
+    }
+}
+
+/// Owns the complete bundle's shared typed routing runtime and report.
+#[derive(Clone, Debug)]
+pub struct RoutingRuntimeAssembly {
+    runtime: Arc<RoutingRuntime>,
+    report: RoutingRuntimeAssemblyReport,
+}
+
+impl RoutingRuntimeAssembly {
+    /// Returns the shared runtime for injection into request adapters.
+    #[must_use]
+    pub const fn runtime(&self) -> &Arc<RoutingRuntime> {
+        &self.runtime
+    }
+
+    /// Returns the typed assembly facts without performing runtime work.
+    #[must_use]
+    pub const fn report(&self) -> RoutingRuntimeAssemblyReport {
+        self.report
+    }
+
+    /// Consumes the assembly and returns the shared runtime.
+    #[must_use]
+    pub fn into_runtime(self) -> Arc<RoutingRuntime> {
+        self.runtime
+    }
+}
+
+/// Assembles the complete bundle's routing runtime from explicit typed ports.
+///
+/// The coordinator retains process-local admission state. The caller remains
+/// responsible for supplying concrete tenant-scoped account, model, credential,
+/// vault, and monotonic-clock implementations through [`RuntimePorts`].
+///
+/// # Errors
+///
+/// Returns the runtime's stable invariant error if compiled provider credential
+/// identifiers are invalid.
+pub fn assemble_routing_runtime(
+    coordinator: &RoutingCoordinatorAssembly,
+    ports: RuntimePorts,
+    lease_lifetime: SecretLeaseLifetime,
+) -> Result<RoutingRuntimeAssembly, RoutingRuntimeError> {
+    let runtime = RoutingRuntime::new(
+        coordinator.coordinator().as_ref().clone(),
+        ports,
+        lease_lifetime,
+    )?;
+    Ok(RoutingRuntimeAssembly {
+        runtime: Arc::new(runtime),
+        report: RoutingRuntimeAssemblyReport {
+            coordinator: coordinator.report(),
+            max_attempts: MAX_RUNTIME_ATTEMPTS,
+        },
+    })
 }
 
 /// Selects the single public API route family assembled by the complete bundle.
