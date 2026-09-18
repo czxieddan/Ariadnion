@@ -29,6 +29,7 @@
 //! Tenant-scoped RNMDB publication and reconciliation for account imports.
 
 mod codec;
+mod routing_policy;
 mod sql;
 
 use std::fmt::{self, Debug, Formatter};

@@ -37,9 +37,9 @@ use ariadnion_account_domain::{
 use ariadnion_account_import::{
     AccountCredentialReference, AccountCredentialReferenceRequest, AccountProjectionRequest,
     AccountProjectionSnapshot, ConflictStrategy, DurableAccountIdentity, DurableAccountProjection,
-    DurableAccountState, DurablePublishReceipt, DurablePublishRequest, ImportEntry,
-    ImportGeneration, ImportMutationId, MAX_ACCOUNT_PROJECTION_ACCOUNTS, MAX_IMPORT_ENTRIES,
-    OpaqueDigest,
+    DurableAccountState, DurablePublishReceipt, DurablePublishRequest, DurableRoutingState,
+    ImportEntry, ImportGeneration, ImportMutationId, MAX_ACCOUNT_PROJECTION_ACCOUNTS,
+    MAX_IMPORT_ENTRIES, OpaqueDigest,
 };
 use ariadnion_core::{RequestContext, TenantId};
 use ariadnion_storage_domain::{StorageError, StorageErrorCode};
@@ -49,7 +49,7 @@ use rnmdb_executor::vector::Row;
 use sha2::Sha256;
 use zeroize::Zeroizing;
 
-use super::sql;
+use super::{routing_policy, sql};
 use crate::identity_transaction::require_active_identity_transaction;
 use crate::session::check_context;
 
@@ -62,6 +62,7 @@ const CREDENTIAL_REFERENCE_PROJECTION: &str = "tenant_id, account_id, provider_i
 const LEGACY_FINGERPRINT_DOMAIN: &[u8] = b"ariadnion.account-import.publish-intent.hmac-sha256.v2";
 const CONFIGURED_FINGERPRINT_DOMAIN: &[u8] =
     b"ariadnion.account-import.publish-intent.hmac-sha256.v3";
+const ROUTING_FINGERPRINT_DOMAIN: &[u8] = b"ariadnion.account-import.publish-intent.hmac-sha256.v4";
 const PROVISIONING_POLICY: &[u8] = b"minimal-provisioning-v1";
 const REPLACEMENT_POLICY: &[u8] = b"advance-config-and-account-versions-preserve-status-v1";
 const INITIAL_VERSION: u64 = 1;
@@ -130,7 +131,11 @@ pub(super) fn load_projection_snapshot(
     require_active_identity_transaction(session)?;
     let generation = require_projection_generation(session, tenant, request)?;
     let batch = load_projection_rows(session, tenant)?;
-    let accounts = decode_projection_rows(batch.rows(), tenant, generation, context)?;
+    let mut routing = routing_policy::load_for_tenant(session, tenant, context)?;
+    let accounts = decode_projection_rows(batch.rows(), tenant, generation, &mut routing, context)?;
+    if !routing.is_empty() {
+        return Err(sql::integrity());
+    }
     AccountProjectionSnapshot::new(generation, accounts).map_err(|_| sql::integrity())
 }
 
@@ -347,12 +352,13 @@ fn decode_projection_rows(
     rows: &[Row],
     tenant: &TenantId,
     generation: ImportGeneration,
+    routing: &mut routing_policy::RoutingPolicies,
     context: &RequestContext,
 ) -> Result<Vec<DurableAccountProjection>, StorageError> {
     let mut accounts = Vec::with_capacity(rows.len());
     for row in rows {
         check_context(context)?;
-        accounts.push(decode_projection(row, tenant, generation)?);
+        accounts.push(decode_projection(row, tenant, generation, routing)?);
     }
     Ok(accounts)
 }
@@ -361,19 +367,23 @@ fn decode_projection(
     row: &Row,
     tenant: &TenantId,
     generation: ImportGeneration,
+    routing: &mut routing_policy::RoutingPolicies,
 ) -> Result<DurableAccountProjection, StorageError> {
     let values = sql::row_values::<9>(row)?;
-    let identity = decode_projection_identity(values, tenant)?;
-    let state = decode_projection_state(values, generation)?;
+    let account = parse_account_id(&values[1])?;
+    let config_version = nonzero_text_version(&values[5])?;
+    let routing = routing_policy::take_routing(routing, &account, config_version)?;
+    let identity = decode_projection_identity(values, tenant, account)?;
+    let state = decode_projection_state(values, generation, routing)?;
     Ok(DurableAccountProjection::new(identity, state))
 }
 
 fn decode_projection_identity(
     values: &[rnmdb_types::SqlValue; 9],
     tenant: &TenantId,
+    account: AccountId,
 ) -> Result<DurableAccountIdentity, StorageError> {
     require_tenant(&values[0], tenant)?;
-    let account = parse_account_id(&values[1])?;
     let provider = parse_provider_id(&values[2])?;
     let model = decode_model(&values[3])?;
     Ok(DurableAccountIdentity::new(
@@ -387,17 +397,19 @@ fn decode_projection_identity(
 fn decode_projection_state(
     values: &[rnmdb_types::SqlValue; 9],
     generation: ImportGeneration,
+    routing: DurableRoutingState,
 ) -> Result<DurableAccountState, StorageError> {
     let (max_concurrency, config_version, account_version, import_generation) =
         decode_projection_versions(values)?;
     let status = decode_status(sql::text_value(&values[7])?)?;
     require_projection_row_generation(import_generation, generation)?;
-    DurableAccountState::new(
+    DurableAccountState::with_routing(
         max_concurrency,
         config_version,
         account_version,
         status,
         import_generation,
+        routing,
     )
     .map_err(|_| sql::integrity())
 }
@@ -643,7 +655,8 @@ fn insert_account(
         sql::text(INITIAL_STATUS),
         sql::text(&generation.get().to_string()),
     );
-    sql::require_rows(sql::execute(session, statement)?, 1)
+    sql::require_rows(sql::execute(session, statement)?, 1)?;
+    routing_policy::insert(session, tenant, entry, entry.config_version().get())
 }
 
 fn persist_initial_events(
@@ -715,7 +728,14 @@ fn replace_account(
         sql::text(&existing.account_version.to_string()),
         sql::text(status_label(existing.status)),
     );
-    sql::require_rows(sql::execute(session, statement)?, 1)
+    sql::require_rows(sql::execute(session, statement)?, 1)?;
+    routing_policy::replace(
+        session,
+        tenant,
+        entry,
+        existing.config_version,
+        config_version,
+    )
 }
 
 fn replacement_config_version(existing: u64, entry: &ImportEntry) -> Result<u64, StorageError> {
@@ -1017,17 +1037,8 @@ fn request_fingerprint(
     key: &[u8],
 ) -> Result<Zeroizing<String>, StorageError> {
     let mut hash = Hmac::<Sha256>::new_from_slice(key).map_err(|_| sql::integrity())?;
-    let configured = request
-        .intent()
-        .entries()
-        .iter()
-        .any(ImportEntry::has_explicit_configuration);
-    let domain = if configured {
-        CONFIGURED_FINGERPRINT_DOMAIN
-    } else {
-        LEGACY_FINGERPRINT_DOMAIN
-    };
-    push_frame(&mut hash, domain);
+    let shape = fingerprint_shape(request.intent().entries());
+    push_frame(&mut hash, shape.domain());
     push_frame(&mut hash, tenant.as_str().as_bytes());
     push_frame(&mut hash, request.mutation_id().as_str().as_bytes());
     let intent = request.intent();
@@ -1038,13 +1049,54 @@ fn request_fingerprint(
     let count = u64::try_from(intent.entries().len()).map_err(|_| sql::exhausted())?;
     push_frame(&mut hash, &count.to_be_bytes());
     for entry in intent.entries() {
-        if configured {
-            fingerprint_configured_entry(&mut hash, entry);
-        } else {
-            fingerprint_legacy_entry(&mut hash, entry);
-        }
+        fingerprint_entry(&mut hash, entry, shape);
     }
     Ok(Zeroizing::new(bytes_hex(&hash.finalize().into_bytes())))
+}
+
+#[derive(Clone, Copy)]
+enum FingerprintShape {
+    LegacyV2,
+    ConfiguredV3,
+    RoutingV4,
+}
+
+impl FingerprintShape {
+    const fn domain(self) -> &'static [u8] {
+        match self {
+            Self::LegacyV2 => LEGACY_FINGERPRINT_DOMAIN,
+            Self::ConfiguredV3 => CONFIGURED_FINGERPRINT_DOMAIN,
+            Self::RoutingV4 => ROUTING_FINGERPRINT_DOMAIN,
+        }
+    }
+}
+
+fn fingerprint_shape(entries: &[ImportEntry]) -> FingerprintShape {
+    if entries.iter().any(has_nondefault_routing) {
+        FingerprintShape::RoutingV4
+    } else if entries.iter().any(ImportEntry::has_explicit_configuration) {
+        FingerprintShape::ConfiguredV3
+    } else {
+        FingerprintShape::LegacyV2
+    }
+}
+
+fn has_nondefault_routing(entry: &ImportEntry) -> bool {
+    entry.routing_priority() != Default::default() || entry.routing_weight() != Default::default()
+}
+
+fn fingerprint_entry(hash: &mut Hmac<Sha256>, entry: &ImportEntry, shape: FingerprintShape) {
+    match shape {
+        FingerprintShape::LegacyV2 => fingerprint_legacy_entry(hash, entry),
+        FingerprintShape::ConfiguredV3 => fingerprint_configured_entry(hash, entry),
+        FingerprintShape::RoutingV4 => fingerprint_routing_entry(hash, entry),
+    }
+}
+
+fn fingerprint_routing_entry(hash: &mut Hmac<Sha256>, entry: &ImportEntry) {
+    fingerprint_configured_entry(hash, entry);
+    push_frame(hash, &entry.routing_priority().get().to_be_bytes());
+    push_frame(hash, &entry.routing_weight().get().to_be_bytes());
 }
 
 fn fingerprint_configured_entry(hash: &mut Hmac<Sha256>, entry: &ImportEntry) {
