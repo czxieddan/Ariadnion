@@ -3,16 +3,17 @@
 Ariadnion resolves RNovModularDB directly from the repository below:
 
 - Repository: `https://github.com/czxieddan/RNovModularDB.git`
-- Reviewed commit: `9414642b794bd87bd40731d4b03b88e1535d9f11`
+- Reviewed commit: `f35e636f3d32d2d0835a23e6d53fc3437e46707a`
 - Cargo selector: full Git `rev`, repeated for every approved `rnmdb-*` package
-- Selected license: `LicenseRef-AHCL-1.0`
-- Verbatim license copy: `.ahcl/AHCL-1.0.md`
+- Selected license: `LicenseRef-AHCL-1.1`
+- Verbatim license copy: `.ahcl/AHCL-1.1.md`
 - Upstream Additional Restrictions: none
 
-Ariadnion selects RNMDB's public AHCL 1.0 option at the reviewed repository and
-commit. The dependency gate requires the complete package set below and rejects
-any different repository, revision, package set, alias, local path, vendor copy,
-submodule, branch, tag, or short revision:
+Ariadnion selects RNMDB's public AHCL 1.1 option at the reviewed repository and
+commit. Every approved package uses the canonical HTTPS repository, the same
+full revision, and an explicit package name. The integration contains the
+complete package set below and does not use a local path, vendor copy, submodule,
+branch, tag, or short revision:
 
 - `rnmdb-common`
 - `rnmdb-types`
