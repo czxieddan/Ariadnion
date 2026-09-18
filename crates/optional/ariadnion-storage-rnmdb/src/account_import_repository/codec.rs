@@ -59,7 +59,9 @@ const ACCOUNT_STATE_PROJECTION: &str =
     "tenant_id, account_id, config_version, account_version, account_status, import_generation";
 const ROUTING_PROJECTION: &str = "tenant_id, account_id, provider_id, default_model, max_concurrency, config_version, account_version, account_status, import_generation";
 const CREDENTIAL_REFERENCE_PROJECTION: &str = "tenant_id, account_id, provider_id, config_version, secret_provider, secret_path, secret_version, secret_purpose, account_status, import_generation";
-const FINGERPRINT_DOMAIN: &[u8] = b"ariadnion.account-import.publish-intent.hmac-sha256.v2";
+const LEGACY_FINGERPRINT_DOMAIN: &[u8] = b"ariadnion.account-import.publish-intent.hmac-sha256.v2";
+const CONFIGURED_FINGERPRINT_DOMAIN: &[u8] =
+    b"ariadnion.account-import.publish-intent.hmac-sha256.v3";
 const PROVISIONING_POLICY: &[u8] = b"minimal-provisioning-v1";
 const REPLACEMENT_POLICY: &[u8] = b"advance-config-and-account-versions-preserve-status-v1";
 const INITIAL_VERSION: u64 = 1;
@@ -622,19 +624,21 @@ fn insert_account(
 ) -> Result<(), StorageError> {
     let secret = entry.secret_ref();
     let statement = format!(
-        "INSERT INTO account_registry_accounts (tenant_id, account_id, provider_id, provider_label, account_label, external_account_id, config_version, secret_provider, secret_path, secret_version, secret_purpose, credential_digest_hex, default_model, max_concurrency, account_version, account_status, import_generation) VALUES ({}, {}, {}, {}, {}, NULL, {}, {}, {}, {}, {}, {}, NULL, {}, {}, {}, {});",
+        "INSERT INTO account_registry_accounts (tenant_id, account_id, provider_id, provider_label, account_label, external_account_id, config_version, secret_provider, secret_path, secret_version, secret_purpose, credential_digest_hex, default_model, max_concurrency, account_version, account_status, import_generation) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {});",
         sql::text(tenant.as_str()),
         sql::text(entry.account_id().as_str()),
         sql::text(entry.provider_id().as_str()),
-        sql::text(entry.provider_id().as_str()),
-        sql::text(entry.account_id().as_str()),
-        sql::text(&INITIAL_VERSION.to_string()),
+        sql::text(entry.provider_label()),
+        sql::text(entry.account_label()),
+        sql::nullable_text(entry.external_account_id().map(|value| value.as_str())),
+        sql::text(&entry.config_version().get().to_string()),
         sql::text(secret.provider().as_str()),
         sql::text(secret.path().as_str()),
         sql::text(&secret.version().get().to_string()),
         sql::text(secret.purpose().as_str()),
         sql::text(&digest_hex(entry.credential_digest())),
-        INITIAL_MAX_CONCURRENCY,
+        sql::nullable_text(entry.default_model().map(|value| value.as_str())),
+        entry.max_concurrency().get(),
         sql::text(&INITIAL_VERSION.to_string()),
         sql::text(INITIAL_STATUS),
         sql::text(&generation.get().to_string()),
@@ -683,27 +687,26 @@ fn replace_account(
     generation: ImportGeneration,
     existing: ExistingAccount,
 ) -> Result<(), StorageError> {
-    let config_version = existing
-        .config_version
-        .checked_add(1)
-        .ok_or_else(sql::exhausted)?;
+    let config_version = replacement_config_version(existing.config_version, entry)?;
     let account_version = existing
         .account_version
         .checked_add(1)
         .ok_or_else(sql::exhausted)?;
     let secret = entry.secret_ref();
     let statement = format!(
-        "UPDATE account_registry_accounts SET provider_id = {}, provider_label = {}, account_label = {}, external_account_id = NULL, config_version = {}, secret_provider = {}, secret_path = {}, secret_version = {}, secret_purpose = {}, credential_digest_hex = {}, default_model = NULL, max_concurrency = {}, account_version = {}, import_generation = {} WHERE tenant_id = {} AND account_id = {} AND config_version = {} AND account_version = {} AND account_status = {};",
+        "UPDATE account_registry_accounts SET provider_id = {}, provider_label = {}, account_label = {}, external_account_id = {}, config_version = {}, secret_provider = {}, secret_path = {}, secret_version = {}, secret_purpose = {}, credential_digest_hex = {}, default_model = {}, max_concurrency = {}, account_version = {}, import_generation = {} WHERE tenant_id = {} AND account_id = {} AND config_version = {} AND account_version = {} AND account_status = {};",
         sql::text(entry.provider_id().as_str()),
-        sql::text(entry.provider_id().as_str()),
-        sql::text(entry.account_id().as_str()),
+        sql::text(entry.provider_label()),
+        sql::text(entry.account_label()),
+        sql::nullable_text(entry.external_account_id().map(|value| value.as_str())),
         sql::text(&config_version.to_string()),
         sql::text(secret.provider().as_str()),
         sql::text(secret.path().as_str()),
         sql::text(&secret.version().get().to_string()),
         sql::text(secret.purpose().as_str()),
         sql::text(&digest_hex(entry.credential_digest())),
-        INITIAL_MAX_CONCURRENCY,
+        sql::nullable_text(entry.default_model().map(|value| value.as_str())),
+        entry.max_concurrency().get(),
         sql::text(&account_version.to_string()),
         sql::text(&generation.get().to_string()),
         sql::text(tenant.as_str()),
@@ -713,6 +716,17 @@ fn replace_account(
         sql::text(status_label(existing.status)),
     );
     sql::require_rows(sql::execute(session, statement)?, 1)
+}
+
+fn replacement_config_version(existing: u64, entry: &ImportEntry) -> Result<u64, StorageError> {
+    let next = existing.checked_add(1).ok_or_else(sql::exhausted)?;
+    if !entry.has_explicit_configuration() {
+        return Ok(next);
+    }
+    if entry.config_version().get() != next {
+        return Err(sql::conflict());
+    }
+    Ok(entry.config_version().get())
 }
 
 fn persist_generation(
@@ -1003,7 +1017,17 @@ fn request_fingerprint(
     key: &[u8],
 ) -> Result<Zeroizing<String>, StorageError> {
     let mut hash = Hmac::<Sha256>::new_from_slice(key).map_err(|_| sql::integrity())?;
-    push_frame(&mut hash, FINGERPRINT_DOMAIN);
+    let configured = request
+        .intent()
+        .entries()
+        .iter()
+        .any(ImportEntry::has_explicit_configuration);
+    let domain = if configured {
+        CONFIGURED_FINGERPRINT_DOMAIN
+    } else {
+        LEGACY_FINGERPRINT_DOMAIN
+    };
+    push_frame(&mut hash, domain);
     push_frame(&mut hash, tenant.as_str().as_bytes());
     push_frame(&mut hash, request.mutation_id().as_str().as_bytes());
     let intent = request.intent();
@@ -1014,12 +1038,38 @@ fn request_fingerprint(
     let count = u64::try_from(intent.entries().len()).map_err(|_| sql::exhausted())?;
     push_frame(&mut hash, &count.to_be_bytes());
     for entry in intent.entries() {
-        fingerprint_entry(&mut hash, entry);
+        if configured {
+            fingerprint_configured_entry(&mut hash, entry);
+        } else {
+            fingerprint_legacy_entry(&mut hash, entry);
+        }
     }
     Ok(Zeroizing::new(bytes_hex(&hash.finalize().into_bytes())))
 }
 
-fn fingerprint_entry(hash: &mut Hmac<Sha256>, entry: &ImportEntry) {
+fn fingerprint_configured_entry(hash: &mut Hmac<Sha256>, entry: &ImportEntry) {
+    let secret = entry.secret_ref();
+    push_frame(hash, entry.account_id().as_str().as_bytes());
+    push_frame(hash, entry.provider_id().as_str().as_bytes());
+    push_frame(hash, entry.provider_label().as_bytes());
+    push_frame(hash, entry.account_label().as_bytes());
+    push_optional_text(
+        hash,
+        entry.external_account_id().map(|value| value.as_str()),
+    );
+    push_frame(hash, &entry.config_version().get().to_be_bytes());
+    push_frame(hash, secret.provider().as_str().as_bytes());
+    push_frame(hash, secret.path().as_str().as_bytes());
+    push_frame(hash, &secret.version().get().to_be_bytes());
+    push_frame(hash, secret.purpose().as_str().as_bytes());
+    push_frame(hash, &entry.credential_digest().as_bytes());
+    push_optional_text(hash, entry.default_model().map(|value| value.as_str()));
+    push_frame(hash, &entry.max_concurrency().get().to_be_bytes());
+    push_frame(hash, &INITIAL_VERSION.to_be_bytes());
+    push_frame(hash, INITIAL_STATUS.as_bytes());
+}
+
+fn fingerprint_legacy_entry(hash: &mut Hmac<Sha256>, entry: &ImportEntry) {
     let secret = entry.secret_ref();
     push_frame(hash, entry.account_id().as_str().as_bytes());
     push_frame(hash, entry.provider_id().as_str().as_bytes());
@@ -1036,6 +1086,16 @@ fn fingerprint_entry(hash: &mut Hmac<Sha256>, entry: &ImportEntry) {
     push_frame(hash, &INITIAL_MAX_CONCURRENCY.to_be_bytes());
     push_frame(hash, &INITIAL_VERSION.to_be_bytes());
     push_frame(hash, INITIAL_STATUS.as_bytes());
+}
+
+fn push_optional_text(hash: &mut Hmac<Sha256>, value: Option<&str>) {
+    match value {
+        Some(value) => {
+            push_frame(hash, b"some");
+            push_frame(hash, value.as_bytes());
+        }
+        None => push_frame(hash, b"none"),
+    }
 }
 
 fn push_frame(hash: &mut Hmac<Sha256>, value: &[u8]) {

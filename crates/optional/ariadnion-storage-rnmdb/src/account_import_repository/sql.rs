@@ -52,6 +52,10 @@ pub(super) fn text(value: &str) -> QuotedText {
     QuotedText(Zeroizing::new(output))
 }
 
+pub(super) fn nullable_text(value: Option<&str>) -> QuotedText {
+    value.map_or_else(|| QuotedText(Zeroizing::new("NULL".to_owned())), text)
+}
+
 pub(super) struct QuotedText(Zeroizing<String>);
 
 impl std::fmt::Display for QuotedText {
