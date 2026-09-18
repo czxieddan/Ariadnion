@@ -32,8 +32,8 @@ use std::borrow::Cow;
 use std::fmt::{self, Formatter};
 
 use ariadnion_api_domain::{
-    ApiDomainError, ApiDomainErrorCode, ModelSelector, OutputTokenLimit, ResponseMode,
-    ServiceContractVersion, TextInput, TextServiceRequest,
+    ApiDomainError, ApiDomainErrorCode, IdempotencyKey, ModelSelector, OutputTokenLimit,
+    ResponseMode, ServiceContractVersion, TextInput, TextServiceRequest,
 };
 use serde::de::{self, Deserialize, Deserializer, Error as _, MapAccess, Visitor};
 
@@ -46,10 +46,17 @@ pub(crate) struct DecodedRequest {
 }
 
 pub(crate) fn decode(bytes: &[u8]) -> Result<DecodedRequest, ApiDomainError> {
+    decode_with_idempotency(bytes, None)
+}
+
+pub(crate) fn decode_with_idempotency(
+    bytes: &[u8],
+    idempotency: Option<IdempotencyKey>,
+) -> Result<DecodedRequest, ApiDomainError> {
     let mut deserializer = serde_json::Deserializer::from_slice(bytes);
     let raw = RawRequest::deserialize(&mut deserializer).map_err(|_| invalid_argument())?;
     deserializer.end().map_err(|_| invalid_argument())?;
-    raw.into_domain()
+    raw.into_domain(idempotency)
 }
 
 struct RawRequest<'a> {
@@ -60,7 +67,10 @@ struct RawRequest<'a> {
 }
 
 impl RawRequest<'_> {
-    fn into_domain(self) -> Result<DecodedRequest, ApiDomainError> {
+    fn into_domain(
+        self,
+        idempotency: Option<IdempotencyKey>,
+    ) -> Result<DecodedRequest, ApiDomainError> {
         let model = ModelSelector::new(self.model.as_ref())?;
         let projection_model = model.as_str().into();
         let input = TextInput::new(self.input.as_ref())?;
@@ -77,7 +87,7 @@ impl RawRequest<'_> {
                 input,
                 output_token_limit,
                 response_mode,
-                None,
+                idempotency,
             ),
             model: projection_model,
             response_mode,

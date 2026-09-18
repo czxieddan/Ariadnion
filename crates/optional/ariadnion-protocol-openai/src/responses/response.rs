@@ -31,7 +31,9 @@
 mod request;
 pub(crate) mod stream;
 
-pub(crate) use request::decode as decode_request;
+pub(crate) use request::{
+    decode as decode_request, decode_with_idempotency as decode_request_with_idempotency,
+};
 
 use std::fmt::{self, Debug, Formatter};
 
