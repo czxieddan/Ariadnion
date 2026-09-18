@@ -169,7 +169,7 @@ pub use vault_repository::{
 };
 
 /// The reviewed upstream source revision compiled by this adapter.
-pub const REVIEWED_RNMDB_COMMIT: &str = "9414642b794bd87bd40731d4b03b88e1535d9f11";
+pub const REVIEWED_RNMDB_COMMIT: &str = "f35e636f3d32d2d0835a23e6d53fc3437e46707a";
 
 /// One compile-time link between an RNMDB package and an adapter boundary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
