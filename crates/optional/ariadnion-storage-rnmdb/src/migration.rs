@@ -31,7 +31,9 @@
 use std::sync::Arc;
 
 use ariadnion_account_import::migrations::ACCOUNT_REGISTRY_MIGRATION_ID;
-use ariadnion_account_vault::migrations::ACCOUNT_VAULT_MIGRATION_ID;
+use ariadnion_account_vault::migrations::{
+    ACCOUNT_VAULT_MIGRATION_ID, ACCOUNT_VAULT_ROTATION_MIGRATION_ID,
+};
 use ariadnion_api_admin::migrations::IDENTITY_ADMIN_COMMAND_MIGRATION_ID;
 use ariadnion_api_files::migrations::FILES_CATALOG_MIGRATION_ID;
 use ariadnion_audit_domain::migrations::IDENTITY_AUDIT_MIGRATION_ID;
@@ -376,6 +378,20 @@ pub fn account_registry_migration() -> Result<MigrationDescriptor, StorageError>
 /// canonical checksum do not match the compiled migration registry.
 pub fn account_vault_migration() -> Result<MigrationDescriptor, StorageError> {
     compiled_migration_definitions()?.descriptor(ACCOUNT_VAULT_MIGRATION_ID)
+}
+
+/// Returns the additive durable credential-rotation migration after digest validation.
+///
+/// The version-twenty-three to version-twenty-four transition preserves the
+/// original vault tables and adds encrypted rotation journals plus an immutable
+/// exact-replay mutation ledger. Migration execution remains explicit and does
+/// not inject column keys or start a repository worker.
+///
+/// # Errors
+/// Returns a stable integrity error when fixed metadata, statements, or the
+/// canonical checksum do not match the compiled migration registry.
+pub fn account_vault_rotation_migration() -> Result<MigrationDescriptor, StorageError> {
+    compiled_migration_definitions()?.descriptor(ACCOUNT_VAULT_ROTATION_MIGRATION_ID)
 }
 
 fn migration_insert(

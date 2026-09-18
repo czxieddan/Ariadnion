@@ -49,7 +49,10 @@ use ariadnion_account_vault::migrations::{
     ACCOUNT_VAULT_MIGRATION_CANONICAL_V1_SHA256, ACCOUNT_VAULT_MIGRATION_DOMAIN,
     ACCOUNT_VAULT_MIGRATION_FROM_VERSION, ACCOUNT_VAULT_MIGRATION_ID,
     ACCOUNT_VAULT_MIGRATION_REQUIRES_BACKUP, ACCOUNT_VAULT_MIGRATION_STATEMENTS,
-    ACCOUNT_VAULT_MIGRATION_TO_VERSION,
+    ACCOUNT_VAULT_MIGRATION_TO_VERSION, ACCOUNT_VAULT_ROTATION_MIGRATION_CANONICAL_V1_SHA256,
+    ACCOUNT_VAULT_ROTATION_MIGRATION_DOMAIN, ACCOUNT_VAULT_ROTATION_MIGRATION_FROM_VERSION,
+    ACCOUNT_VAULT_ROTATION_MIGRATION_ID, ACCOUNT_VAULT_ROTATION_MIGRATION_REQUIRES_BACKUP,
+    ACCOUNT_VAULT_ROTATION_MIGRATION_STATEMENTS, ACCOUNT_VAULT_ROTATION_MIGRATION_TO_VERSION,
 };
 use ariadnion_api_admin::migrations::{
     IDENTITY_ADMIN_COMMAND_MIGRATION_CANONICAL_V1_SHA256, IDENTITY_ADMIN_COMMAND_MIGRATION_DOMAIN,
@@ -449,6 +452,7 @@ fn compile_account_definitions(
         compile_account_registry_definition()?,
         compile_account_batch_definition()?,
         compile_account_vault_definition()?,
+        compile_account_vault_rotation_definition()?,
     ] {
         insert_definition(definitions, definition)?;
     }
@@ -884,6 +888,19 @@ fn compile_account_vault_definition() -> Result<RnmdbMigrationDefinition, Storag
         statements: ACCOUNT_VAULT_MIGRATION_STATEMENTS,
         expected_checksum: ACCOUNT_VAULT_MIGRATION_CANONICAL_V1_SHA256,
         requires_backup: ACCOUNT_VAULT_MIGRATION_REQUIRES_BACKUP,
+    };
+    compile_migration_definition(input, CanonicalAstV1)
+}
+
+fn compile_account_vault_rotation_definition() -> Result<RnmdbMigrationDefinition, StorageError> {
+    let input = CanonicalMigrationDefinitionInput {
+        id: ACCOUNT_VAULT_ROTATION_MIGRATION_ID,
+        domain: ACCOUNT_VAULT_ROTATION_MIGRATION_DOMAIN,
+        from: ACCOUNT_VAULT_ROTATION_MIGRATION_FROM_VERSION,
+        to: ACCOUNT_VAULT_ROTATION_MIGRATION_TO_VERSION,
+        statements: ACCOUNT_VAULT_ROTATION_MIGRATION_STATEMENTS,
+        expected_checksum: ACCOUNT_VAULT_ROTATION_MIGRATION_CANONICAL_V1_SHA256,
+        requires_backup: ACCOUNT_VAULT_ROTATION_MIGRATION_REQUIRES_BACKUP,
     };
     compile_migration_definition(input, CanonicalAstV1)
 }
