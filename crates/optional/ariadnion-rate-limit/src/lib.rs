@@ -88,19 +88,46 @@ impl AdmissionErrorCode {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::InvalidArgument => "ADMISSION_INVALID_ARGUMENT",
-            Self::TooManyDimensions => "ADMISSION_TOO_MANY_DIMENSIONS",
-            Self::TooManyPolicies => "ADMISSION_TOO_MANY_POLICIES",
-            Self::DuplicateDimension => "ADMISSION_DUPLICATE_DIMENSION",
-            Self::PolicyNotFound => "ADMISSION_POLICY_NOT_FOUND",
-            Self::RateLimited => "ADMISSION_RATE_LIMITED",
-            Self::ConcurrencyLimited => "ADMISSION_CONCURRENCY_LIMITED",
-            Self::ClockRegressed => "ADMISSION_CLOCK_REGRESSED",
-            Self::CounterExhausted => "ADMISSION_COUNTER_EXHAUSTED",
-            Self::LeaseExpired => "ADMISSION_LEASE_EXPIRED",
-            Self::LeaseClosed => "ADMISSION_LEASE_CLOSED",
-            Self::StateUnavailable => "ADMISSION_STATE_UNAVAILABLE",
+            Self::InvalidArgument
+            | Self::TooManyDimensions
+            | Self::TooManyPolicies
+            | Self::DuplicateDimension
+            | Self::PolicyNotFound => request_error_code(self),
+            Self::RateLimited | Self::ConcurrencyLimited | Self::ClockRegressed => {
+                capacity_error_code(self)
+            }
+            _ => lifecycle_error_code(self),
         }
+    }
+}
+
+const fn request_error_code(code: AdmissionErrorCode) -> &'static str {
+    match code {
+        AdmissionErrorCode::InvalidArgument => "ADMISSION_INVALID_ARGUMENT",
+        AdmissionErrorCode::TooManyDimensions => "ADMISSION_TOO_MANY_DIMENSIONS",
+        AdmissionErrorCode::TooManyPolicies => "ADMISSION_TOO_MANY_POLICIES",
+        AdmissionErrorCode::DuplicateDimension => "ADMISSION_DUPLICATE_DIMENSION",
+        AdmissionErrorCode::PolicyNotFound => "ADMISSION_POLICY_NOT_FOUND",
+        _ => "ADMISSION_INVALID_ARGUMENT",
+    }
+}
+
+const fn capacity_error_code(code: AdmissionErrorCode) -> &'static str {
+    match code {
+        AdmissionErrorCode::RateLimited => "ADMISSION_RATE_LIMITED",
+        AdmissionErrorCode::ConcurrencyLimited => "ADMISSION_CONCURRENCY_LIMITED",
+        AdmissionErrorCode::ClockRegressed => "ADMISSION_CLOCK_REGRESSED",
+        _ => "ADMISSION_STATE_UNAVAILABLE",
+    }
+}
+
+const fn lifecycle_error_code(code: AdmissionErrorCode) -> &'static str {
+    match code {
+        AdmissionErrorCode::CounterExhausted => "ADMISSION_COUNTER_EXHAUSTED",
+        AdmissionErrorCode::LeaseExpired => "ADMISSION_LEASE_EXPIRED",
+        AdmissionErrorCode::LeaseClosed => "ADMISSION_LEASE_CLOSED",
+        AdmissionErrorCode::StateUnavailable => "ADMISSION_STATE_UNAVAILABLE",
+        _ => "ADMISSION_STATE_UNAVAILABLE",
     }
 }
 /// Redacted admission failure with optional bounded retry guidance.
@@ -199,6 +226,10 @@ define_limit_id!(
     TenantLimitId
 );
 define_limit_id!(
+    /// Account identity used only inside a tenant-bound account admission key.
+    AccountLimitId
+);
+define_limit_id!(
     /// User identity used only for user-scoped admission.
     UserLimitId
 );
@@ -211,11 +242,50 @@ define_limit_id!(
     ModelLimitId
 );
 
+/// Tenant-bound identity for one provider account's admission capacity.
+///
+/// Account identifiers are not assumed to be globally unique. Keeping the
+/// tenant identity in the key prevents equal account names in different
+/// tenants from sharing rate or concurrency counters.
+#[derive(Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct AccountLimitKey {
+    tenant: TenantLimitId,
+    account: AccountLimitId,
+}
+
+impl AccountLimitKey {
+    /// Creates one account-scoped key from validated opaque identities.
+    #[must_use]
+    pub const fn new(tenant: TenantLimitId, account: AccountLimitId) -> Self {
+        Self { tenant, account }
+    }
+
+    /// Returns the tenant that owns the account capacity.
+    #[must_use]
+    pub const fn tenant(&self) -> &TenantLimitId {
+        &self.tenant
+    }
+
+    /// Returns the account identity within the owning tenant.
+    #[must_use]
+    pub const fn account(&self) -> &AccountLimitId {
+        &self.account
+    }
+}
+
+impl Debug for AccountLimitKey {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter.write_str("AccountLimitKey(<opaque>)")
+    }
+}
+
 /// The stable category of a rate or concurrency dimension.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum LimitDimension {
     /// Tenant-wide capacity.
     Tenant,
+    /// Capacity for one account within an explicit tenant boundary.
+    Account,
     /// Capacity for one user within an adapter-defined tenant boundary.
     User,
     /// Capacity for one non-secret API-key identity or fingerprint.
@@ -229,6 +299,8 @@ pub enum LimitDimension {
 pub enum LimitKey {
     /// Tenant-scoped key.
     Tenant(TenantLimitId),
+    /// Account-scoped key with an explicit tenant binding.
+    Account(AccountLimitKey),
     /// User-scoped key.
     User(UserLimitId),
     /// API-key-scoped key.
@@ -243,6 +315,7 @@ impl LimitKey {
     pub const fn dimension(&self) -> LimitDimension {
         match self {
             Self::Tenant(_) => LimitDimension::Tenant,
+            Self::Account(_) => LimitDimension::Account,
             Self::User(_) => LimitDimension::User,
             Self::ApiKey(_) => LimitDimension::ApiKey,
             Self::Model(_) => LimitDimension::Model,
@@ -594,20 +667,13 @@ impl AdmissionController {
         request: &AdmissionRequest,
         now: MonotonicTime,
     ) -> Result<AdmissionLease, AdmissionError> {
-        let mut state = self.inner.lock_state()?;
-        state.observe_and_expire(now)?;
-        let policies = self.inner.resolve_policies(request)?;
-        state.prepare_windows(&policies, now)?;
-        state.check_capacity(&policies, request, now)?;
-        let (reservation_id, lease_id) = state.allocate_identities()?;
-        let expires_at = lease_expiry(&policies, now)?;
-        let parts = state.reserve(&policies, request, reservation_id, lease_id, expires_at)?;
+        let prepared = self.inner.prepare_admission(request, now)?;
         Ok(AdmissionLease {
             inner: Arc::clone(&self.inner),
-            id: lease_id,
-            expires_at,
-            reservation: parts.reservation,
-            permits: parts.permits,
+            id: prepared.lease_id,
+            expires_at: prepared.expires_at,
+            reservation: prepared.reservation,
+            permits: prepared.permits,
             closed: false,
         })
     }
@@ -777,6 +843,16 @@ impl ControllerInner {
             .collect()
     }
 
+    fn prepare_admission(
+        &self,
+        request: &AdmissionRequest,
+        now: MonotonicTime,
+    ) -> Result<PreparedAdmission, AdmissionError> {
+        let policies = self.resolve_policies(request)?;
+        let mut state = self.lock_state()?;
+        state.prepare_admission(&policies, request, now)
+    }
+
     fn close_lease(&self, id: AdmissionLeaseId, now: MonotonicTime) -> Result<(), AdmissionError> {
         let mut state = self.lock_state()?;
         state.observe_and_expire(now)?;
@@ -811,6 +887,26 @@ impl ControllerState {
             concurrency: BTreeMap::new(),
             leases: BTreeMap::new(),
         }
+    }
+
+    fn prepare_admission(
+        &mut self,
+        policies: &[&LimitPolicy],
+        request: &AdmissionRequest,
+        now: MonotonicTime,
+    ) -> Result<PreparedAdmission, AdmissionError> {
+        self.observe_and_expire(now)?;
+        self.prepare_windows(policies, now)?;
+        self.check_capacity(policies, request, now)?;
+        let (reservation_id, lease_id) = self.allocate_identities()?;
+        let expires_at = lease_expiry(policies, now)?;
+        let parts = self.reserve(policies, request, reservation_id, lease_id, expires_at)?;
+        Ok(PreparedAdmission {
+            lease_id,
+            expires_at,
+            reservation: parts.reservation,
+            permits: parts.permits,
+        })
     }
 
     fn observe_and_expire(&mut self, now: MonotonicTime) -> Result<(), AdmissionError> {
@@ -978,6 +1074,15 @@ impl ControllerState {
     }
 
     fn add_pending(&mut self, keys: &[LimitKey], units: NonZeroU32) -> Result<(), AdmissionError> {
+        self.validate_pending_addition(keys, units)?;
+        self.apply_pending_addition(keys, units)
+    }
+
+    fn validate_pending_addition(
+        &self,
+        keys: &[LimitKey],
+        units: NonZeroU32,
+    ) -> Result<(), AdmissionError> {
         for key in keys {
             let Some(window) = self.windows.get(key) else {
                 return Err(error(AdmissionErrorCode::StateUnavailable));
@@ -987,6 +1092,14 @@ impl ControllerState {
                 .checked_add(units.get())
                 .ok_or_else(exhausted)?;
         }
+        Ok(())
+    }
+
+    fn apply_pending_addition(
+        &mut self,
+        keys: &[LimitKey],
+        units: NonZeroU32,
+    ) -> Result<(), AdmissionError> {
         for key in keys {
             let Some(window) = self.windows.get_mut(key) else {
                 return Err(error(AdmissionErrorCode::StateUnavailable));
@@ -1012,31 +1125,63 @@ impl ControllerState {
     }
 
     fn commit_rate(&mut self, id: AdmissionLeaseId) -> Result<(), AdmissionError> {
-        let Some(lease) = self.leases.get_mut(&id) else {
+        let Some((keys, units)) = self.pending_rate_commitment(id)? else {
+            return Ok(());
+        };
+        self.validate_rate_commitment(&keys, units)?;
+        self.apply_rate_commitment(&keys, units)?;
+        self.mark_rate_committed(id)
+    }
+
+    fn pending_rate_commitment(
+        &self,
+        id: AdmissionLeaseId,
+    ) -> Result<Option<(Vec<LimitKey>, NonZeroU32)>, AdmissionError> {
+        let Some(lease) = self.leases.get(&id) else {
             return Err(error(AdmissionErrorCode::LeaseExpired));
         };
-        if lease.rate_committed {
-            return Ok(());
-        }
-        for key in &lease.rate_keys {
+        Ok((!lease.rate_committed).then(|| (lease.rate_keys.clone(), lease.units)))
+    }
+
+    fn validate_rate_commitment(
+        &self,
+        keys: &[LimitKey],
+        units: NonZeroU32,
+    ) -> Result<(), AdmissionError> {
+        for key in keys {
             let Some(window) = self.windows.get(key) else {
                 return Err(error(AdmissionErrorCode::StateUnavailable));
             };
             window
                 .committed
-                .checked_add(lease.units.get())
+                .checked_add(units.get())
                 .ok_or_else(exhausted)?;
         }
-        for key in &lease.rate_keys {
+        Ok(())
+    }
+
+    fn apply_rate_commitment(
+        &mut self,
+        keys: &[LimitKey],
+        units: NonZeroU32,
+    ) -> Result<(), AdmissionError> {
+        for key in keys {
             let Some(window) = self.windows.get_mut(key) else {
                 return Err(error(AdmissionErrorCode::StateUnavailable));
             };
-            window.pending = window.pending.saturating_sub(lease.units.get());
+            window.pending = window.pending.saturating_sub(units.get());
             window.committed = window
                 .committed
-                .checked_add(lease.units.get())
+                .checked_add(units.get())
                 .ok_or_else(exhausted)?;
         }
+        Ok(())
+    }
+
+    fn mark_rate_committed(&mut self, id: AdmissionLeaseId) -> Result<(), AdmissionError> {
+        let Some(lease) = self.leases.get_mut(&id) else {
+            return Err(error(AdmissionErrorCode::LeaseExpired));
+        };
         lease.rate_committed = true;
         Ok(())
     }
@@ -1124,6 +1269,13 @@ struct ActiveLease {
 }
 
 struct ReservedParts {
+    reservation: Option<RateReservation>,
+    permits: Vec<ConcurrencyPermit>,
+}
+
+struct PreparedAdmission {
+    lease_id: AdmissionLeaseId,
+    expires_at: MonotonicTime,
     reservation: Option<RateReservation>,
     permits: Vec<ConcurrencyPermit>,
 }
