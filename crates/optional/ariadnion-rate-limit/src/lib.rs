@@ -36,6 +36,13 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+mod policy_publication;
+
+pub use policy_publication::{
+    AdmissionPolicyBook, AdmissionPolicyPort, AdmissionPolicyReceipt, AdmissionPolicySnapshot,
+    AdmissionPolicyVersion,
+};
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{self, Debug, Formatter};
 use std::num::NonZeroU32;
@@ -67,6 +74,8 @@ pub enum AdmissionErrorCode {
     DuplicateDimension,
     /// No policy exists for a requested dimension.
     PolicyNotFound,
+    /// A static policy publication used a stale expected version.
+    PolicyVersionConflict,
     /// A configured short-window rate capacity is exhausted.
     RateLimited,
     /// A configured concurrency capacity is exhausted.
@@ -126,6 +135,7 @@ const fn lifecycle_error_code(code: AdmissionErrorCode) -> &'static str {
         AdmissionErrorCode::CounterExhausted => "ADMISSION_COUNTER_EXHAUSTED",
         AdmissionErrorCode::LeaseExpired => "ADMISSION_LEASE_EXPIRED",
         AdmissionErrorCode::LeaseClosed => "ADMISSION_LEASE_CLOSED",
+        AdmissionErrorCode::PolicyVersionConflict => "ADMISSION_POLICY_VERSION_CONFLICT",
         AdmissionErrorCode::StateUnavailable => "ADMISSION_STATE_UNAVAILABLE",
         _ => "ADMISSION_STATE_UNAVAILABLE",
     }
