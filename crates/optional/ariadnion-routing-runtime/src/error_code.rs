@@ -68,6 +68,9 @@ const fn state_error_code(code: RoutingRuntimeErrorCode) -> Option<&'static str>
             Some("ROUTING_RUNTIME_MONOTONIC_CLOCK_UNAVAILABLE")
         }
         RoutingRuntimeErrorCode::CoordinationFailed => Some("ROUTING_RUNTIME_COORDINATION_FAILED"),
+        RoutingRuntimeErrorCode::UnsupportedProxyProfile => {
+            Some("ROUTING_RUNTIME_UNSUPPORTED_PROXY_PROFILE")
+        }
         _ => None,
     }
 }

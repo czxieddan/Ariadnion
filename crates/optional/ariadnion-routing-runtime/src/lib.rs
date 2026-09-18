@@ -32,30 +32,31 @@
 #![deny(missing_docs)]
 
 mod error_code;
+mod execution;
 mod runtime_support;
+
+pub use execution::{
+    PhysicalAttemptIdentity, PhysicalExecutionAcceptance, ProviderExecutionInterruption,
+    ProviderExecutionOutcome, ProviderExecutionPort, ProviderExecutionRequest, RuntimeFailure,
+    RuntimeFailureReason, RuntimeOutcome, RuntimePorts, RuntimeSuccess,
+};
 
 use runtime_support::*;
 
 use std::collections::BTreeSet;
 use std::fmt::{self, Debug, Display, Formatter};
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 
 use ariadnion_account_affinity::AffinitySnapshot;
-use ariadnion_account_domain::{AccountId, ProviderId, SecretPurpose};
+use ariadnion_account_domain::SecretPurpose;
 use ariadnion_account_import::{
-    AccountCredentialReference, AccountCredentialReferencePort, AccountCredentialReferenceRequest,
-    AccountProjectionPort, AccountProjectionRequest,
+    AccountCredentialReference, AccountCredentialReferenceRequest, AccountProjectionRequest,
 };
-use ariadnion_account_pool::{
-    CandidateSelectionPort, CandidateSnapshot, SnapshotId, SnapshotVersion,
-};
-use ariadnion_account_vault::{SecretLease, SecretLeaseLifetime, SecretReadRequest, VaultPort};
+use ariadnion_account_pool::{CandidateSnapshot, SnapshotId, SnapshotVersion};
+use ariadnion_account_vault::{SecretLease, SecretLeaseLifetime, SecretReadRequest};
 use ariadnion_core::{AttemptId, ModuleId, RequestContext, TenantId};
-use ariadnion_model_catalog::{ModelCatalogPort, ModelCatalogSnapshot};
-use ariadnion_model_domain::ProviderModelId;
+use ariadnion_model_catalog::ModelCatalogSnapshot;
 use ariadnion_model_pricing::PricingCatalog;
 use ariadnion_provider_http::{PROVIDER_HTTP_CREDENTIAL_MODULE, PROVIDER_HTTP_CREDENTIAL_PURPOSE};
 use ariadnion_rate_limit::MonotonicTime;
@@ -81,9 +82,9 @@ pub enum RoutingRuntimeErrorCode {
     Unauthenticated,
     /// An authenticated tenant does not match durable or routing state.
     TenantMismatch,
-    /// Cancellation stopped work before physical execution was accepted.
+    /// Cancellation stopped work; accepted attempts retain reconciliation evidence.
     Cancelled,
-    /// The request deadline expired before physical execution was accepted.
+    /// The request deadline expired; accepted attempts retain reconciliation evidence.
     DeadlineExceeded,
     /// Durable account state could not be loaded or reconstructed.
     ProjectionUnavailable,
@@ -95,6 +96,8 @@ pub enum RoutingRuntimeErrorCode {
     MonotonicClockUnavailable,
     /// Deterministic routing or admission rejected the request.
     CoordinationFailed,
+    /// The approved proxy snapshot cannot be executed by provider HTTP.
+    UnsupportedProxyProfile,
     /// The selected account's credential reference could not be authorized.
     CredentialUnavailable,
     /// A credential resolution result crossed its exact account binding.
@@ -378,313 +381,6 @@ impl<'a> RuntimeSignals<'a> {
     }
 }
 
-/// Whether the provider physically accepted a request attempt.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum PhysicalExecutionAcceptance {
-    /// No provider-side execution was accepted, so admission must be released.
-    NotAccepted,
-    /// The provider accepted execution, so admission must be committed.
-    Accepted,
-}
-
-/// Final provider execution disposition without response or credential data.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ProviderExecutionOutcome {
-    /// The provider accepted and completed the physical attempt.
-    Accepted {
-        /// Whether a client-visible response byte has been emitted.
-        commitment: StreamCommitment,
-    },
-    /// The attempt failed with an explicit physical-acceptance boundary.
-    Failed {
-        /// Whether the provider physically accepted the attempt.
-        acceptance: PhysicalExecutionAcceptance,
-        /// Whether a client-visible response byte has been emitted.
-        commitment: StreamCommitment,
-        /// Stable failure class used by the immutable failover plan.
-        failure: FailureClass,
-    },
-}
-
-impl ProviderExecutionOutcome {
-    /// Reports one successfully accepted physical execution.
-    #[must_use]
-    pub const fn accepted(commitment: StreamCommitment) -> Self {
-        Self::Accepted { commitment }
-    }
-
-    /// Reports one classified failure with an explicit physical disposition.
-    ///
-    /// # Errors
-    /// A first client-visible byte proves that physical execution was accepted;
-    /// reporting otherwise returns a stable invariant error.
-    pub fn failed(
-        acceptance: PhysicalExecutionAcceptance,
-        commitment: StreamCommitment,
-        failure: FailureClass,
-    ) -> Result<Self, RoutingRuntimeError> {
-        if acceptance == PhysicalExecutionAcceptance::NotAccepted
-            && commitment == StreamCommitment::FirstByteSent
-        {
-            return Err(runtime_error(
-                RoutingRuntimeErrorCode::InvalidExecutionOutcome,
-            ));
-        }
-        Ok(Self::Failed {
-            acceptance,
-            commitment,
-            failure,
-        })
-    }
-}
-
-/// One final-provider request carrying a purpose-bound short lease.
-pub struct ProviderExecutionRequest {
-    candidate: CandidateKey,
-    account_id: AccountId,
-    provider_id: ProviderId,
-    provider_model: ProviderModelId,
-    usage_confirmation: UsageConfirmationId,
-    credential: SecretLease,
-}
-
-impl ProviderExecutionRequest {
-    /// Returns the selected candidate identity.
-    #[must_use]
-    pub const fn candidate(&self) -> &CandidateKey {
-        &self.candidate
-    }
-
-    /// Returns the selected provider account.
-    #[must_use]
-    pub const fn account_id(&self) -> &AccountId {
-        &self.account_id
-    }
-
-    /// Returns the selected provider.
-    #[must_use]
-    pub const fn provider_id(&self) -> &ProviderId {
-        &self.provider_id
-    }
-
-    /// Returns the provider-side model selected by the catalog.
-    #[must_use]
-    pub const fn provider_model(&self) -> &ProviderModelId {
-        &self.provider_model
-    }
-
-    /// Returns the immutable identity reserved for later usage confirmation.
-    #[must_use]
-    pub const fn usage_confirmation_id(&self) -> &UsageConfirmationId {
-        &self.usage_confirmation
-    }
-
-    /// Borrows the provider HTTP purpose-bound plaintext lease.
-    #[must_use]
-    pub const fn credential(&self) -> &SecretLease {
-        &self.credential
-    }
-
-    /// Consumes the request and returns the lease for final HTTP credential injection.
-    #[must_use]
-    pub fn into_credential(self) -> SecretLease {
-        self.credential
-    }
-}
-
-impl Debug for ProviderExecutionRequest {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("ProviderExecutionRequest")
-            .field("candidate", &self.candidate)
-            .field("account_id", &"<redacted>")
-            .field("provider_id", &"<redacted>")
-            .field("provider_model", &"<redacted>")
-            .field("usage_confirmation", &self.usage_confirmation)
-            .field("credential", &self.credential)
-            .finish()
-    }
-}
-
-/// Final provider boundary responsible for consuming one lease exactly once.
-pub trait ProviderExecutionPort: Send + Sync {
-    /// Executes one physical provider request. Every failure must explicitly
-    /// state whether physical execution was accepted; ambiguous transport state
-    /// must be classified as accepted so admission is never incorrectly released.
-    fn execute<'a>(
-        &'a self,
-        request: ProviderExecutionRequest,
-        context: &'a RequestContext,
-    ) -> Pin<Box<dyn Future<Output = ProviderExecutionOutcome> + Send + 'a>>;
-}
-
-/// Injected durable and final-execution ports used by the runtime.
-#[derive(Clone)]
-pub struct RuntimePorts {
-    account_projection: Arc<dyn AccountProjectionPort>,
-    pool: Arc<dyn CandidateSelectionPort>,
-    models: Arc<dyn ModelCatalogPort>,
-    credentials: Arc<dyn AccountCredentialReferencePort>,
-    vault: Arc<dyn VaultPort>,
-    clock: Arc<dyn RuntimeMonotonicClock>,
-}
-
-impl RuntimePorts {
-    /// Groups the required typed ports without a global service container.
-    #[must_use]
-    pub const fn new(
-        account_projection: Arc<dyn AccountProjectionPort>,
-        pool: Arc<dyn CandidateSelectionPort>,
-        models: Arc<dyn ModelCatalogPort>,
-        credentials: Arc<dyn AccountCredentialReferencePort>,
-        vault: Arc<dyn VaultPort>,
-        clock: Arc<dyn RuntimeMonotonicClock>,
-    ) -> Self {
-        Self {
-            account_projection,
-            pool,
-            models,
-            credentials,
-            vault,
-            clock,
-        }
-    }
-}
-
-impl Debug for RuntimePorts {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter.write_str("RuntimePorts(<injected>)")
-    }
-}
-
-/// Stable identity of one physically accepted provider attempt.
-#[derive(Clone, Eq, PartialEq)]
-pub struct PhysicalAttemptIdentity {
-    usage_confirmation: UsageConfirmationId,
-    candidate: CandidateKey,
-    provider_id: ProviderId,
-    provider_model: ProviderModelId,
-}
-
-impl PhysicalAttemptIdentity {
-    /// Returns the identity later passed to P8 usage ingestion.
-    #[must_use]
-    pub const fn usage_confirmation_id(&self) -> &UsageConfirmationId {
-        &self.usage_confirmation
-    }
-
-    /// Returns the accepted candidate.
-    #[must_use]
-    pub const fn candidate(&self) -> &CandidateKey {
-        &self.candidate
-    }
-
-    /// Returns the accepted provider.
-    #[must_use]
-    pub const fn provider_id(&self) -> &ProviderId {
-        &self.provider_id
-    }
-
-    /// Returns the accepted provider-side model.
-    #[must_use]
-    pub const fn provider_model(&self) -> &ProviderModelId {
-        &self.provider_model
-    }
-}
-
-impl Debug for PhysicalAttemptIdentity {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("PhysicalAttemptIdentity")
-            .field("usage_confirmation", &self.usage_confirmation)
-            .field("candidate", &self.candidate)
-            .field("provider", &"<redacted>")
-            .field("provider_model", &"<redacted>")
-            .finish()
-    }
-}
-
-/// Successful provider execution and all accepted attempt identities.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RuntimeSuccess {
-    final_attempt: PhysicalAttemptIdentity,
-    accepted_attempts: Arc<[PhysicalAttemptIdentity]>,
-    commitment: StreamCommitment,
-}
-
-impl RuntimeSuccess {
-    /// Returns the final successful physical attempt.
-    #[must_use]
-    pub const fn final_attempt(&self) -> &PhysicalAttemptIdentity {
-        &self.final_attempt
-    }
-
-    /// Returns every physically accepted attempt in execution order.
-    #[must_use]
-    pub fn accepted_attempts(&self) -> &[PhysicalAttemptIdentity] {
-        &self.accepted_attempts
-    }
-
-    /// Returns the final client-visible stream commitment.
-    #[must_use]
-    pub const fn commitment(&self) -> StreamCommitment {
-        self.commitment
-    }
-}
-
-/// Why provider execution ended without a successful attempt.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RuntimeFailureReason {
-    /// The immutable retry policy required execution to stop.
-    FailoverStopped,
-    /// Caller-supplied attempt requests ended before another safe attempt.
-    AttemptsExhausted,
-}
-
-/// Final failed provider result retaining accepted usage identities.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RuntimeFailure {
-    reason: RuntimeFailureReason,
-    failure: FailureClass,
-    commitment: StreamCommitment,
-    accepted_attempts: Arc<[PhysicalAttemptIdentity]>,
-}
-
-impl RuntimeFailure {
-    /// Returns why no further attempt was performed.
-    #[must_use]
-    pub const fn reason(&self) -> RuntimeFailureReason {
-        self.reason
-    }
-
-    /// Returns the final classified provider failure.
-    #[must_use]
-    pub const fn failure(&self) -> FailureClass {
-        self.failure
-    }
-
-    /// Returns the final client-visible stream commitment.
-    #[must_use]
-    pub const fn commitment(&self) -> StreamCommitment {
-        self.commitment
-    }
-
-    /// Returns every physically accepted attempt in execution order.
-    #[must_use]
-    pub fn accepted_attempts(&self) -> &[PhysicalAttemptIdentity] {
-        &self.accepted_attempts
-    }
-}
-
-/// Final expected provider disposition.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum RuntimeOutcome {
-    /// One provider attempt completed successfully.
-    Succeeded(RuntimeSuccess),
-    /// Provider attempts ended according to retry or capacity rules.
-    Failed(RuntimeFailure),
-}
-
 /// Routing runtime connecting durable state to final provider execution.
 #[derive(Clone, Debug)]
 pub struct RoutingRuntime {
@@ -734,6 +430,9 @@ impl RoutingRuntime {
     /// model resolution, routing, credential authorization, leasing, or admission
     /// finalization. An admission-finalization error after physical acceptance
     /// carries the stable usage identity through [`RoutingRuntimeError::usage_confirmation_id`].
+    /// Provider-originated cancellation or deadline expiry returns the matching
+    /// runtime code without failover; physically accepted attempts retain every
+    /// reconciliation identity through [`RoutingRuntimeError::accepted_attempts`].
     pub async fn execute(
         &self,
         request: RuntimeRequest,
@@ -1047,6 +746,11 @@ impl RoutingRuntime {
                 commitment,
                 failure,
             } => self.finalize_failure(route, identity, acceptance, commitment, failure),
+            ProviderExecutionOutcome::Interrupted {
+                acceptance,
+                commitment,
+                interruption,
+            } => self.finalize_interruption(route, identity, acceptance, commitment, interruption),
         }
     }
 
@@ -1085,6 +789,27 @@ impl RoutingRuntime {
         }))
     }
 
+    fn finalize_interruption(
+        &self,
+        route: CoordinatedRoute,
+        identity: PhysicalAttemptIdentity,
+        acceptance: PhysicalExecutionAcceptance,
+        commitment: StreamCommitment,
+        interruption: ProviderExecutionInterruption,
+    ) -> Result<AttemptProgress, RoutingRuntimeError> {
+        if contradictory_acceptance(acceptance, commitment) {
+            return self.finalize_contradiction(route, identity);
+        }
+        let accepted_identity = match acceptance {
+            PhysicalExecutionAcceptance::NotAccepted => None,
+            PhysicalExecutionAcceptance::Accepted => Some(&identity),
+        };
+        let now = self.finalization_time(accepted_identity)?;
+        let accepted = finalize_failed_route(route, now, acceptance, identity)?;
+        let error = runtime_error(interruption.runtime_error_code());
+        Err(execution::with_optional_accepted(error, accepted))
+    }
+
     fn finalize_contradiction(
         &self,
         mut route: CoordinatedRoute,
@@ -1115,6 +840,7 @@ impl RoutingRuntime {
         loaded: &LoadedState,
         context: &RequestContext,
     ) -> Result<(ProviderExecutionRequest, PhysicalAttemptIdentity), RoutingRuntimeError> {
+        execution::validate_execution_proxy(route.selected_proxy_profile())?;
         let (target, resolved) = self.resolve_credential(route, loaded, context).await?;
         let lease = self.issue_lease(&resolved, context).await?;
         self.revalidate_credential(&resolved, context).await?;
@@ -1199,17 +925,20 @@ impl RoutingRuntime {
     ) -> Result<(ProviderExecutionRequest, PhysicalAttemptIdentity), RoutingRuntimeError> {
         let usage_confirmation = route.usage_confirmation_id(attempt.attempt_id().clone());
         validate_usage_binding(&usage_confirmation, &loaded.tenant, context)?;
+        let proxy_profile = route.selected_proxy_profile().cloned().map(Arc::new);
         let identity = PhysicalAttemptIdentity {
             usage_confirmation: usage_confirmation.clone(),
             candidate: route.selected_candidate().clone(),
             provider_id: target.provider_id.clone(),
             provider_model: route.provider_model().clone(),
+            proxy_profile: proxy_profile.clone(),
         };
         let execution = ProviderExecutionRequest {
             candidate: route.selected_candidate().clone(),
             account_id: target.account_id,
             provider_id: target.provider_id,
             provider_model: route.provider_model().clone(),
+            proxy_profile,
             usage_confirmation,
             credential: lease,
         };
