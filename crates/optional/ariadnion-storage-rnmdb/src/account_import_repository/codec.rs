@@ -30,15 +30,19 @@
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use ariadnion_account_domain::{AccountId, AccountStatus, ModelName, ProviderId};
+use ariadnion_account_domain::{
+    AccountId, AccountStatus, ModelName, ProviderId, SecretPath, SecretProvider, SecretPurpose,
+    SecretRef, SecretVersion,
+};
 use ariadnion_account_import::{
-    AccountProjectionRequest, AccountProjectionSnapshot, ConflictStrategy, DurableAccountIdentity,
-    DurableAccountProjection, DurableAccountState, DurablePublishReceipt, DurablePublishRequest,
-    ImportEntry, ImportGeneration, ImportMutationId, MAX_ACCOUNT_PROJECTION_ACCOUNTS,
-    MAX_IMPORT_ENTRIES, OpaqueDigest,
+    AccountCredentialReference, AccountCredentialReferenceRequest, AccountProjectionRequest,
+    AccountProjectionSnapshot, ConflictStrategy, DurableAccountIdentity, DurableAccountProjection,
+    DurableAccountState, DurablePublishReceipt, DurablePublishRequest, ImportEntry,
+    ImportGeneration, ImportMutationId, MAX_ACCOUNT_PROJECTION_ACCOUNTS, MAX_IMPORT_ENTRIES,
+    OpaqueDigest,
 };
 use ariadnion_core::{RequestContext, TenantId};
-use ariadnion_storage_domain::StorageError;
+use ariadnion_storage_domain::{StorageError, StorageErrorCode};
 use hmac::{Hmac, Mac};
 use rnmdb_cli::LocalSession;
 use rnmdb_executor::vector::Row;
@@ -54,6 +58,7 @@ const MUTATION_PROJECTION: &str = "tenant_id, mutation_id, request_fingerprint_h
 const ACCOUNT_STATE_PROJECTION: &str =
     "tenant_id, account_id, config_version, account_version, account_status, import_generation";
 const ROUTING_PROJECTION: &str = "tenant_id, account_id, provider_id, default_model, max_concurrency, config_version, account_version, account_status, import_generation";
+const CREDENTIAL_REFERENCE_PROJECTION: &str = "tenant_id, account_id, provider_id, config_version, secret_provider, secret_path, secret_version, secret_purpose, account_status, import_generation";
 const FINGERPRINT_DOMAIN: &[u8] = b"ariadnion.account-import.publish-intent.hmac-sha256.v2";
 const PROVISIONING_POLICY: &[u8] = b"minimal-provisioning-v1";
 const REPLACEMENT_POLICY: &[u8] = b"advance-config-and-account-versions-preserve-status-v1";
@@ -127,16 +132,195 @@ pub(super) fn load_projection_snapshot(
     AccountProjectionSnapshot::new(generation, accounts).map_err(|_| sql::integrity())
 }
 
+pub(super) fn load_credential_reference(
+    session: &mut LocalSession,
+    tenant: &TenantId,
+    request: &AccountCredentialReferenceRequest,
+    context: &RequestContext,
+) -> Result<AccountCredentialReference, StorageError> {
+    require_active_identity_transaction(session)?;
+    let (generation, batch) = load_credential_reference_data(session, tenant, request, context)?;
+    let row = require_credential_reference_row(batch.rows())?;
+    let reference = decode_credential_reference(row, tenant, request, generation)?;
+    check_context(context)?;
+    Ok(reference)
+}
+
+fn load_credential_reference_data(
+    session: &mut LocalSession,
+    tenant: &TenantId,
+    request: &AccountCredentialReferenceRequest,
+    context: &RequestContext,
+) -> Result<(ImportGeneration, rnmdb_executor::vector::VectorBatch), StorageError> {
+    check_context(context)?;
+    let generation = require_expected_generation(session, tenant, request.expected_generation())?;
+    let batch = load_credential_reference_rows(session, tenant, request.account_id())?;
+    check_context(context)?;
+    Ok((generation, batch))
+}
+
 fn require_projection_generation(
     session: &mut LocalSession,
     tenant: &TenantId,
     request: &AccountProjectionRequest,
 ) -> Result<ImportGeneration, StorageError> {
+    require_expected_generation(session, tenant, request.expected_generation())
+}
+
+fn require_expected_generation(
+    session: &mut LocalSession,
+    tenant: &TenantId,
+    expected_generation: ImportGeneration,
+) -> Result<ImportGeneration, StorageError> {
     let generation = load_generation(session, tenant)?;
-    if generation != request.expected_generation() {
+    if generation != expected_generation {
         return Err(sql::conflict());
     }
     Ok(generation)
+}
+
+fn load_credential_reference_rows(
+    session: &mut LocalSession,
+    tenant: &TenantId,
+    account_id: &AccountId,
+) -> Result<rnmdb_executor::vector::VectorBatch, StorageError> {
+    let query = format!(
+        "SELECT {CREDENTIAL_REFERENCE_PROJECTION} FROM account_registry_accounts WHERE tenant_id = {} AND account_id = {} LIMIT 2;",
+        sql::text(tenant.as_str()),
+        sql::text(account_id.as_str()),
+    );
+    sql::rows(sql::execute(session, query)?)
+}
+
+fn require_credential_reference_row(rows: &[Row]) -> Result<&Row, StorageError> {
+    match rows {
+        [] => Err(credential_mismatch()),
+        [row] => Ok(row),
+        _ => Err(sql::integrity()),
+    }
+}
+
+fn decode_credential_reference(
+    row: &Row,
+    tenant: &TenantId,
+    request: &AccountCredentialReferenceRequest,
+    generation: ImportGeneration,
+) -> Result<AccountCredentialReference, StorageError> {
+    let values = sql::row_values::<10>(row)?;
+    let binding = decode_credential_binding(values, tenant, request)?;
+    let secret_ref = decode_credential_secret_ref(values, request)?;
+    validate_credential_reference_lifecycle(values, generation)?;
+    AccountCredentialReference::new(
+        tenant.clone(),
+        binding.account_id,
+        binding.provider_id,
+        binding.config_version,
+        request.purpose().clone(),
+        generation,
+        secret_ref,
+    )
+    .map_err(|_| sql::integrity())
+}
+
+struct CredentialReferenceBinding {
+    account_id: AccountId,
+    provider_id: ProviderId,
+    config_version: u64,
+}
+
+fn decode_credential_binding(
+    values: &[rnmdb_types::SqlValue; 10],
+    tenant: &TenantId,
+    request: &AccountCredentialReferenceRequest,
+) -> Result<CredentialReferenceBinding, StorageError> {
+    require_tenant(&values[0], tenant)?;
+    let account_id = require_credential_account(&values[1], request)?;
+    let provider_id = require_credential_provider(&values[2], request)?;
+    let config_version = require_credential_config_version(&values[3], request)?;
+    Ok(CredentialReferenceBinding {
+        account_id,
+        provider_id,
+        config_version,
+    })
+}
+
+fn require_credential_account(
+    value: &rnmdb_types::SqlValue,
+    request: &AccountCredentialReferenceRequest,
+) -> Result<AccountId, StorageError> {
+    let account_id = parse_account_id(value)?;
+    if &account_id != request.account_id() {
+        return Err(sql::integrity());
+    }
+    Ok(account_id)
+}
+
+fn require_credential_provider(
+    value: &rnmdb_types::SqlValue,
+    request: &AccountCredentialReferenceRequest,
+) -> Result<ProviderId, StorageError> {
+    let provider_id = parse_provider_id(value)?;
+    if &provider_id != request.provider_id() {
+        return Err(credential_mismatch());
+    }
+    Ok(provider_id)
+}
+
+fn require_credential_config_version(
+    value: &rnmdb_types::SqlValue,
+    request: &AccountCredentialReferenceRequest,
+) -> Result<u64, StorageError> {
+    let config_version = nonzero_text_version(value)?;
+    if config_version != request.config_version() {
+        return Err(credential_mismatch());
+    }
+    Ok(config_version)
+}
+
+fn decode_credential_secret_ref(
+    values: &[rnmdb_types::SqlValue; 10],
+    request: &AccountCredentialReferenceRequest,
+) -> Result<SecretRef, StorageError> {
+    let provider = parse_secret_provider(&values[4])?;
+    let path = parse_secret_path(&values[5])?;
+    let version = parse_secret_version(&values[6])?;
+    let purpose = parse_secret_purpose(&values[7])?;
+    if &purpose != request.purpose() {
+        return Err(credential_mismatch());
+    }
+    Ok(SecretRef::new(provider, path, version, purpose))
+}
+
+fn parse_secret_provider(value: &rnmdb_types::SqlValue) -> Result<SecretProvider, StorageError> {
+    SecretProvider::parse(sql::text_value(value)?).map_err(|_| sql::integrity())
+}
+
+fn parse_secret_path(value: &rnmdb_types::SqlValue) -> Result<SecretPath, StorageError> {
+    SecretPath::parse(sql::text_value(value)?).map_err(|_| sql::integrity())
+}
+
+fn parse_secret_version(value: &rnmdb_types::SqlValue) -> Result<SecretVersion, StorageError> {
+    SecretVersion::new(nonzero_text_version(value)?).map_err(|_| sql::integrity())
+}
+
+fn parse_secret_purpose(value: &rnmdb_types::SqlValue) -> Result<SecretPurpose, StorageError> {
+    SecretPurpose::parse(sql::text_value(value)?).map_err(|_| sql::integrity())
+}
+
+fn validate_credential_reference_lifecycle(
+    values: &[rnmdb_types::SqlValue; 10],
+    generation: ImportGeneration,
+) -> Result<(), StorageError> {
+    require_active_credential_status(&values[8])?;
+    let row_generation = ImportGeneration::new(nonzero_text_version(&values[9])?);
+    require_projection_row_generation(row_generation, generation)
+}
+
+fn require_active_credential_status(value: &rnmdb_types::SqlValue) -> Result<(), StorageError> {
+    if decode_status(sql::text_value(value)?)? != AccountStatus::Active {
+        return Err(credential_mismatch());
+    }
+    Ok(())
 }
 
 fn load_projection_rows(
@@ -886,4 +1070,8 @@ fn valid_fingerprint(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+const fn credential_mismatch() -> StorageError {
+    StorageError::new(StorageErrorCode::NotFound)
 }

@@ -43,6 +43,7 @@ use std::thread::{self, JoinHandle};
 use std::time::SystemTime;
 
 use ariadnion_account_import::{
+    AccountCredentialReference, AccountCredentialReferencePort, AccountCredentialReferenceRequest,
     AccountImportPort, AccountProjectionPort, AccountProjectionRequest, AccountProjectionSnapshot,
     BoxImportFuture, DurablePublishReceipt, DurablePublishRequest, ImportGeneration,
     ImportMutationId, ImportPortError, ImportPortErrorCode,
@@ -138,6 +139,8 @@ pub enum AccountImportAccess {
     Generation,
     /// Reads a complete secret-free account projection snapshot.
     Projection,
+    /// Resolves one active account's metadata-only credential reference.
+    CredentialReference,
 }
 
 /// Trusted, fail-closed authorization boundary for account-store access.
@@ -314,6 +317,21 @@ impl AccountProjectionPort for RnmdbAccountImportRepository {
     }
 }
 
+impl AccountCredentialReferencePort for RnmdbAccountImportRepository {
+    fn account_credential_reference<'a>(
+        &'a self,
+        request: AccountCredentialReferenceRequest,
+        context: &'a RequestContext,
+    ) -> BoxImportFuture<'a, AccountCredentialReference> {
+        let tenant = match admitted_tenant(context) {
+            Ok(tenant) => tenant,
+            Err(error) => return Box::pin(ready(Err(error))),
+        };
+        self.worker
+            .credential_reference(request, context.clone(), tenant)
+    }
+}
+
 fn authenticated_tenant(context: &RequestContext) -> Result<TenantId, ImportPortError> {
     context
         .principal()
@@ -370,6 +388,17 @@ fn execute_job(
             context,
             tenant,
         } => ImportJobResponse::Projection(execute_projection(
+            session,
+            environment,
+            request,
+            context,
+            tenant,
+        )),
+        ImportJobKind::CredentialReference {
+            request,
+            context,
+            tenant,
+        } => ImportJobResponse::CredentialReference(execute_credential_reference(
             session,
             environment,
             request,
@@ -491,6 +520,27 @@ fn execute_projection(
         .map_err(map_projection_error)
 }
 
+fn execute_credential_reference(
+    session: &Arc<RnmdbSessionOwner>,
+    environment: &ImportEnvironment,
+    request: AccountCredentialReferenceRequest,
+    context: RequestContext,
+    tenant: TenantId,
+) -> Result<AccountCredentialReference, ImportPortError> {
+    authorize_current(
+        environment,
+        AccountImportAccess::CredentialReference,
+        &context,
+    )?;
+    session
+        .with_identity_transaction_session(&context, &tenant, |local| {
+            run_identity_transaction(local, &context, |local| {
+                codec::load_credential_reference(local, &tenant, &request, &context)
+            })
+        })
+        .map_err(map_credential_reference_error)
+}
+
 fn map_projection_error(error: StorageError) -> ImportPortError {
     if error.code() == StorageErrorCode::Conflict {
         import_error(ImportPortErrorCode::ProjectionConflict)
@@ -498,6 +548,15 @@ fn map_projection_error(error: StorageError) -> ImportPortError {
         import_error(ImportPortErrorCode::Unavailable)
     } else {
         map_storage_error(error)
+    }
+}
+
+fn map_credential_reference_error(error: StorageError) -> ImportPortError {
+    match error.code() {
+        StorageErrorCode::Conflict => import_error(ImportPortErrorCode::ProjectionConflict),
+        StorageErrorCode::NotFound => import_error(ImportPortErrorCode::Conflict),
+        StorageErrorCode::CommitIndeterminate => import_error(ImportPortErrorCode::Unavailable),
+        _ => map_storage_error(error),
     }
 }
 
@@ -616,6 +675,20 @@ impl ImportWorker {
         self.submit(kind, project_projection)
     }
 
+    fn credential_reference<'a>(
+        &'a self,
+        request: AccountCredentialReferenceRequest,
+        context: RequestContext,
+        tenant: TenantId,
+    ) -> BoxImportFuture<'a, AccountCredentialReference> {
+        let kind = ImportJobKind::CredentialReference {
+            request,
+            context,
+            tenant,
+        };
+        self.submit(kind, project_credential_reference)
+    }
+
     fn submit<'a, T>(
         &'a self,
         kind: ImportJobKind,
@@ -693,6 +766,11 @@ enum ImportJobKind {
         context: RequestContext,
         tenant: TenantId,
     },
+    CredentialReference {
+        request: AccountCredentialReferenceRequest,
+        context: RequestContext,
+        tenant: TenantId,
+    },
 }
 
 impl ImportJobKind {
@@ -701,7 +779,8 @@ impl ImportJobKind {
             Self::Publish { context, .. }
             | Self::Reconcile { context, .. }
             | Self::Generation { context, .. }
-            | Self::Projection { context, .. } => context,
+            | Self::Projection { context, .. }
+            | Self::CredentialReference { context, .. } => context,
         }
     }
 }
@@ -711,6 +790,7 @@ enum ImportJobResponse {
     Reconcile(Result<Option<DurablePublishReceipt>, ImportPortError>),
     Generation(Result<ImportGeneration, ImportPortError>),
     Projection(Result<AccountProjectionSnapshot, ImportPortError>),
+    CredentialReference(Result<AccountCredentialReference, ImportPortError>),
 }
 
 fn project_publish(response: ImportJobResponse) -> Result<DurablePublishReceipt, ImportPortError> {
@@ -741,6 +821,15 @@ fn project_projection(
 ) -> Result<AccountProjectionSnapshot, ImportPortError> {
     match response {
         ImportJobResponse::Projection(result) => result,
+        _ => Err(import_error(ImportPortErrorCode::CorruptState)),
+    }
+}
+
+fn project_credential_reference(
+    response: ImportJobResponse,
+) -> Result<AccountCredentialReference, ImportPortError> {
+    match response {
+        ImportJobResponse::CredentialReference(result) => result,
         _ => Err(import_error(ImportPortErrorCode::CorruptState)),
     }
 }
@@ -833,6 +922,7 @@ enum ImportResponseKind {
     Reconcile,
     Generation,
     Projection,
+    CredentialReference,
 }
 
 impl From<&ImportJobKind> for ImportResponseKind {
@@ -842,6 +932,7 @@ impl From<&ImportJobKind> for ImportResponseKind {
             ImportJobKind::Reconcile { .. } => Self::Reconcile,
             ImportJobKind::Generation { .. } => Self::Generation,
             ImportJobKind::Projection { .. } => Self::Projection,
+            ImportJobKind::CredentialReference { .. } => Self::CredentialReference,
         }
     }
 }
@@ -853,6 +944,9 @@ impl ImportResponseKind {
             Self::Reconcile => ImportJobResponse::Reconcile(Err(import_error(code))),
             Self::Generation => ImportJobResponse::Generation(Err(import_error(code))),
             Self::Projection => ImportJobResponse::Projection(Err(import_error(code))),
+            Self::CredentialReference => {
+                ImportJobResponse::CredentialReference(Err(import_error(code)))
+            }
         }
     }
 }
