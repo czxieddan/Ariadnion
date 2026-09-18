@@ -40,6 +40,9 @@ const MAX_ID_BYTES: usize = 128;
 const MAX_LABEL_BYTES: usize = 160;
 const MAX_SECRET_PATH_BYTES: usize = 512;
 
+/// Maximum persisted relative routing weight.
+pub const MAX_ROUTING_WEIGHT: u32 = 1 << 20;
+
 /// Stable machine-readable failures returned by account-domain operations.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
@@ -329,6 +332,70 @@ impl AccountConfigVersion {
     }
 }
 
+/// Persisted routing priority where lower numeric values are preferred.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct RoutingPriority(u16);
+
+impl RoutingPriority {
+    /// Default priority used by legacy account configuration.
+    pub const DEFAULT: Self = Self(0);
+
+    /// Creates a routing priority.
+    #[must_use]
+    pub const fn new(value: u16) -> Self {
+        Self(value)
+    }
+
+    /// Returns the numeric priority.
+    #[must_use]
+    pub const fn get(self) -> u16 {
+        self.0
+    }
+}
+
+impl Default for RoutingPriority {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// Persisted relative routing weight.
+///
+/// Zero is retained as an explicit policy exclusion rather than being
+/// normalized to the default weight.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct RoutingWeight(u32);
+
+impl RoutingWeight {
+    /// Default weight used by legacy account configuration.
+    pub const DEFAULT: Self = Self(1);
+
+    /// Creates a routing weight within the binary persisted bound.
+    ///
+    /// # Errors
+    /// Returns [`AccountDomainErrorCode::InvalidArgument`] when `value` exceeds
+    /// [`MAX_ROUTING_WEIGHT`]. Zero is accepted for explicit policy exclusion.
+    pub const fn new(value: u32) -> Result<Self, AccountDomainError> {
+        if value > MAX_ROUTING_WEIGHT {
+            Err(error(AccountDomainErrorCode::InvalidArgument))
+        } else {
+            Ok(Self(value))
+        }
+    }
+
+    /// Returns the numeric weight.
+    #[must_use]
+    pub const fn get(self) -> u32 {
+        self.0
+    }
+}
+
+impl Default for RoutingWeight {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
 /// A version of a secret material reference, never the secret itself.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SecretVersion(NonZeroU64);
@@ -479,6 +546,8 @@ pub struct AccountConfig {
     secret_ref: SecretRef,
     default_model: Option<ModelName>,
     max_concurrency: NonZeroU32,
+    routing_priority: RoutingPriority,
+    routing_weight: RoutingWeight,
 }
 
 impl AccountConfig {
@@ -493,6 +562,32 @@ impl AccountConfig {
         default_model: Option<ModelName>,
         max_concurrency: u32,
     ) -> Result<Self, AccountDomainError> {
+        Self::with_routing(
+            version,
+            secret_ref,
+            default_model,
+            max_concurrency,
+            RoutingPriority::default(),
+            RoutingWeight::default(),
+        )
+    }
+
+    /// Creates a validated account configuration with explicit routing values.
+    ///
+    /// The routing values are immutable parts of this configuration version.
+    /// A zero weight remains observable so policy can exclude the account.
+    ///
+    /// # Errors
+    /// Returns [`AccountDomainErrorCode::InvalidArgument`] when the concurrency
+    /// limit is zero. Routing-weight validation occurs in [`RoutingWeight::new`].
+    pub fn with_routing(
+        version: AccountConfigVersion,
+        secret_ref: SecretRef,
+        default_model: Option<ModelName>,
+        max_concurrency: u32,
+        routing_priority: RoutingPriority,
+        routing_weight: RoutingWeight,
+    ) -> Result<Self, AccountDomainError> {
         let Some(max_concurrency) = NonZeroU32::new(max_concurrency) else {
             return Err(error(AccountDomainErrorCode::InvalidArgument));
         };
@@ -501,6 +596,8 @@ impl AccountConfig {
             secret_ref,
             default_model,
             max_concurrency,
+            routing_priority,
+            routing_weight,
         })
     }
 
@@ -527,6 +624,18 @@ impl AccountConfig {
     pub const fn max_concurrency(&self) -> NonZeroU32 {
         self.max_concurrency
     }
+
+    /// Returns the persisted routing priority.
+    #[must_use]
+    pub const fn routing_priority(&self) -> RoutingPriority {
+        self.routing_priority
+    }
+
+    /// Returns the persisted relative routing weight.
+    #[must_use]
+    pub const fn routing_weight(&self) -> RoutingWeight {
+        self.routing_weight
+    }
 }
 
 impl Debug for AccountConfig {
@@ -537,6 +646,8 @@ impl Debug for AccountConfig {
             .field("secret_ref", &self.secret_ref)
             .field("default_model", &self.default_model)
             .field("max_concurrency", &self.max_concurrency)
+            .field("routing_priority", &self.routing_priority)
+            .field("routing_weight", &self.routing_weight)
             .finish()
     }
 }
