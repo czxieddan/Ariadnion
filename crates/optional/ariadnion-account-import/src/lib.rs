@@ -40,8 +40,13 @@
 
 use std::collections::BTreeSet;
 use std::fmt::{self, Debug, Display, Formatter};
+use std::num::NonZeroU32;
 use std::sync::RwLock;
 
+use ariadnion_account_domain::{
+    AccountConfig, AccountConfigVersion, AccountLabel, AccountMetadata, ExternalAccountId,
+    ModelName, ProviderLabel, ProviderMetadata,
+};
 pub use ariadnion_account_domain::{AccountId, ProviderId, SecretRef};
 
 pub mod migrations;
@@ -278,7 +283,13 @@ pub enum ConflictStrategy {
 pub struct ImportEntry {
     account_id: AccountId,
     provider_id: ProviderId,
+    provider_label: Option<ProviderLabel>,
+    account_label: Option<AccountLabel>,
+    external_account_id: Option<ExternalAccountId>,
+    config_version: AccountConfigVersion,
     secret_ref: SecretRef,
+    default_model: Option<ModelName>,
+    max_concurrency: NonZeroU32,
     credential_digest: OpaqueDigest,
 }
 
@@ -297,7 +308,40 @@ impl ImportEntry {
         Self {
             account_id,
             provider_id,
+            provider_label: None,
+            account_label: None,
+            external_account_id: None,
+            config_version: AccountConfigVersion::initial(),
             secret_ref,
+            default_model: None,
+            max_concurrency: NonZeroU32::MIN,
+            credential_digest,
+        }
+    }
+
+    /// Creates an entry carrying structured registry configuration.
+    ///
+    /// The tenant and lifecycle state remain adapter-owned. The configuration
+    /// contains only metadata, a secret reference, and bounded routing settings;
+    /// plaintext credential material is never accepted.
+    #[must_use]
+    pub fn configured(
+        account_id: AccountId,
+        provider: ProviderMetadata,
+        metadata: AccountMetadata,
+        config: AccountConfig,
+        credential_digest: OpaqueDigest,
+    ) -> Self {
+        Self {
+            account_id,
+            provider_id: provider.id().clone(),
+            provider_label: Some(provider.label().clone()),
+            account_label: Some(metadata.label().clone()),
+            external_account_id: metadata.external_id().cloned(),
+            config_version: config.version(),
+            secret_ref: config.secret_ref().clone(),
+            default_model: config.default_model().cloned(),
+            max_concurrency: config.max_concurrency(),
             credential_digest,
         }
     }
@@ -314,10 +358,56 @@ impl ImportEntry {
         &self.provider_id
     }
 
+    /// Returns the configured provider label or the stable provider identity.
+    #[must_use]
+    pub fn provider_label(&self) -> &str {
+        self.provider_label
+            .as_ref()
+            .map_or_else(|| self.provider_id.as_str(), ProviderLabel::as_str)
+    }
+
+    /// Returns the configured account label or the stable account identity.
+    #[must_use]
+    pub fn account_label(&self) -> &str {
+        self.account_label
+            .as_ref()
+            .map_or_else(|| self.account_id.as_str(), AccountLabel::as_str)
+    }
+
+    /// Returns the optional provider-side account identity.
+    #[must_use]
+    pub const fn external_account_id(&self) -> Option<&ExternalAccountId> {
+        self.external_account_id.as_ref()
+    }
+
+    /// Returns the imported account-configuration version.
+    #[must_use]
+    pub const fn config_version(&self) -> AccountConfigVersion {
+        self.config_version
+    }
+
     /// Returns the external secret reference.
     #[must_use]
     pub const fn secret_ref(&self) -> &SecretRef {
         &self.secret_ref
+    }
+
+    /// Returns the optional default model selector.
+    #[must_use]
+    pub const fn default_model(&self) -> Option<&ModelName> {
+        self.default_model.as_ref()
+    }
+
+    /// Returns the bounded account concurrency setting.
+    #[must_use]
+    pub const fn max_concurrency(&self) -> NonZeroU32 {
+        self.max_concurrency
+    }
+
+    /// Reports whether the caller supplied structured registry configuration.
+    #[must_use]
+    pub const fn has_explicit_configuration(&self) -> bool {
+        self.provider_label.is_some()
     }
 
     /// Returns the opaque credential digest.
@@ -333,7 +423,13 @@ impl Debug for ImportEntry {
             .debug_struct("ImportEntry")
             .field("account_id", &self.account_id)
             .field("provider_id", &self.provider_id)
+            .field("provider_label", &self.provider_label)
+            .field("account_label", &self.account_label)
+            .field("external_account_id", &self.external_account_id)
+            .field("config_version", &self.config_version)
             .field("secret_ref", &self.secret_ref)
+            .field("default_model", &self.default_model)
+            .field("max_concurrency", &self.max_concurrency)
             .field("credential_digest", &self.credential_digest)
             .finish()
     }
