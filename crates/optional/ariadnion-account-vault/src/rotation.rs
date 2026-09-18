@@ -237,6 +237,18 @@ impl RotationJournal {
         self.overlap_expires_at
     }
 
+    /// Returns the durable old-version revoke receipt, when completed.
+    #[must_use]
+    pub fn old_revoke_receipt(&self) -> Option<SecretRevokeReceipt> {
+        self.old_revoke_receipt.clone()
+    }
+
+    /// Returns the durable new-version compensation receipt, when failed.
+    #[must_use]
+    pub fn compensation_receipt(&self) -> Option<SecretRevokeReceipt> {
+        self.compensation_receipt.clone()
+    }
+
     /// Records a durable store receipt for exactly the planned new version.
     ///
     /// # Errors
