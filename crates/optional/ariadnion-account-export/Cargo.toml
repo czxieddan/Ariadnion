@@ -40,7 +40,10 @@ publish = false
 [dependencies]
 ariadnion-account-domain = { path = "../ariadnion-account-domain" }
 ariadnion-core = { path = "../../ariadnion-core" }
+chacha20poly1305 = { version = "=0.11.0", default-features = false, features = ["alloc", "zeroize"] }
+ed25519-dalek = { version = "=2.2.0", default-features = false, features = ["alloc", "fast", "std", "zeroize"] }
 sha2 = "=0.10.9"
+zeroize = { version = "=1.9.0", features = ["alloc"] }
 
 [lints.rust]
 unsafe_code = "forbid"
