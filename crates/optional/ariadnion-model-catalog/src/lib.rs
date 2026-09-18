@@ -38,7 +38,7 @@
 use std::collections::BTreeSet;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::num::NonZeroU64;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use ariadnion_core::TenantId;
 use ariadnion_model_domain::{
@@ -69,6 +69,8 @@ pub enum ModelCatalogErrorCode {
     ProviderTargetNotFound,
     /// A monotonic snapshot version cannot advance without wrapping.
     VersionExhausted,
+    /// The process-local snapshot owner cannot be read or updated safely.
+    StateUnavailable,
 }
 
 impl ModelCatalogErrorCode {
@@ -76,14 +78,40 @@ impl ModelCatalogErrorCode {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::InvalidArgument => "MODEL_CATALOG_INVALID_ARGUMENT",
-            Self::LimitExceeded => "MODEL_CATALOG_LIMIT_EXCEEDED",
-            Self::Conflict => "MODEL_CATALOG_CONFLICT",
-            Self::AmbiguousProvider => "MODEL_CATALOG_AMBIGUOUS_PROVIDER",
-            Self::ModelNotFound => "MODEL_CATALOG_MODEL_NOT_FOUND",
-            Self::ProviderTargetNotFound => "MODEL_CATALOG_PROVIDER_TARGET_NOT_FOUND",
-            Self::VersionExhausted => "MODEL_CATALOG_VERSION_EXHAUSTED",
+            Self::InvalidArgument | Self::LimitExceeded | Self::Conflict => {
+                catalog_request_error_code(self)
+            }
+            Self::AmbiguousProvider | Self::ModelNotFound | Self::ProviderTargetNotFound => {
+                catalog_lookup_error_code(self)
+            }
+            Self::VersionExhausted | Self::StateUnavailable => catalog_state_error_code(self),
         }
+    }
+}
+
+const fn catalog_request_error_code(code: ModelCatalogErrorCode) -> &'static str {
+    match code {
+        ModelCatalogErrorCode::InvalidArgument => "MODEL_CATALOG_INVALID_ARGUMENT",
+        ModelCatalogErrorCode::LimitExceeded => "MODEL_CATALOG_LIMIT_EXCEEDED",
+        ModelCatalogErrorCode::Conflict => "MODEL_CATALOG_CONFLICT",
+        _ => "MODEL_CATALOG_INVALID_ARGUMENT",
+    }
+}
+
+const fn catalog_lookup_error_code(code: ModelCatalogErrorCode) -> &'static str {
+    match code {
+        ModelCatalogErrorCode::AmbiguousProvider => "MODEL_CATALOG_AMBIGUOUS_PROVIDER",
+        ModelCatalogErrorCode::ModelNotFound => "MODEL_CATALOG_MODEL_NOT_FOUND",
+        ModelCatalogErrorCode::ProviderTargetNotFound => "MODEL_CATALOG_PROVIDER_TARGET_NOT_FOUND",
+        _ => "MODEL_CATALOG_MODEL_NOT_FOUND",
+    }
+}
+
+const fn catalog_state_error_code(code: ModelCatalogErrorCode) -> &'static str {
+    match code {
+        ModelCatalogErrorCode::VersionExhausted => "MODEL_CATALOG_VERSION_EXHAUSTED",
+        ModelCatalogErrorCode::StateUnavailable => "MODEL_CATALOG_STATE_UNAVAILABLE",
+        _ => "MODEL_CATALOG_STATE_UNAVAILABLE",
     }
 }
 
@@ -554,6 +582,64 @@ pub trait ModelCatalogPort: Send + Sync {
     ) -> Result<TenantCatalogProjection, ModelCatalogError> {
         self.current_snapshot()
             .map(|snapshot| snapshot.project_for(tenant_id))
+    }
+}
+
+/// Process-local atomic owner for complete immutable model-catalog snapshots.
+///
+/// Publication swaps one validated [`Arc`] while holding the write lock, so
+/// readers observe either the complete previous snapshot or the complete next
+/// snapshot. This owner does not claim persistence or cross-process ordering;
+/// durable catalog storage remains an adapter responsibility.
+pub struct AtomicModelCatalog {
+    current: RwLock<Arc<ModelCatalogSnapshot>>,
+}
+
+impl AtomicModelCatalog {
+    /// Creates a process-local owner from one complete initial snapshot.
+    #[must_use]
+    pub fn new(initial: ModelCatalogSnapshot) -> Self {
+        Self {
+            current: RwLock::new(Arc::new(initial)),
+        }
+    }
+
+    /// Publishes the exact successor of the caller-observed version.
+    ///
+    /// # Errors
+    /// Returns [`ModelCatalogErrorCode::Conflict`] when the observed version is
+    /// stale or the proposed snapshot is not its exact successor. Returns
+    /// [`ModelCatalogErrorCode::StateUnavailable`] when the publication lock is
+    /// poisoned, and propagates version exhaustion without replacing the current
+    /// snapshot.
+    pub fn publish(
+        &self,
+        expected: CatalogVersion,
+        next: ModelCatalogSnapshot,
+    ) -> Result<Arc<ModelCatalogSnapshot>, ModelCatalogError> {
+        let mut current = self
+            .current
+            .write()
+            .map_err(|_| error(ModelCatalogErrorCode::StateUnavailable))?;
+        if current.version() != expected {
+            return Err(error(ModelCatalogErrorCode::Conflict));
+        }
+        let required = current.version().next()?;
+        if next.version() != required {
+            return Err(error(ModelCatalogErrorCode::Conflict));
+        }
+        let published = Arc::new(next);
+        *current = Arc::clone(&published);
+        Ok(published)
+    }
+}
+
+impl ModelCatalogPort for AtomicModelCatalog {
+    fn current_snapshot(&self) -> Result<Arc<ModelCatalogSnapshot>, ModelCatalogError> {
+        self.current
+            .read()
+            .map(|snapshot| Arc::clone(&snapshot))
+            .map_err(|_| error(ModelCatalogErrorCode::StateUnavailable))
     }
 }
 
