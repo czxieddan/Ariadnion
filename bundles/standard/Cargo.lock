@@ -552,6 +552,7 @@ dependencies = [
  "ariadnion-account-domain",
  "ariadnion-account-import",
  "ariadnion-account-pool",
+ "ariadnion-account-proxy",
  "ariadnion-account-vault",
  "ariadnion-core",
  "ariadnion-model-catalog",

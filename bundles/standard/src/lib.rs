@@ -182,8 +182,20 @@ impl RoutingRuntimeAssemblyReport {
     }
 
     /// Reports that all account, model, credential, vault, and clock ports are injected.
+    ///
+    /// The final provider executor is intentionally supplied for each request
+    /// and is not included in this shared-port statement.
     #[must_use]
     pub const fn uses_injected_ports(self) -> bool {
+        true
+    }
+
+    /// Reports that each runtime request must supply its final provider executor.
+    ///
+    /// Provider-specific payload encoding and response projection belong to the
+    /// request adapter, so the bundle does not claim a generic wire executor.
+    #[must_use]
+    pub const fn requires_request_scoped_executor(self) -> bool {
         true
     }
 }
@@ -220,6 +232,8 @@ impl RoutingRuntimeAssembly {
 /// The coordinator retains process-local admission state. The caller remains
 /// responsible for supplying concrete tenant-scoped account, model, credential,
 /// vault, and monotonic-clock implementations through [`RuntimePorts`].
+/// Each [`ariadnion_routing_runtime::RuntimeRequest`] separately supplies the
+/// final provider executor that owns provider-specific payload and response work.
 ///
 /// # Errors
 ///
