@@ -48,6 +48,7 @@ pub mod migrations;
 mod port;
 
 pub use port::{
+    AccountCredentialReference, AccountCredentialReferencePort, AccountCredentialReferenceRequest,
     AccountImportPort, AccountProjectionPort, AccountProjectionRequest, AccountProjectionSnapshot,
     BoxImportFuture, DurableAccountIdentity, DurableAccountProjection, DurableAccountState,
     DurablePublishReceipt, DurablePublishRequest, ImportMutationId, ImportPortError,

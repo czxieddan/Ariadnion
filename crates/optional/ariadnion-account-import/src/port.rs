@@ -33,7 +33,9 @@ use std::future::Future;
 use std::pin::Pin;
 use std::time::SystemTime;
 
-use ariadnion_account_domain::{AccountId, AccountStatus, ModelName, ProviderId};
+use ariadnion_account_domain::{
+    AccountId, AccountStatus, ModelName, ProviderId, SecretPurpose, SecretRef,
+};
 use ariadnion_core::{RequestContext, TenantId};
 
 use crate::{ImportGeneration, MAX_IMPORT_ENTRIES, PublishIntent};
@@ -55,11 +57,11 @@ pub enum ImportPortErrorCode {
     InvalidArgument,
     /// The request has no authenticated tenant.
     Unauthenticated,
-    /// The authenticated principal cannot publish account configuration.
+    /// The authenticated principal cannot perform the requested account-store operation.
     PermissionDenied,
-    /// The requested durable projection is from a different generation.
+    /// The requested durable generation does not match the current authoritative projection.
     ProjectionConflict,
-    /// The mutation identity or expected generation conflicts with durable state.
+    /// The requested durable account binding or mutation conflicts with authoritative state.
     Conflict,
     /// Cancellation won before a new durable effect began.
     Cancelled,
@@ -219,6 +221,212 @@ impl AccountProjectionRequest {
     #[must_use]
     pub const fn expected_generation(&self) -> ImportGeneration {
         self.expected_generation
+    }
+}
+
+/// A request to resolve one active account's external credential reference.
+///
+/// The authenticated tenant is taken exclusively from the accompanying
+/// [`RequestContext`]. The account, provider, configuration version, secret
+/// purpose, and import generation form one revalidatable identity. This value
+/// never carries credential bytes or a mutable tenant selector.
+#[derive(Clone, Eq, PartialEq)]
+pub struct AccountCredentialReferenceRequest {
+    account_id: AccountId,
+    provider_id: ProviderId,
+    config_version: u64,
+    purpose: SecretPurpose,
+    expected_generation: ImportGeneration,
+}
+
+impl AccountCredentialReferenceRequest {
+    /// Creates a request bound to one non-zero configuration and import generation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ImportPortErrorCode::InvalidArgument`] when the configuration
+    /// version is zero or the expected generation is initial.
+    pub fn new(
+        account_id: AccountId,
+        provider_id: ProviderId,
+        config_version: u64,
+        purpose: SecretPurpose,
+        expected_generation: ImportGeneration,
+    ) -> Result<Self, ImportPortError> {
+        if config_version == 0 || expected_generation == ImportGeneration::initial() {
+            return Err(ImportPortError::new(ImportPortErrorCode::InvalidArgument));
+        }
+        Ok(Self {
+            account_id,
+            provider_id,
+            config_version,
+            purpose,
+            expected_generation,
+        })
+    }
+
+    /// Returns the exact tenant-local account identity to resolve.
+    #[must_use]
+    pub const fn account_id(&self) -> &AccountId {
+        &self.account_id
+    }
+
+    /// Returns the expected upstream provider identity.
+    #[must_use]
+    pub const fn provider_id(&self) -> &ProviderId {
+        &self.provider_id
+    }
+
+    /// Returns the exact non-zero account configuration version.
+    #[must_use]
+    pub const fn config_version(&self) -> u64 {
+        self.config_version
+    }
+
+    /// Returns the required external-secret purpose.
+    #[must_use]
+    pub const fn purpose(&self) -> &SecretPurpose {
+        &self.purpose
+    }
+
+    /// Returns the generation that must still be current for resolution.
+    #[must_use]
+    pub const fn expected_generation(&self) -> ImportGeneration {
+        self.expected_generation
+    }
+}
+
+impl Debug for AccountCredentialReferenceRequest {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AccountCredentialReferenceRequest")
+            .field("account_id", &self.account_id)
+            .field("provider_id", &self.provider_id)
+            .field("config_version", &self.config_version)
+            .field("purpose", &self.purpose)
+            .field("expected_generation", &self.expected_generation)
+            .finish()
+    }
+}
+
+/// An authenticated, generation-bound reference to one account credential.
+///
+/// The value carries a [`SecretRef`] locator and validation metadata only. It
+/// never contains credential bytes, a credential digest, or secret-manager key
+/// material. Callers revalidate it by passing [`Self::revalidation_request`] to
+/// [`AccountCredentialReferencePort::account_credential_reference`].
+#[derive(Clone, Eq, PartialEq)]
+pub struct AccountCredentialReference {
+    tenant_id: TenantId,
+    account_id: AccountId,
+    provider_id: ProviderId,
+    config_version: u64,
+    purpose: SecretPurpose,
+    import_generation: ImportGeneration,
+    secret_ref: SecretRef,
+}
+
+impl AccountCredentialReference {
+    /// Creates one reference whose declared and embedded secret purposes agree.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ImportPortErrorCode::InvalidArgument`] when the configuration
+    /// version or import generation is zero, or when the secret reference has a
+    /// different purpose than the supplied binding.
+    pub fn new(
+        tenant_id: TenantId,
+        account_id: AccountId,
+        provider_id: ProviderId,
+        config_version: u64,
+        purpose: SecretPurpose,
+        import_generation: ImportGeneration,
+        secret_ref: SecretRef,
+    ) -> Result<Self, ImportPortError> {
+        if config_version == 0
+            || import_generation == ImportGeneration::initial()
+            || secret_ref.purpose() != &purpose
+        {
+            return Err(ImportPortError::new(ImportPortErrorCode::InvalidArgument));
+        }
+        Ok(Self {
+            tenant_id,
+            account_id,
+            provider_id,
+            config_version,
+            purpose,
+            import_generation,
+            secret_ref,
+        })
+    }
+
+    /// Returns the tenant authenticated when this reference was resolved.
+    #[must_use]
+    pub const fn tenant_id(&self) -> &TenantId {
+        &self.tenant_id
+    }
+
+    /// Returns the exact resolved account identity.
+    #[must_use]
+    pub const fn account_id(&self) -> &AccountId {
+        &self.account_id
+    }
+
+    /// Returns the exact resolved upstream provider identity.
+    #[must_use]
+    pub const fn provider_id(&self) -> &ProviderId {
+        &self.provider_id
+    }
+
+    /// Returns the exact resolved configuration version.
+    #[must_use]
+    pub const fn config_version(&self) -> u64 {
+        self.config_version
+    }
+
+    /// Returns the declared purpose of the resolved secret reference.
+    #[must_use]
+    pub const fn purpose(&self) -> &SecretPurpose {
+        &self.purpose
+    }
+
+    /// Returns the tenant import generation verified during resolution.
+    #[must_use]
+    pub const fn import_generation(&self) -> ImportGeneration {
+        self.import_generation
+    }
+
+    /// Returns the metadata-only external secret reference.
+    #[must_use]
+    pub const fn secret_ref(&self) -> &SecretRef {
+        &self.secret_ref
+    }
+
+    /// Reconstructs the exact request required to revalidate this reference.
+    #[must_use]
+    pub fn revalidation_request(&self) -> AccountCredentialReferenceRequest {
+        AccountCredentialReferenceRequest {
+            account_id: self.account_id.clone(),
+            provider_id: self.provider_id.clone(),
+            config_version: self.config_version,
+            purpose: self.purpose.clone(),
+            expected_generation: self.import_generation,
+        }
+    }
+}
+
+impl Debug for AccountCredentialReference {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AccountCredentialReference")
+            .field("tenant_id", &"<redacted>")
+            .field("account_id", &self.account_id)
+            .field("provider_id", &self.provider_id)
+            .field("config_version", &self.config_version)
+            .field("purpose", &self.purpose)
+            .field("import_generation", &self.import_generation)
+            .field("secret_ref", &self.secret_ref)
+            .finish()
     }
 }
 
@@ -568,6 +776,23 @@ pub trait AccountProjectionPort: Send + Sync {
         request: AccountProjectionRequest,
         context: &'a RequestContext,
     ) -> BoxImportFuture<'a, AccountProjectionSnapshot>;
+}
+
+/// Authenticated tenant-scoped read port for one active credential reference.
+///
+/// Adapters authorize this read independently from projection access, derive the
+/// tenant only from the authenticated context, and verify the request generation
+/// before returning a reference. A stale generation returns
+/// [`ImportPortErrorCode::ProjectionConflict`]; missing, inactive, or mismatched
+/// rows return a redacted conflict without disclosing durable account state.
+/// Cancellation and deadlines remain effective until the read transaction ends.
+pub trait AccountCredentialReferencePort: Send + Sync {
+    /// Resolves one exact active account credential reference without credential bytes.
+    fn account_credential_reference<'a>(
+        &'a self,
+        request: AccountCredentialReferenceRequest,
+        context: &'a RequestContext,
+    ) -> BoxImportFuture<'a, AccountCredentialReference>;
 }
 
 fn valid_mutation_id(value: &str) -> bool {
