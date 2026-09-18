@@ -37,6 +37,7 @@ publish = false
 [workspace]
 
 [dependencies]
+ariadnion-account-vault = { path = "../../crates/optional/ariadnion-account-vault" }
 ariadnion-api-domain = { path = "../../crates/optional/ariadnion-api-domain" }
 ariadnion-api-files = { path = "../../crates/optional/ariadnion-api-files" }
 ariadnion-api-http = { path = "../../crates/optional/ariadnion-api-http" }
@@ -54,6 +55,7 @@ ariadnion-provider-mock = { path = "../../crates/optional/ariadnion-provider-moc
 ariadnion-provider-sdk = { path = "../../crates/optional/ariadnion-provider-sdk" }
 ariadnion-routing-admission = { path = "../../crates/optional/ariadnion-routing-admission" }
 ariadnion-routing-coordinator = { path = "../../crates/optional/ariadnion-routing-coordinator" }
+ariadnion-routing-runtime = { path = "../../crates/optional/ariadnion-routing-runtime" }
 ariadnion-storage-asset = { path = "../../crates/optional/ariadnion-storage-asset" }
 ariadnion-storage-backup = { path = "../../crates/optional/ariadnion-storage-backup" }
 ariadnion-storage-domain = { path = "../../crates/optional/ariadnion-storage-domain" }
