@@ -43,7 +43,10 @@ use ariadnion_account_import::migrations::{
     ACCOUNT_REGISTRY_MIGRATION_CANONICAL_V1_SHA256, ACCOUNT_REGISTRY_MIGRATION_DOMAIN,
     ACCOUNT_REGISTRY_MIGRATION_FROM_VERSION, ACCOUNT_REGISTRY_MIGRATION_ID,
     ACCOUNT_REGISTRY_MIGRATION_REQUIRES_BACKUP, ACCOUNT_REGISTRY_MIGRATION_STATEMENTS,
-    ACCOUNT_REGISTRY_MIGRATION_TO_VERSION,
+    ACCOUNT_REGISTRY_MIGRATION_TO_VERSION, ACCOUNT_ROUTING_POLICY_MIGRATION_CANONICAL_V1_SHA256,
+    ACCOUNT_ROUTING_POLICY_MIGRATION_DOMAIN, ACCOUNT_ROUTING_POLICY_MIGRATION_FROM_VERSION,
+    ACCOUNT_ROUTING_POLICY_MIGRATION_ID, ACCOUNT_ROUTING_POLICY_MIGRATION_REQUIRES_BACKUP,
+    ACCOUNT_ROUTING_POLICY_MIGRATION_STATEMENTS, ACCOUNT_ROUTING_POLICY_MIGRATION_TO_VERSION,
 };
 use ariadnion_account_vault::migrations::{
     ACCOUNT_VAULT_MIGRATION_CANONICAL_V1_SHA256, ACCOUNT_VAULT_MIGRATION_DOMAIN,
@@ -453,6 +456,7 @@ fn compile_account_definitions(
         compile_account_batch_definition()?,
         compile_account_vault_definition()?,
         compile_account_vault_rotation_definition()?,
+        compile_account_routing_policy_definition()?,
     ] {
         insert_definition(definitions, definition)?;
     }
@@ -901,6 +905,19 @@ fn compile_account_vault_rotation_definition() -> Result<RnmdbMigrationDefinitio
         statements: ACCOUNT_VAULT_ROTATION_MIGRATION_STATEMENTS,
         expected_checksum: ACCOUNT_VAULT_ROTATION_MIGRATION_CANONICAL_V1_SHA256,
         requires_backup: ACCOUNT_VAULT_ROTATION_MIGRATION_REQUIRES_BACKUP,
+    };
+    compile_migration_definition(input, CanonicalAstV1)
+}
+
+fn compile_account_routing_policy_definition() -> Result<RnmdbMigrationDefinition, StorageError> {
+    let input = CanonicalMigrationDefinitionInput {
+        id: ACCOUNT_ROUTING_POLICY_MIGRATION_ID,
+        domain: ACCOUNT_ROUTING_POLICY_MIGRATION_DOMAIN,
+        from: ACCOUNT_ROUTING_POLICY_MIGRATION_FROM_VERSION,
+        to: ACCOUNT_ROUTING_POLICY_MIGRATION_TO_VERSION,
+        statements: ACCOUNT_ROUTING_POLICY_MIGRATION_STATEMENTS,
+        expected_checksum: ACCOUNT_ROUTING_POLICY_MIGRATION_CANONICAL_V1_SHA256,
+        requires_backup: ACCOUNT_ROUTING_POLICY_MIGRATION_REQUIRES_BACKUP,
     };
     compile_migration_definition(input, CanonicalAstV1)
 }

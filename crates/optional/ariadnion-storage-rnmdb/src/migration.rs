@@ -30,7 +30,9 @@
 
 use std::sync::Arc;
 
-use ariadnion_account_import::migrations::ACCOUNT_REGISTRY_MIGRATION_ID;
+use ariadnion_account_import::migrations::{
+    ACCOUNT_REGISTRY_MIGRATION_ID, ACCOUNT_ROUTING_POLICY_MIGRATION_ID,
+};
 use ariadnion_account_vault::migrations::{
     ACCOUNT_VAULT_MIGRATION_ID, ACCOUNT_VAULT_ROTATION_MIGRATION_ID,
 };
@@ -392,6 +394,19 @@ pub fn account_vault_migration() -> Result<MigrationDescriptor, StorageError> {
 /// canonical checksum do not match the compiled migration registry.
 pub fn account_vault_rotation_migration() -> Result<MigrationDescriptor, StorageError> {
     compiled_migration_definitions()?.descriptor(ACCOUNT_VAULT_ROTATION_MIGRATION_ID)
+}
+
+/// Returns the additive durable account-routing migration after digest validation.
+///
+/// The version-twenty-four to version-twenty-five transition preserves the
+/// immutable account registry and adds tenant-scoped routing priority and weight
+/// records. Migration execution remains explicit and performs no repository I/O.
+///
+/// # Errors
+/// Returns a stable integrity error when fixed metadata, statements, or the
+/// canonical checksum do not match the compiled migration registry.
+pub fn account_routing_policy_migration() -> Result<MigrationDescriptor, StorageError> {
+    compiled_migration_definitions()?.descriptor(ACCOUNT_ROUTING_POLICY_MIGRATION_ID)
 }
 
 fn migration_insert(
