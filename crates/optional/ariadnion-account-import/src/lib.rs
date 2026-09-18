@@ -45,7 +45,7 @@ use std::sync::RwLock;
 
 use ariadnion_account_domain::{
     AccountConfig, AccountConfigVersion, AccountLabel, AccountMetadata, ExternalAccountId,
-    ModelName, ProviderLabel, ProviderMetadata,
+    ModelName, ProviderLabel, ProviderMetadata, RoutingPriority, RoutingWeight,
 };
 pub use ariadnion_account_domain::{AccountId, ProviderId, SecretRef};
 
@@ -56,8 +56,9 @@ pub use port::{
     AccountCredentialReference, AccountCredentialReferencePort, AccountCredentialReferenceRequest,
     AccountImportPort, AccountProjectionPort, AccountProjectionRequest, AccountProjectionSnapshot,
     BoxImportFuture, DurableAccountIdentity, DurableAccountProjection, DurableAccountState,
-    DurablePublishReceipt, DurablePublishRequest, ImportMutationId, ImportPortError,
-    ImportPortErrorCode, MAX_ACCOUNT_PROJECTION_ACCOUNTS, MAX_IMPORT_MUTATION_ID_BYTES,
+    DurablePublishReceipt, DurablePublishRequest, DurableRoutingState, ImportMutationId,
+    ImportPortError, ImportPortErrorCode, MAX_ACCOUNT_PROJECTION_ACCOUNTS,
+    MAX_IMPORT_MUTATION_ID_BYTES,
 };
 
 /// Maximum entries accepted by one import batch.
@@ -290,6 +291,8 @@ pub struct ImportEntry {
     secret_ref: SecretRef,
     default_model: Option<ModelName>,
     max_concurrency: NonZeroU32,
+    routing_priority: RoutingPriority,
+    routing_weight: RoutingWeight,
     credential_digest: OpaqueDigest,
 }
 
@@ -315,6 +318,8 @@ impl ImportEntry {
             secret_ref,
             default_model: None,
             max_concurrency: NonZeroU32::MIN,
+            routing_priority: RoutingPriority::DEFAULT,
+            routing_weight: RoutingWeight::DEFAULT,
             credential_digest,
         }
     }
@@ -342,6 +347,8 @@ impl ImportEntry {
             secret_ref: config.secret_ref().clone(),
             default_model: config.default_model().cloned(),
             max_concurrency: config.max_concurrency(),
+            routing_priority: config.routing_priority(),
+            routing_weight: config.routing_weight(),
             credential_digest,
         }
     }
@@ -404,6 +411,18 @@ impl ImportEntry {
         self.max_concurrency
     }
 
+    /// Returns the imported routing priority.
+    #[must_use]
+    pub const fn routing_priority(&self) -> RoutingPriority {
+        self.routing_priority
+    }
+
+    /// Returns the imported routing weight.
+    #[must_use]
+    pub const fn routing_weight(&self) -> RoutingWeight {
+        self.routing_weight
+    }
+
     /// Reports whether the caller supplied structured registry configuration.
     #[must_use]
     pub const fn has_explicit_configuration(&self) -> bool {
@@ -430,6 +449,8 @@ impl Debug for ImportEntry {
             .field("secret_ref", &self.secret_ref)
             .field("default_model", &self.default_model)
             .field("max_concurrency", &self.max_concurrency)
+            .field("routing_priority", &self.routing_priority)
+            .field("routing_weight", &self.routing_weight)
             .field("credential_digest", &self.credential_digest)
             .finish()
     }

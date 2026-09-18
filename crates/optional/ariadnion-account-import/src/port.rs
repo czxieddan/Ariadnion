@@ -34,7 +34,8 @@ use std::pin::Pin;
 use std::time::SystemTime;
 
 use ariadnion_account_domain::{
-    AccountId, AccountStatus, ModelName, ProviderId, SecretPurpose, SecretRef,
+    AccountId, AccountStatus, ModelName, ProviderId, RoutingPriority, RoutingWeight, SecretPurpose,
+    SecretRef,
 };
 use ariadnion_core::{RequestContext, TenantId};
 
@@ -465,6 +466,34 @@ pub struct DurableAccountState {
     account_version: u64,
     status: AccountStatus,
     import_generation: ImportGeneration,
+    routing: DurableRoutingState,
+}
+
+/// Typed persisted routing priority and weight reconstructed by storage.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct DurableRoutingState {
+    priority: RoutingPriority,
+    weight: RoutingWeight,
+}
+
+impl DurableRoutingState {
+    /// Creates an exact persisted routing state from validated domain values.
+    #[must_use]
+    pub const fn new(priority: RoutingPriority, weight: RoutingWeight) -> Self {
+        Self { priority, weight }
+    }
+
+    /// Returns the persisted routing priority.
+    #[must_use]
+    pub const fn priority(self) -> RoutingPriority {
+        self.priority
+    }
+
+    /// Returns the persisted routing weight.
+    #[must_use]
+    pub const fn weight(self) -> RoutingWeight {
+        self.weight
+    }
 }
 
 impl DurableAccountState {
@@ -480,6 +509,29 @@ impl DurableAccountState {
         status: AccountStatus,
         import_generation: ImportGeneration,
     ) -> Result<Self, ImportPortError> {
+        Self::with_routing(
+            max_concurrency,
+            config_version,
+            account_version,
+            status,
+            import_generation,
+            DurableRoutingState::default(),
+        )
+    }
+
+    /// Creates validated persisted lifecycle state with exact routing values.
+    ///
+    /// # Errors
+    /// Returns [`ImportPortErrorCode::InvalidArgument`] for zero versions,
+    /// zero concurrency, or generation zero.
+    pub fn with_routing(
+        max_concurrency: u32,
+        config_version: u64,
+        account_version: u64,
+        status: AccountStatus,
+        import_generation: ImportGeneration,
+        routing: DurableRoutingState,
+    ) -> Result<Self, ImportPortError> {
         if max_concurrency == 0
             || config_version == 0
             || account_version == 0
@@ -494,6 +546,7 @@ impl DurableAccountState {
             account_version,
             status,
             import_generation,
+            routing,
         })
     }
 }
@@ -510,6 +563,7 @@ pub struct DurableAccountProjection {
     account_version: u64,
     status: AccountStatus,
     import_generation: ImportGeneration,
+    routing: DurableRoutingState,
 }
 
 impl DurableAccountProjection {
@@ -527,6 +581,7 @@ impl DurableAccountProjection {
             account_version: state.account_version,
             status: state.status,
             import_generation: state.import_generation,
+            routing: state.routing,
         }
     }
 
@@ -582,6 +637,18 @@ impl DurableAccountProjection {
     #[must_use]
     pub const fn import_generation(&self) -> ImportGeneration {
         self.import_generation
+    }
+
+    /// Returns the exact persisted routing priority.
+    #[must_use]
+    pub const fn routing_priority(&self) -> RoutingPriority {
+        self.routing.priority()
+    }
+
+    /// Returns the exact persisted routing weight.
+    #[must_use]
+    pub const fn routing_weight(&self) -> RoutingWeight {
+        self.routing.weight()
     }
 }
 
