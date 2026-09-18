@@ -205,6 +205,7 @@ impl std::error::Error for AccountPoolError {}
 // SPDX-License-Identifier: LicenseRef-AHCL-1.1
 
 use std::fmt::{Debug, Display, Formatter};
+use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use ariadnion_account_domain::{Account, AccountId, ModelName, ProviderId};
@@ -543,6 +544,7 @@ pub struct CandidateMetadata {
     account_id: AccountId,
     provider_id: ProviderId,
     model: Option<ModelName>,
+    max_concurrency: Option<NonZeroU32>,
     priority: Priority,
     weight: Weight,
     load: Load,
@@ -565,6 +567,7 @@ impl CandidateMetadata {
             account_id,
             provider_id,
             model,
+            max_concurrency: None,
             priority: routing.priority,
             weight: routing.weight,
             load: routing.load,
@@ -587,6 +590,7 @@ impl CandidateMetadata {
             ),
         );
         candidate.tenant_id = Some(account.tenant_id().clone());
+        candidate.max_concurrency = Some(account.config().max_concurrency());
         candidate
     }
 
@@ -604,12 +608,15 @@ impl CandidateMetadata {
             availability,
         );
         let id = CandidateId::from_account(account.account_id());
+        let max_concurrency = NonZeroU32::new(account.max_concurrency())
+            .ok_or_else(|| model_error(AccountPoolErrorCode::InvalidCandidate))?;
         Ok(Self {
             id,
             tenant_id: Some(account.tenant_id().clone()),
             account_id: account.account_id().clone(),
             provider_id: account.provider_id().clone(),
             model: account.default_model().cloned(),
+            max_concurrency: Some(max_concurrency),
             priority: routing.priority,
             weight: routing.weight,
             load: routing.load,
@@ -645,6 +652,15 @@ impl CandidateMetadata {
     #[must_use]
     pub const fn model(&self) -> Option<&ModelName> {
         self.model.as_ref()
+    }
+
+    /// Returns the persisted simultaneous-attempt bound for this account.
+    ///
+    /// Manually constructed, tenant-unbound metadata has no authoritative
+    /// account configuration and therefore returns `None`.
+    #[must_use]
+    pub const fn max_concurrency(&self) -> Option<NonZeroU32> {
+        self.max_concurrency
     }
 
     /// Returns the priority tier.
