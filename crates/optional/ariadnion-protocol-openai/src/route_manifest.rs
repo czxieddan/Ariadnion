@@ -29,7 +29,6 @@
 //! Explicit composition of the currently production-ready OpenAI route leaves.
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use ariadnion_api_domain::AudioOutputSpecification;
 use ariadnion_api_http::{
@@ -57,8 +56,8 @@ use crate::{
 /// [`Self::mount`]. Files, Batch, and Realtime use a stable unavailable projection
 /// until their explicit capabilities are supplied. Legacy Completions and Responses
 /// require the same explicit timestamp capability and are omitted when it is absent.
-/// Models and Speech are mounted only when their typed composition capabilities are
-/// supplied.
+/// Models and Speech retain their method and path ownership with a stable unavailable
+/// projection until their typed composition capabilities are supplied.
 #[derive(Clone)]
 pub struct OpenAiRouteManifest {
     models: Option<Arc<OpenAiModelCatalog>>,
@@ -135,7 +134,7 @@ impl OpenAiRouteManifest {
     /// Adds the authenticated Realtime WebSocket adapter and transport limits.
     ///
     /// Limits are validated by [`ProtocolUpgradeLimits::new`] before they are
-    /// supplied here. When absent, the Realtime upgrade path retains the stable
+    /// supplied here. When absent, the Realtime path retains the stable
     /// unavailable projection.
     #[must_use]
     pub fn with_realtime_adapter(
@@ -196,12 +195,8 @@ impl OpenAiRouteManifest {
                     Arc::clone(timestamp),
                 ));
         }
-        if let Some(catalog) = &self.models {
-            router = router.merge(openai_models_router(http.clone(), Arc::clone(catalog)));
-        }
-        if let Some(output) = self.speech_output {
-            router = router.merge(openai_speech_router(http.clone(), output));
-        }
+        router = router.merge(self.mount_models(http.clone()));
+        router = router.merge(self.mount_speech(http.clone()));
         if let Some(adapter) = &self.files {
             router = router.merge(openai_files_router(http.clone(), Arc::clone(adapter)));
         }
@@ -211,15 +206,28 @@ impl OpenAiRouteManifest {
         router
     }
 
+    fn mount_models(&self, http: HttpApiState) -> Router {
+        match &self.models {
+            Some(catalog) => openai_models_router(http, Arc::clone(catalog)),
+            None => openai_unavailable_models_router(http),
+        }
+    }
+
+    fn mount_speech(&self, http: HttpApiState) -> Router {
+        match self.speech_output {
+            Some(output) => openai_speech_router(http, output),
+            None => openai_unavailable_speech_router(http),
+        }
+    }
+
     fn mount_realtime(&self, router: Router, http: HttpApiState) -> Router {
-        let realtime = self.realtime.clone().or_else(unavailable_realtime);
-        match realtime {
+        match self.realtime.clone() {
             Some(realtime) => router.merge(openai_realtime_router(
                 http,
                 realtime.protocol,
                 realtime.limits,
             )),
-            None => router,
+            None => router.merge(openai_unavailable_realtime_router(http)),
         }
     }
 }
@@ -246,37 +254,33 @@ impl HttpOperationProtocolAdapter for UnavailableOperationAdapter {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
-struct UnavailableUpgradeAdapter;
-
-impl HttpUpgradeProtocolAdapter for UnavailableUpgradeAdapter {
-    fn prepare(
-        &self,
-        _query: Option<&str>,
-    ) -> Result<ariadnion_api_http::BoxHttpUpgradeSession, ProtocolFailure> {
-        Err(unavailable_failure())
-    }
-
-    fn project_failure(
-        &self,
-        identity: &HttpRequestIdentity,
-        failure: ProtocolFailure,
-    ) -> Result<ProtocolBufferedResponse, ProtocolFailure> {
-        crate::response::project_failure(identity, failure)
-    }
-}
-
-fn unavailable_realtime() -> Option<RealtimeCapability> {
-    let limits =
-        ProtocolUpgradeLimits::new(256 * 1024, 256 * 1024, Duration::from_secs(60 * 60)).ok()?;
-    Some(RealtimeCapability {
-        protocol: Arc::new(UnavailableUpgradeAdapter),
-        limits,
-    })
-}
-
 fn unavailable_failure() -> ProtocolFailure {
     ProtocolFailure::Http(ApiHttpError::new(ApiHttpErrorCode::Unavailable))
+}
+
+fn openai_unavailable_models_router(http: HttpApiState) -> Router {
+    let state = unavailable_operation_state(http);
+    Router::new()
+        .route(crate::OPENAI_MODELS_PATH, protocol_operation_get_route())
+        .with_state(state)
+}
+
+fn openai_unavailable_speech_router(http: HttpApiState) -> Router {
+    let state = unavailable_operation_state(http);
+    Router::new()
+        .route(crate::OPENAI_SPEECH_PATH, protocol_operation_post_route())
+        .with_state(state)
+}
+
+fn openai_unavailable_realtime_router(http: HttpApiState) -> Router {
+    let state = unavailable_operation_state(http);
+    Router::new()
+        .route(crate::OPENAI_REALTIME_PATH, protocol_operation_get_route())
+        .with_state(state)
+}
+
+fn unavailable_operation_state(http: HttpApiState) -> ProtocolOperationExecutionState {
+    ProtocolOperationExecutionState::new(http, Arc::new(UnavailableOperationAdapter))
 }
 
 /// Builds the OpenAI Files compatibility router over one authenticated adapter.
