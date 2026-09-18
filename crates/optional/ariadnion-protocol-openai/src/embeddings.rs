@@ -36,7 +36,7 @@ use std::sync::Arc;
 
 use ariadnion_api_domain::{
     ApiDomainError, ApiDomainErrorCode, EmbeddingInput, EmbeddingInputs, EmbeddingServiceRequest,
-    EmbeddingServiceResponse, MAX_EMBEDDING_INPUTS, ModelSelector, ResponseMode,
+    EmbeddingServiceResponse, IdempotencyKey, MAX_EMBEDDING_INPUTS, ModelSelector, ResponseMode,
     ServiceContractVersion, ServiceRequest, ServiceResponse, ServiceStreamEvent,
 };
 use ariadnion_api_http::{
@@ -79,7 +79,8 @@ impl Debug for OpenAiEmbeddingsProtocol {
 
 impl HttpProtocolAdapter for OpenAiEmbeddingsProtocol {
     fn decode(&self, body: ProtocolRequestBody) -> Result<ProtocolRequest, ProtocolFailure> {
-        let decoded = decode_request(body.bytes())?;
+        let idempotency = crate::parse_optional_idempotency_key(body.headers())?;
+        let decoded = decode_request_with_idempotency(body.bytes(), idempotency)?;
         let projection = Arc::new(OpenAiEmbeddingsProjection::new(decoded.model));
         ProtocolRequest::new(
             ServiceRequest::Embedding(decoded.request),
@@ -112,10 +113,17 @@ pub(crate) struct DecodedRequest {
 }
 
 pub(crate) fn decode_request(bytes: &[u8]) -> Result<DecodedRequest, ProtocolFailure> {
+    decode_request_with_idempotency(bytes, None)
+}
+
+pub(crate) fn decode_request_with_idempotency(
+    bytes: &[u8],
+    idempotency: Option<IdempotencyKey>,
+) -> Result<DecodedRequest, ProtocolFailure> {
     let mut deserializer = serde_json::Deserializer::from_slice(bytes);
     let raw = RawRequest::deserialize(&mut deserializer).map_err(|_| invalid_request())?;
     deserializer.end().map_err(|_| invalid_request())?;
-    raw.into_domain().map_err(ProtocolFailure::from)
+    raw.into_domain(idempotency).map_err(ProtocolFailure::from)
 }
 
 struct RawRequest<'a> {
@@ -124,14 +132,17 @@ struct RawRequest<'a> {
 }
 
 impl RawRequest<'_> {
-    fn into_domain(self) -> Result<DecodedRequest, ApiDomainError> {
+    fn into_domain(
+        self,
+        idempotency: Option<IdempotencyKey>,
+    ) -> Result<DecodedRequest, ApiDomainError> {
         let model = ModelSelector::new(self.model.as_ref())?;
         let projection_model = model.as_str().into();
         let request = EmbeddingServiceRequest::new(
             ServiceContractVersion::V1,
             model,
             self.input.into_domain()?,
-            None,
+            idempotency,
         );
         Ok(DecodedRequest {
             request,

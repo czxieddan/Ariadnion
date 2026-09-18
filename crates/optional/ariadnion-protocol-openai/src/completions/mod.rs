@@ -41,7 +41,7 @@ use ariadnion_api_http::{
 };
 use axum::Router;
 
-use crate::{OpenAiTimestampPort, SystemOpenAiTimestamp};
+use crate::{OpenAiTimestampPort, SystemOpenAiTimestamp, parse_optional_idempotency_key};
 
 pub(crate) mod request;
 mod response;
@@ -90,7 +90,8 @@ impl Debug for OpenAiCompletionsProtocol {
 
 impl HttpProtocolAdapter for OpenAiCompletionsProtocol {
     fn decode(&self, body: ProtocolRequestBody) -> Result<ProtocolRequest, ProtocolFailure> {
-        let decoded = request::decode(body.bytes())?;
+        let idempotency = parse_optional_idempotency_key(body.headers())?;
+        let decoded = request::decode_with_idempotency(body.bytes(), idempotency)?;
         let created = self.clock.unix_seconds()?;
         let projection = Arc::new(OpenAiCompletionsProjection::new(
             decoded.model,
