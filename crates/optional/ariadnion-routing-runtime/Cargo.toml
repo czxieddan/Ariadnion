@@ -42,6 +42,7 @@ ariadnion-account-affinity = { path = "../ariadnion-account-affinity" }
 ariadnion-account-domain = { path = "../ariadnion-account-domain" }
 ariadnion-account-import = { path = "../ariadnion-account-import" }
 ariadnion-account-pool = { path = "../ariadnion-account-pool" }
+ariadnion-account-proxy = { path = "../ariadnion-account-proxy" }
 ariadnion-account-vault = { path = "../ariadnion-account-vault" }
 ariadnion-core = { path = "../../ariadnion-core" }
 ariadnion-model-catalog = { path = "../ariadnion-model-catalog" }
