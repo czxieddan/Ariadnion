@@ -219,7 +219,7 @@ pub enum AttemptOutcome {
     /// Admission refused this candidate before physical provider dispatch.
     AdmissionRejected(AdmissionRefusal),
     /// A physically accepted provider attempt failed with this class.
-    ProviderFailed(FailureClass),
+    ProviderFailure(FailureClass),
 }
 
 /// One ordered, bounded failover plan.
@@ -442,7 +442,7 @@ impl DeterministicFailoverPlanner {
         outcome: AttemptOutcome,
     ) -> Result<AttemptDecision, FailoverError> {
         let action = match outcome {
-            AttemptOutcome::ProviderFailed(failure) => self.decide(context, failure)?.action,
+            AttemptOutcome::ProviderFailure(failure) => self.decide(context, failure)?.action,
             AttemptOutcome::AdmissionRejected(refusal) => {
                 let index = self
                     .plan
