@@ -643,6 +643,7 @@ pub enum ProviderHttpTrust {
 
 /// Protocol versions permitted during one provider TLS handshake.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+#[non_exhaustive]
 pub enum ProviderHttpTlsPolicy {
     /// Permit TLS 1.2 and TLS 1.3 for compatibility with older providers.
     #[default]

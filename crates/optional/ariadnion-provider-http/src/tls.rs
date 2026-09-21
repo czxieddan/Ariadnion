@@ -79,8 +79,6 @@ fn build_client_config(
             .with_protocol_versions(&[&rustls::version::TLS13, &rustls::version::TLS12]),
         ProviderHttpTlsPolicy::Tls13Only => ClientConfig::builder_with_provider(provider)
             .with_protocol_versions(&[&rustls::version::TLS13]),
-        _ => ClientConfig::builder_with_provider(provider)
-            .with_protocol_versions(&[&rustls::version::TLS13]),
     }
     .map_err(tls_failure)?;
     let mut config = builder
