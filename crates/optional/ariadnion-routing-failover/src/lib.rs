@@ -31,7 +31,8 @@
 //! The planner classifies provider failures, enforces explicit idempotency
 //! boundaries, limits alternate candidates and attempts, and refuses all
 //! failover after a stream emits its first byte. It stores no credentials,
-//! response bodies, clocks, or mutable global state.
+//! response bodies, clocks, or mutable global state. Pre-dispatch admission
+//! refusals are distinct from failures of an accepted provider attempt.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -203,6 +204,24 @@ impl FailureClass {
     }
 }
 
+/// Scope of a refusal before the provider accepts an attempt.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum AdmissionRefusal {
+    /// Only this candidate was unavailable; another candidate may be considered.
+    CandidateUnavailable,
+    /// The request or shared admission authority rejected further execution.
+    RequestRejected,
+}
+
+/// Typed disposition presented to the failover planner.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum AttemptOutcome {
+    /// Admission refused this candidate before physical provider dispatch.
+    AdmissionRejected(AdmissionRefusal),
+    /// A physically accepted provider attempt failed with this class.
+    ProviderFailed(FailureClass),
+}
+
 /// One ordered, bounded failover plan.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FailoverPlan {
@@ -318,6 +337,27 @@ pub struct FailoverDecision {
     failure: FailureClass,
 }
 
+/// A redacted action that preserves the pre-dispatch versus provider boundary.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AttemptDecision {
+    action: FailoverAction,
+    outcome: AttemptOutcome,
+}
+
+impl AttemptDecision {
+    /// Returns the bounded action to execute.
+    #[must_use]
+    pub const fn action(&self) -> &FailoverAction {
+        &self.action
+    }
+
+    /// Returns the classified disposition without candidate or secret material.
+    #[must_use]
+    pub const fn outcome(&self) -> AttemptOutcome {
+        self.outcome
+    }
+}
+
 impl FailoverDecision {
     fn new(action: FailoverAction, failure: FailureClass) -> Self {
         Self { action, failure }
@@ -381,6 +421,58 @@ impl DeterministicFailoverPlanner {
         let action = next_action(&self.plan, index);
         Ok(FailoverDecision::new(action, failure))
     }
+
+    /// Decides whether a pre-dispatch refusal or provider failure can advance.
+    ///
+    /// The caller must classify a refusal as candidate-scoped only when no
+    /// physical provider execution was accepted and another candidate can be
+    /// independently admitted. A request-wide or uncertain admission failure
+    /// must be [`AdmissionRefusal::RequestRejected`]. Each refusal consumes its
+    /// one-based attempt ordinal; the planner never retries the same candidate
+    /// after admission refusal. No retry is permitted for non-idempotent work or
+    /// after the first response byte, even when admission claims pre-dispatch.
+    ///
+    /// # Errors
+    /// Returns a redacted stable error for an unknown candidate or an attempt
+    /// beyond the immutable plan's bound. The method has no I/O or cancellation
+    /// state and makes no admission or provider call.
+    pub fn decide_outcome(
+        &self,
+        context: &AttemptContext,
+        outcome: AttemptOutcome,
+    ) -> Result<AttemptDecision, FailoverError> {
+        let action = match outcome {
+            AttemptOutcome::ProviderFailed(failure) => self.decide(context, failure)?.action,
+            AttemptOutcome::AdmissionRejected(refusal) => {
+                let index = self
+                    .plan
+                    .index_of(context.candidate())
+                    .ok_or_else(|| error(FailoverErrorCode::CandidateNotInPlan))?;
+                validate_attempt(context, self.plan.max_attempts)?;
+                admission_action(&self.plan, context, refusal, index)
+            }
+        };
+        Ok(AttemptDecision { action, outcome })
+    }
+}
+
+fn admission_action(
+    plan: &FailoverPlan,
+    context: &AttemptContext,
+    refusal: AdmissionRefusal,
+    index: usize,
+) -> FailoverAction {
+    if refusal == AdmissionRefusal::RequestRejected
+        || context.stream() == StreamCommitment::FirstByteSent
+        || !context.operation().permits_retry()
+        || context.attempt() >= plan.max_attempts
+    {
+        return FailoverAction::Stop;
+    }
+    plan.candidates
+        .get(index + 1)
+        .cloned()
+        .map_or(FailoverAction::Stop, FailoverAction::SwitchCandidate)
 }
 
 fn validate_plan_bounds(candidate_count: usize, max_attempts: u8) -> Result<(), FailoverError> {
