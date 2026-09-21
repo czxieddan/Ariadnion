@@ -32,7 +32,8 @@
 #![deny(missing_docs)]
 
 use std::fmt::{self, Debug, Display, Formatter};
-use std::num::{NonZeroU16, NonZeroU32};
+use std::num::{NonZeroU16, NonZeroU32, NonZeroU64};
+use std::sync::{Arc, RwLock};
 
 use ariadnion_account_domain::SecretRef;
 
@@ -52,6 +53,8 @@ pub const MAX_CONNECT_TIMEOUT_MS: u32 = 120_000;
 pub const MAX_REQUEST_TIMEOUT_MS: u32 = 900_000;
 /// Maximum redirects followed by a proxy client.
 pub const MAX_REDIRECTS: u8 = 16;
+/// Maximum profiles in one published proxy snapshot.
+pub const MAX_PROFILES: usize = 1 << 12;
 
 /// Stable machine-readable proxy validation failures.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -71,6 +74,20 @@ pub enum AccountProxyErrorCode {
     ConnectivityOutOfBounds,
     /// A profile requires a proxy endpoint but was configured for direct egress.
     InvalidEgressConstraint,
+    /// A proxy scheme is not supported by the execution boundary.
+    UnsupportedScheme,
+    /// A snapshot contains duplicate profile identities.
+    DuplicateProfile,
+    /// A snapshot or profile collection exceeds its fixed bound.
+    LimitExceeded,
+    /// A publication does not extend the caller-observed snapshot.
+    VersionConflict,
+    /// A snapshot generation cannot advance without wrapping.
+    VersionExhausted,
+    /// The process-local publication owner cannot be read or updated safely.
+    StateUnavailable,
+    /// The requested profile is absent from the immutable snapshot.
+    ProfileNotFound,
 }
 
 impl AccountProxyErrorCode {
@@ -85,6 +102,13 @@ impl AccountProxyErrorCode {
             Self::InvalidSecretReference => "ACCOUNT_PROXY_INVALID_SECRET_REFERENCE",
             Self::ConnectivityOutOfBounds => "ACCOUNT_PROXY_CONNECTIVITY_OUT_OF_BOUNDS",
             Self::InvalidEgressConstraint => "ACCOUNT_PROXY_INVALID_EGRESS_CONSTRAINT",
+            Self::UnsupportedScheme => "ACCOUNT_PROXY_UNSUPPORTED_SCHEME",
+            Self::DuplicateProfile => "ACCOUNT_PROXY_DUPLICATE_PROFILE",
+            Self::LimitExceeded => "ACCOUNT_PROXY_LIMIT_EXCEEDED",
+            Self::VersionConflict => "ACCOUNT_PROXY_VERSION_CONFLICT",
+            Self::VersionExhausted => "ACCOUNT_PROXY_VERSION_EXHAUSTED",
+            Self::StateUnavailable => "ACCOUNT_PROXY_STATE_UNAVAILABLE",
+            Self::ProfileNotFound => "ACCOUNT_PROXY_PROFILE_NOT_FOUND",
         }
     }
 }
@@ -171,6 +195,31 @@ pub enum ProxyScheme {
     Https,
     /// SOCKS5 proxy.
     Socks5,
+}
+
+impl ProxyScheme {
+    /// Parses one supported wire-level proxy scheme.
+    ///
+    /// Scheme matching is ASCII case-insensitive. No other scheme is accepted
+    /// by this execution boundary.
+    ///
+    /// # Errors
+    /// Returns [`AccountProxyErrorCode::UnsupportedScheme`] for every value
+    /// outside the supported set.
+    pub fn parse(value: &str) -> Result<Self, AccountProxyError> {
+        if value.eq_ignore_ascii_case("http") {
+            return Ok(Self::Http);
+        }
+        if value.eq_ignore_ascii_case("https") {
+            return Ok(Self::Https);
+        }
+        if value.eq_ignore_ascii_case("socks5") {
+            return Ok(Self::Socks5);
+        }
+        Err(AccountProxyError::new(
+            AccountProxyErrorCode::UnsupportedScheme,
+        ))
+    }
 }
 
 /// A validated proxy endpoint or explicit direct egress.
@@ -464,6 +513,216 @@ impl AccountProxyProfile {
         self.regions.permits(region)
     }
 }
+
+/// A non-zero generation identifying one immutable proxy snapshot.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct ProxyGeneration(NonZeroU64);
+
+impl ProxyGeneration {
+    /// Returns the first publishable generation.
+    #[must_use]
+    pub const fn initial() -> Self {
+        Self(NonZeroU64::MIN)
+    }
+
+    /// Creates a non-zero generation.
+    ///
+    /// # Errors
+    /// Returns [`AccountProxyErrorCode::InvalidArgument`] for zero.
+    pub fn new(value: u64) -> Result<Self, AccountProxyError> {
+        NonZeroU64::new(value)
+            .map(Self)
+            .ok_or_else(|| AccountProxyError::new(AccountProxyErrorCode::InvalidArgument))
+    }
+
+    /// Returns the numeric generation.
+    #[must_use]
+    pub const fn get(self) -> u64 {
+        self.0.get()
+    }
+
+    /// Advances the generation without wrapping.
+    ///
+    /// # Errors
+    /// Returns [`AccountProxyErrorCode::VersionExhausted`] at `u64::MAX`.
+    pub fn next(self) -> Result<Self, AccountProxyError> {
+        self.0
+            .checked_add(1)
+            .map(Self)
+            .ok_or_else(|| AccountProxyError::new(AccountProxyErrorCode::VersionExhausted))
+    }
+}
+
+/// The exact proxy profile selected from one immutable generation.
+///
+/// The descriptor owns the validated profile and its source generation. An
+/// execution adapter can retain this value across asynchronous work without
+/// resolving the mutable profile identity again.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct ProxyExecutionDescriptor {
+    generation: ProxyGeneration,
+    profile: Arc<AccountProxyProfile>,
+}
+
+impl ProxyExecutionDescriptor {
+    fn new(generation: ProxyGeneration, profile: AccountProxyProfile) -> Self {
+        Self {
+            generation,
+            profile: Arc::new(profile),
+        }
+    }
+
+    /// Returns the immutable source generation.
+    #[must_use]
+    pub const fn generation(&self) -> ProxyGeneration {
+        self.generation
+    }
+
+    /// Returns the exact metadata-only profile selected for execution.
+    #[must_use]
+    pub fn profile(&self) -> &AccountProxyProfile {
+        self.profile.as_ref()
+    }
+}
+
+/// A complete immutable collection of proxy profiles published as one unit.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProxyExecutionSnapshot {
+    generation: ProxyGeneration,
+    profiles: Arc<[AccountProxyProfile]>,
+}
+
+impl ProxyExecutionSnapshot {
+    /// Validates and freezes a complete proxy profile snapshot.
+    ///
+    /// Profiles are sorted by identity, and duplicate identities are rejected
+    /// before any snapshot becomes visible to readers.
+    ///
+    /// # Errors
+    /// Returns a bounded, duplicate, or validation error without publishing a
+    /// partial collection.
+    pub fn new(
+        generation: ProxyGeneration,
+        mut profiles: Vec<AccountProxyProfile>,
+    ) -> Result<Self, AccountProxyError> {
+        if profiles.len() > MAX_PROFILES {
+            return Err(AccountProxyError::new(AccountProxyErrorCode::LimitExceeded));
+        }
+        profiles.sort_unstable_by(|left, right| left.id().cmp(right.id()));
+        if profiles.windows(2).any(|pair| pair[0].id() == pair[1].id()) {
+            return Err(AccountProxyError::new(
+                AccountProxyErrorCode::DuplicateProfile,
+            ));
+        }
+        Ok(Self {
+            generation,
+            profiles: Arc::from(profiles.into_boxed_slice()),
+        })
+    }
+
+    /// Returns the immutable snapshot generation.
+    #[must_use]
+    pub const fn generation(&self) -> ProxyGeneration {
+        self.generation
+    }
+
+    /// Returns profiles in canonical identity order.
+    #[must_use]
+    pub fn profiles(&self) -> &[AccountProxyProfile] {
+        &self.profiles
+    }
+
+    /// Resolves a profile into an execution-owned descriptor.
+    ///
+    /// The returned descriptor retains the exact profile selected from this
+    /// snapshot and therefore remains valid if a later generation is
+    /// published.
+    ///
+    /// # Errors
+    /// Returns [`AccountProxyErrorCode::ProfileNotFound`] when the identity is
+    /// absent from this complete snapshot.
+    pub fn resolve(
+        &self,
+        profile_id: &ProxyProfileId,
+    ) -> Result<ProxyExecutionDescriptor, AccountProxyError> {
+        let profile = self
+            .profiles
+            .binary_search_by(|candidate| candidate.id().cmp(profile_id))
+            .ok()
+            .map(|index| self.profiles[index].clone())
+            .ok_or_else(|| AccountProxyError::new(AccountProxyErrorCode::ProfileNotFound))?;
+        Ok(ProxyExecutionDescriptor::new(self.generation, profile))
+    }
+}
+
+/// Process-local atomic owner for complete immutable proxy snapshots.
+pub struct AtomicProxyExecutionBook {
+    current: RwLock<Arc<ProxyExecutionSnapshot>>,
+}
+
+impl AtomicProxyExecutionBook {
+    /// Creates an owner from one complete initial snapshot.
+    #[must_use]
+    pub fn new(initial: ProxyExecutionSnapshot) -> Self {
+        Self {
+            current: RwLock::new(Arc::new(initial)),
+        }
+    }
+
+    /// Reads the latest complete snapshot.
+    ///
+    /// # Errors
+    /// Returns [`AccountProxyErrorCode::StateUnavailable`] when the read lock
+    /// is poisoned.
+    pub fn current_snapshot(&self) -> Result<Arc<ProxyExecutionSnapshot>, AccountProxyError> {
+        self.current
+            .read()
+            .map(|snapshot| Arc::clone(&snapshot))
+            .map_err(|_| AccountProxyError::new(AccountProxyErrorCode::StateUnavailable))
+    }
+
+    /// Publishes the exact successor of the caller-observed generation.
+    ///
+    /// The write lock covers generation validation and pointer replacement, so
+    /// readers observe either the complete old snapshot or the complete new
+    /// snapshot. Existing descriptors remain valid because they own their
+    /// selected profile and source generation.
+    ///
+    /// # Errors
+    /// Returns [`AccountProxyErrorCode::VersionConflict`] for a stale expected
+    /// generation or non-successor snapshot, and preserves the current value
+    /// on every failure.
+    pub fn publish(
+        &self,
+        expected: ProxyGeneration,
+        next: ProxyExecutionSnapshot,
+    ) -> Result<Arc<ProxyExecutionSnapshot>, AccountProxyError> {
+        let mut current = self
+            .current
+            .write()
+            .map_err(|_| AccountProxyError::new(AccountProxyErrorCode::StateUnavailable))?;
+        if current.generation() != expected {
+            return Err(AccountProxyError::new(
+                AccountProxyErrorCode::VersionConflict,
+            ));
+        }
+        let required = current.generation().next()?;
+        if next.generation() != required {
+            return Err(AccountProxyError::new(
+                AccountProxyErrorCode::VersionConflict,
+            ));
+        }
+        let published = Arc::new(next);
+        *current = Arc::clone(&published);
+        Ok(published)
+    }
+}
+
+/// Compatibility alias naming the immutable collection as a profile snapshot.
+pub type ProxyProfileSnapshot = ProxyExecutionSnapshot;
+
+/// Compatibility alias for the process-local profile snapshot owner.
+pub type AtomicProxyProfileBook = AtomicProxyExecutionBook;
 
 fn valid_ascii(value: &str, max_bytes: usize) -> bool {
     !value.is_empty()
