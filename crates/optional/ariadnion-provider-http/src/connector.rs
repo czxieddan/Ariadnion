@@ -252,7 +252,12 @@ impl ProviderHttpDirectConnector {
             timeouts.cancellation_poll(),
             ProviderHttpPhase::TlsHandshake,
             ProviderHttpErrorCode::TlsHandshakeFailed,
-            tls::connect(socket, profile.endpoint().host(), profile.trust()),
+            tls::connect(
+                socket,
+                profile.endpoint().host(),
+                profile.trust(),
+                profile.tls_policy(),
+            ),
         )
         .await;
         let (mut tls_stream, _tls_version) =

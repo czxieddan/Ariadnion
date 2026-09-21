@@ -37,7 +37,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_rustls::TlsConnector;
 use tokio_rustls::client::TlsStream;
 
-use crate::config::ProviderHttpTrust;
+use crate::config::{ProviderHttpTlsPolicy, ProviderHttpTrust};
 use crate::error::{ProviderHttpError, ProviderHttpErrorCode};
 
 /// The verified TLS protocol negotiated for one provider connection.
@@ -54,12 +54,13 @@ pub(crate) async fn connect<S>(
     stream: S,
     host: &OutboundHost,
     trust: ProviderHttpTrust,
+    tls_policy: ProviderHttpTlsPolicy,
 ) -> Result<(TlsStream<S>, ProviderTlsVersion), ProviderHttpError>
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
     let server_name = ServerName::try_from(host.as_str().to_owned()).map_err(tls_failure)?;
-    let connector = TlsConnector::from(build_client_config(trust)?);
+    let connector = TlsConnector::from(build_client_config(trust, tls_policy)?);
     let stream = connector
         .connect(server_name, stream)
         .await
@@ -68,11 +69,20 @@ where
     Ok((stream, version))
 }
 
-fn build_client_config(trust: ProviderHttpTrust) -> Result<Arc<ClientConfig>, ProviderHttpError> {
+fn build_client_config(
+    trust: ProviderHttpTrust,
+    tls_policy: ProviderHttpTlsPolicy,
+) -> Result<Arc<ClientConfig>, ProviderHttpError> {
     let provider = Arc::new(rustls::crypto::ring::default_provider());
-    let builder = ClientConfig::builder_with_provider(provider)
-        .with_protocol_versions(&[&rustls::version::TLS13, &rustls::version::TLS12])
-        .map_err(tls_failure)?;
+    let builder = match tls_policy {
+        ProviderHttpTlsPolicy::Tls12Or13 => ClientConfig::builder_with_provider(provider)
+            .with_protocol_versions(&[&rustls::version::TLS13, &rustls::version::TLS12]),
+        ProviderHttpTlsPolicy::Tls13Only => ClientConfig::builder_with_provider(provider)
+            .with_protocol_versions(&[&rustls::version::TLS13]),
+        _ => ClientConfig::builder_with_provider(provider)
+            .with_protocol_versions(&[&rustls::version::TLS13]),
+    }
+    .map_err(tls_failure)?;
     let mut config = builder
         .with_root_certificates(root_store(&trust)?)
         .with_no_client_auth();
