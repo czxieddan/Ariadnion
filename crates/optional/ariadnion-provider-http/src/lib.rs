@@ -40,6 +40,7 @@ mod endpoint;
 mod error;
 mod exchange;
 mod pool;
+mod profile_snapshot;
 mod proxy;
 mod request;
 mod response;
@@ -75,6 +76,10 @@ pub use error::{
 pub use pool::{
     ProviderHttpConnectionPool, ProviderHttpPartition, ProviderHttpPoolMetrics,
     ProviderHttpPooledResponse,
+};
+pub use profile_snapshot::{
+    AtomicProviderHttpProfileBook, ProviderHttpProfileBook, ProviderHttpProfileGeneration,
+    ProviderHttpProfileSnapshot,
 };
 pub use request::{
     PROVIDER_HTTP_CREDENTIAL_MODULE, PROVIDER_HTTP_CREDENTIAL_PURPOSE, ProviderHttpCredential,

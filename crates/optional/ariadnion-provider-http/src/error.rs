@@ -32,7 +32,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 
 use ariadnion_provider_sdk::{ProviderFailure, ProviderFailureClass};
 
-const HTTP_ERROR_CODES: [&str; 27] = [
+const HTTP_ERROR_CODES: [&str; 30] = [
     "provider_http_invalid_origin",
     "provider_http_invalid_path_and_query",
     "provider_http_invalid_header",
@@ -60,6 +60,9 @@ const HTTP_ERROR_CODES: [&str; 27] = [
     "provider_http_pool_exhausted",
     "provider_http_pool_shutdown",
     "provider_http_credential_rejected",
+    "provider_http_generation_conflict",
+    "provider_http_generation_exhausted",
+    "provider_http_state_unavailable",
 ];
 
 /// Stable classifications for provider HTTP failures.
@@ -121,6 +124,12 @@ pub enum ProviderHttpErrorCode {
     PoolShutdown = 25,
     /// A request-scoped credential failed its lease or header boundary.
     CredentialRejected = 26,
+    /// A publication used a stale generation or a non-successor snapshot.
+    GenerationConflict = 27,
+    /// The publication generation cannot advance without wrapping.
+    GenerationExhausted = 28,
+    /// The process-local publication owner could not read or write its state.
+    StateUnavailable = 29,
 }
 
 impl ProviderHttpErrorCode {
@@ -290,7 +299,10 @@ const fn primary_failure_class(code: ProviderHttpErrorCode) -> ProviderFailureCl
         | ProviderHttpErrorCode::InvalidTrust
         | ProviderHttpErrorCode::RuntimeUnavailable
         | ProviderHttpErrorCode::PoolExhausted
-        | ProviderHttpErrorCode::PoolShutdown => secondary_failure_class(code),
+        | ProviderHttpErrorCode::PoolShutdown
+        | ProviderHttpErrorCode::GenerationConflict
+        | ProviderHttpErrorCode::GenerationExhausted
+        | ProviderHttpErrorCode::StateUnavailable => secondary_failure_class(code),
     }
 }
 
@@ -312,7 +324,10 @@ const fn secondary_failure_class(code: ProviderHttpErrorCode) -> ProviderFailure
         | ProviderHttpErrorCode::InvalidProxy
         | ProviderHttpErrorCode::InvalidTrust
         | ProviderHttpErrorCode::RuntimeUnavailable
-        | ProviderHttpErrorCode::PoolShutdown => ProviderFailureClass::Internal,
+        | ProviderHttpErrorCode::PoolShutdown
+        | ProviderHttpErrorCode::GenerationConflict
+        | ProviderHttpErrorCode::GenerationExhausted
+        | ProviderHttpErrorCode::StateUnavailable => ProviderFailureClass::Internal,
         ProviderHttpErrorCode::Cancelled
         | ProviderHttpErrorCode::DeadlineExceeded
         | ProviderHttpErrorCode::AttemptTimeout
