@@ -641,6 +641,16 @@ pub enum ProviderHttpTrust {
     },
 }
 
+/// Protocol versions permitted during one provider TLS handshake.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum ProviderHttpTlsPolicy {
+    /// Permit TLS 1.2 and TLS 1.3 for compatibility with older providers.
+    #[default]
+    Tls12Or13,
+    /// Require TLS 1.3 and reject TLS 1.2 negotiation.
+    Tls13Only,
+}
+
 impl ProviderHttpTrust {
     /// Selects the bundled WebPKI root set.
     #[must_use]
@@ -745,6 +755,7 @@ pub struct ProviderHttpProfile {
     timeouts: ProviderHttpTimeouts,
     pool: ProviderHttpPool,
     trust: ProviderHttpTrust,
+    tls_policy: ProviderHttpTlsPolicy,
     proxy: ProviderHttpProxy,
 }
 
@@ -763,6 +774,7 @@ impl ProviderHttpProfile {
             timeouts: ProviderHttpTimeouts::default(),
             pool: ProviderHttpPool::default(),
             trust: ProviderHttpTrust::webpki_roots(),
+            tls_policy: ProviderHttpTlsPolicy::default(),
             proxy: ProviderHttpProxy::disabled(),
             header_overflow: false,
         }
@@ -810,6 +822,12 @@ impl ProviderHttpProfile {
         self.trust.clone()
     }
 
+    /// Returns the permitted TLS protocol versions.
+    #[must_use]
+    pub const fn tls_policy(&self) -> ProviderHttpTlsPolicy {
+        self.tls_policy
+    }
+
     /// Returns the proxy boundary choice.
     #[must_use]
     pub const fn proxy(&self) -> &ProviderHttpProxy {
@@ -832,6 +850,7 @@ pub struct ProviderHttpProfileBuilder {
     timeouts: ProviderHttpTimeouts,
     pool: ProviderHttpPool,
     trust: ProviderHttpTrust,
+    tls_policy: ProviderHttpTlsPolicy,
     proxy: ProviderHttpProxy,
     header_overflow: bool,
 }
@@ -888,6 +907,13 @@ impl ProviderHttpProfileBuilder {
         self
     }
 
+    /// Replaces the permitted TLS protocol versions.
+    #[must_use]
+    pub const fn tls_policy(mut self, tls_policy: ProviderHttpTlsPolicy) -> Self {
+        self.tls_policy = tls_policy;
+        self
+    }
+
     /// Replaces the proxy boundary choice.
     #[must_use]
     pub fn proxy(mut self, proxy: ProviderHttpProxy) -> Self {
@@ -916,6 +942,7 @@ impl ProviderHttpProfileBuilder {
             timeouts: self.timeouts,
             pool: self.pool,
             trust: self.trust,
+            tls_policy: self.tls_policy,
             proxy: self.proxy,
         })
     }

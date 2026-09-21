@@ -54,7 +54,7 @@ pub use config::{
     MAX_PROVIDER_HTTP_HEADER_VALUE_BYTES, MAX_PROVIDER_HTTP_PATH_AND_QUERY_BYTES,
     MAX_PROVIDER_HTTP_ROOT_DER_BYTES, ProviderHttpHeader, ProviderHttpLimits, ProviderHttpMethod,
     ProviderHttpPool, ProviderHttpProfile, ProviderHttpProfileBuilder, ProviderHttpProxy,
-    ProviderHttpTimeouts, ProviderHttpTrust,
+    ProviderHttpTimeouts, ProviderHttpTlsPolicy, ProviderHttpTrust,
 };
 pub use connector::{
     ProviderHttpConnectedSocket, ProviderHttpDialError, ProviderHttpDialFuture,
