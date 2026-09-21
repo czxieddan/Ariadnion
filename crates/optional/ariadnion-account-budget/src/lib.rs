@@ -38,7 +38,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{self, Debug, Display, Formatter};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use ariadnion_account_domain::AccountId;
 use ariadnion_core::TenantId;
@@ -75,6 +75,10 @@ pub enum BudgetErrorCode {
     ReservationFinalized,
     /// A policy identity does not exist.
     PolicyNotFound,
+    /// A publication used a stale policy generation.
+    GenerationConflict,
+    /// The policy generation cannot advance without wrapping.
+    GenerationExhausted,
     /// Internal atomic state is unavailable.
     StateUnavailable,
 }
@@ -95,6 +99,8 @@ impl BudgetErrorCode {
             Self::ReservationNotFound => "ACCOUNT_BUDGET_RESERVATION_NOT_FOUND",
             Self::ReservationFinalized => "ACCOUNT_BUDGET_RESERVATION_FINALIZED",
             Self::PolicyNotFound => "ACCOUNT_BUDGET_POLICY_NOT_FOUND",
+            Self::GenerationConflict => "ACCOUNT_BUDGET_GENERATION_CONFLICT",
+            Self::GenerationExhausted => "ACCOUNT_BUDGET_GENERATION_EXHAUSTED",
             Self::StateUnavailable => "ACCOUNT_BUDGET_STATE_UNAVAILABLE",
         }
     }
@@ -256,6 +262,37 @@ impl UnixTimeSeconds {
     #[must_use]
     pub const fn get(self) -> u64 {
         self.0
+    }
+}
+
+/// Monotonic generation of one immutable published budget policy set.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct BudgetGeneration(u64);
+
+impl BudgetGeneration {
+    /// Returns the initial generation used by a newly created policy book.
+    #[must_use]
+    pub const fn initial() -> Self {
+        Self(0)
+    }
+
+    /// Creates a generation from its persisted integer representation.
+    #[must_use]
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+
+    /// Returns the persisted integer representation.
+    #[must_use]
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+
+    fn next(self) -> Result<Self, BudgetError> {
+        self.0
+            .checked_add(1)
+            .map(Self)
+            .ok_or_else(|| error(BudgetErrorCode::GenerationExhausted))
     }
 }
 
@@ -656,6 +693,118 @@ struct BudgetState {
 #[derive(Debug)]
 pub struct BudgetBook {
     state: Mutex<BudgetState>,
+}
+
+/// A reader-stable immutable budget policy snapshot.
+///
+/// Publishing a replacement never mutates this snapshot or migrates its active
+/// reservations. Callers may retain it until all in-flight admissions finish.
+#[derive(Clone, Debug)]
+pub struct BudgetPolicySnapshot {
+    generation: BudgetGeneration,
+    book: Arc<BudgetBook>,
+}
+
+impl BudgetPolicySnapshot {
+    /// Returns the generation represented by this snapshot.
+    #[must_use]
+    pub const fn generation(&self) -> BudgetGeneration {
+        self.generation
+    }
+
+    /// Borrows the in-process budget ledger owned by this snapshot.
+    #[must_use]
+    pub fn book(&self) -> &BudgetBook {
+        self.book.as_ref()
+    }
+
+    /// Clones a shared handle to the in-process budget ledger.
+    #[must_use]
+    pub fn shared_book(&self) -> Arc<BudgetBook> {
+        Arc::clone(&self.book)
+    }
+}
+
+#[derive(Debug)]
+struct PublishedBudget {
+    generation: BudgetGeneration,
+    book: Arc<BudgetBook>,
+}
+
+/// Generation-checked owner for immutable budget policy snapshots.
+///
+/// A publication validates the complete replacement before taking the write
+/// lock, then swaps the authoritative pointer only when the caller presents
+/// the current generation. Existing snapshots remain valid for readers and
+/// continue to own their reservations independently of later publications.
+#[derive(Debug)]
+pub struct BudgetPolicyBook {
+    state: Mutex<PublishedBudget>,
+}
+
+impl BudgetPolicyBook {
+    /// Creates a policy book at [`BudgetGeneration::initial`].
+    ///
+    /// # Errors
+    /// Returns the same policy validation errors as [`BudgetBook::new`].
+    pub fn new(policies: Vec<BudgetPolicy>) -> Result<Self, BudgetError> {
+        let book = Arc::new(BudgetBook::new(policies)?);
+        Ok(Self {
+            state: Mutex::new(PublishedBudget {
+                generation: BudgetGeneration::initial(),
+                book,
+            }),
+        })
+    }
+
+    /// Returns the current immutable policy snapshot.
+    ///
+    /// # Errors
+    /// Returns [`BudgetErrorCode::StateUnavailable`] when publication state is
+    /// poisoned.
+    pub fn snapshot(&self) -> Result<BudgetPolicySnapshot, BudgetError> {
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| error(BudgetErrorCode::StateUnavailable))?;
+        Ok(BudgetPolicySnapshot {
+            generation: state.generation,
+            book: Arc::clone(&state.book),
+        })
+    }
+
+    /// Atomically publishes the next complete policy set.
+    ///
+    /// The caller must provide the generation observed from the current
+    /// snapshot. A stale generation is rejected without changing the current
+    /// pointer. The replacement is always exactly one generation newer.
+    ///
+    /// # Errors
+    /// Returns a policy validation error, [`BudgetErrorCode::GenerationConflict`]
+    /// for a stale generation, [`BudgetErrorCode::GenerationExhausted`] when
+    /// the counter cannot advance, or [`BudgetErrorCode::StateUnavailable`]
+    /// when publication state is poisoned.
+    pub fn publish(
+        &self,
+        expected: BudgetGeneration,
+        policies: Vec<BudgetPolicy>,
+    ) -> Result<BudgetPolicySnapshot, BudgetError> {
+        let replacement = Arc::new(BudgetBook::new(policies)?);
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| error(BudgetErrorCode::StateUnavailable))?;
+        if state.generation != expected {
+            return Err(error(BudgetErrorCode::GenerationConflict));
+        }
+        let next = expected.next()?;
+        state.generation = next;
+        state.book = replacement;
+        Ok(BudgetPolicySnapshot {
+            generation: state.generation,
+            book: Arc::clone(&state.book),
+        })
+    }
 }
 
 impl BudgetBook {
