@@ -37,6 +37,9 @@ use std::sync::{Arc, RwLock};
 
 const MAX_THRESHOLD: u32 = 1 << 20;
 
+/// Maximum number of account snapshots in one published health state.
+pub const MAX_SNAPSHOTS: usize = 1 << 12;
+
 /// Stable machine-readable account-health failure codes.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
@@ -55,6 +58,14 @@ pub enum AccountHealthErrorCode {
     VersionExhausted,
     /// The authoritative snapshot lock is unavailable.
     StateUnavailable,
+    /// A batch exceeds the maximum number of account snapshots.
+    LimitExceeded,
+    /// A publication was based on an obsolete generation.
+    GenerationConflict,
+    /// A batch contains more than one snapshot for an account identity.
+    DuplicateSnapshot,
+    /// The publication generation cannot advance without wrapping.
+    GenerationExhausted,
 }
 
 impl AccountHealthErrorCode {
@@ -69,6 +80,10 @@ impl AccountHealthErrorCode {
             Self::AccountMismatch => "ACCOUNT_HEALTH_ACCOUNT_MISMATCH",
             Self::VersionExhausted => "ACCOUNT_HEALTH_VERSION_EXHAUSTED",
             Self::StateUnavailable => "ACCOUNT_HEALTH_STATE_UNAVAILABLE",
+            Self::LimitExceeded => "ACCOUNT_HEALTH_LIMIT_EXCEEDED",
+            Self::GenerationConflict => "ACCOUNT_HEALTH_GENERATION_CONFLICT",
+            Self::DuplicateSnapshot => "ACCOUNT_HEALTH_DUPLICATE_SNAPSHOT",
+            Self::GenerationExhausted => "ACCOUNT_HEALTH_GENERATION_EXHAUSTED",
         }
     }
 }
@@ -375,6 +390,204 @@ impl HealthSnapshot {
     }
 }
 
+/// A strictly monotonic publication generation for a health snapshot set.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct HealthGeneration(u64);
+
+impl HealthGeneration {
+    /// Returns the initial empty-state generation.
+    #[must_use]
+    pub const fn initial() -> Self {
+        Self(0)
+    }
+
+    /// Creates a generation from a persisted value.
+    #[must_use]
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+
+    /// Returns the numeric generation.
+    #[must_use]
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+
+    fn next(self) -> Result<Self, AccountHealthError> {
+        self.0
+            .checked_add(1)
+            .map(Self)
+            .ok_or_else(|| error(AccountHealthErrorCode::GenerationExhausted))
+    }
+}
+
+/// An immutable, sorted set of account health snapshots.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HealthSnapshotSet {
+    generation: HealthGeneration,
+    snapshots: Arc<[HealthSnapshot]>,
+}
+
+impl HealthSnapshotSet {
+    /// Returns the publication generation.
+    #[must_use]
+    pub const fn generation(&self) -> HealthGeneration {
+        self.generation
+    }
+
+    /// Returns snapshots sorted by account identity.
+    #[must_use]
+    pub fn snapshots(&self) -> &[HealthSnapshot] {
+        &self.snapshots
+    }
+}
+
+#[derive(Debug)]
+struct HealthBookState {
+    generation: HealthGeneration,
+    snapshots: Arc<[HealthSnapshot]>,
+}
+
+/// Evidence returned after a successful health publication.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RefreshReceipt {
+    previous_generation: HealthGeneration,
+    generation: HealthGeneration,
+    snapshot_count: usize,
+}
+
+impl RefreshReceipt {
+    /// Returns the generation replaced by the publication.
+    #[must_use]
+    pub const fn previous_generation(&self) -> HealthGeneration {
+        self.previous_generation
+    }
+
+    /// Returns the newly committed generation.
+    #[must_use]
+    pub const fn generation(&self) -> HealthGeneration {
+        self.generation
+    }
+
+    /// Returns the number of snapshots committed.
+    #[must_use]
+    pub const fn snapshot_count(&self) -> usize {
+        self.snapshot_count
+    }
+}
+
+/// Read-only port for consumers that need the complete health snapshot set.
+pub trait HealthSnapshotSetPort: Send + Sync {
+    /// Returns the latest immutable health snapshot set.
+    ///
+    /// # Errors
+    /// Returns [`AccountHealthErrorCode::StateUnavailable`] when authoritative
+    /// state cannot be read.
+    fn snapshot_set(&self) -> Result<Arc<HealthSnapshotSet>, AccountHealthError>;
+
+    /// Returns the latest immutable health snapshot set.
+    fn snapshot(&self) -> Result<Arc<HealthSnapshotSet>, AccountHealthError> {
+        self.snapshot_set()
+    }
+}
+
+/// Concurrent owner for bounded, generation-checked health snapshot sets.
+#[derive(Debug)]
+pub struct HealthSnapshotBook {
+    state: RwLock<HealthBookState>,
+}
+
+impl Default for HealthSnapshotBook {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl HealthSnapshotBook {
+    /// Creates an empty health snapshot book at generation zero.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            state: RwLock::new(HealthBookState {
+                generation: HealthGeneration::initial(),
+                snapshots: Arc::from([]),
+            }),
+        }
+    }
+
+    /// Returns the current publication generation.
+    ///
+    /// # Errors
+    /// Returns [`AccountHealthErrorCode::StateUnavailable`] when the lock is
+    /// poisoned.
+    pub fn generation(&self) -> Result<HealthGeneration, AccountHealthError> {
+        self.state
+            .read()
+            .map(|state| state.generation)
+            .map_err(|_| error(AccountHealthErrorCode::StateUnavailable))
+    }
+
+    /// Atomically replaces all health snapshots after validating the batch.
+    ///
+    /// Validation and sorting occur before state mutation. A caller must supply
+    /// the generation it observed, so stale writers are rejected without
+    /// disturbing a previously published set.
+    ///
+    /// # Errors
+    /// Returns a stable bound, duplicate, generation, or state error.
+    pub fn refresh(
+        &self,
+        mut snapshots: Vec<HealthSnapshot>,
+        expected_generation: HealthGeneration,
+    ) -> Result<RefreshReceipt, AccountHealthError> {
+        validate_snapshot_batch(&mut snapshots)?;
+        let mut state = self
+            .state
+            .write()
+            .map_err(|_| error(AccountHealthErrorCode::StateUnavailable))?;
+        if state.generation != expected_generation {
+            return Err(error(AccountHealthErrorCode::GenerationConflict));
+        }
+        let generation = state.generation.next()?;
+        let previous_generation = state.generation;
+        state.generation = generation;
+        state.snapshots = snapshots.into();
+        Ok(RefreshReceipt {
+            previous_generation,
+            generation,
+            snapshot_count: state.snapshots.len(),
+        })
+    }
+
+    /// Returns a shared immutable health snapshot set.
+    ///
+    /// # Errors
+    /// Returns [`AccountHealthErrorCode::StateUnavailable`] when the lock is
+    /// poisoned.
+    pub fn snapshot_set(&self) -> Result<Arc<HealthSnapshotSet>, AccountHealthError> {
+        self.state
+            .read()
+            .map(|state| {
+                Arc::new(HealthSnapshotSet {
+                    generation: state.generation,
+                    snapshots: Arc::clone(&state.snapshots),
+                })
+            })
+            .map_err(|_| error(AccountHealthErrorCode::StateUnavailable))
+    }
+
+    /// Returns the latest immutable health snapshot set.
+    pub fn snapshot(&self) -> Result<Arc<HealthSnapshotSet>, AccountHealthError> {
+        self.snapshot_set()
+    }
+}
+
+impl HealthSnapshotSetPort for HealthSnapshotBook {
+    fn snapshot_set(&self) -> Result<Arc<HealthSnapshotSet>, AccountHealthError> {
+        self.snapshot_set()
+    }
+}
+
 /// Read-only port for consumers that only need the latest health snapshot.
 pub trait HealthSnapshotPort: Send + Sync {
     /// Returns the current immutable health snapshot.
@@ -548,6 +761,20 @@ fn failure_state(previous_state: HealthState, failures: u32, policy: HealthPolic
     } else {
         HealthState::Healthy
     }
+}
+
+fn validate_snapshot_batch(snapshots: &mut [HealthSnapshot]) -> Result<(), AccountHealthError> {
+    if snapshots.len() > MAX_SNAPSHOTS {
+        return Err(error(AccountHealthErrorCode::LimitExceeded));
+    }
+    snapshots.sort_by(|left, right| left.account_id.cmp(&right.account_id));
+    if snapshots
+        .windows(2)
+        .any(|pair| pair[0].account_id == pair[1].account_id)
+    {
+        return Err(error(AccountHealthErrorCode::DuplicateSnapshot));
+    }
+    Ok(())
 }
 
 const fn error(code: AccountHealthErrorCode) -> AccountHealthError {
