@@ -88,6 +88,10 @@ pub enum AccountProxyErrorCode {
     StateUnavailable,
     /// The requested profile is absent from the immutable snapshot.
     ProfileNotFound,
+    /// A durable proxy snapshot could not be loaded or written.
+    PersistenceUnavailable,
+    /// A durable publication receipt did not match the requested generation.
+    PersistenceConflict,
 }
 
 impl AccountProxyErrorCode {
@@ -109,6 +113,8 @@ impl AccountProxyErrorCode {
             Self::VersionExhausted => "ACCOUNT_PROXY_VERSION_EXHAUSTED",
             Self::StateUnavailable => "ACCOUNT_PROXY_STATE_UNAVAILABLE",
             Self::ProfileNotFound => "ACCOUNT_PROXY_PROFILE_NOT_FOUND",
+            Self::PersistenceUnavailable => "ACCOUNT_PROXY_PERSISTENCE_UNAVAILABLE",
+            Self::PersistenceConflict => "ACCOUNT_PROXY_PERSISTENCE_CONFLICT",
         }
     }
 }
@@ -144,6 +150,64 @@ impl Display for AccountProxyError {
 }
 
 impl std::error::Error for AccountProxyError {}
+
+/// Stable failures returned by a durable proxy snapshot port.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+pub enum ProxyPersistenceErrorCode {
+    /// The backing store could not complete the requested operation.
+    Unavailable,
+    /// The backing store rejected a stale or non-successor generation.
+    Conflict,
+    /// The backing store returned a malformed or mismatched result.
+    Corrupt,
+}
+
+impl ProxyPersistenceErrorCode {
+    /// Returns the stable machine-readable code.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unavailable => "ACCOUNT_PROXY_PERSISTENCE_UNAVAILABLE",
+            Self::Conflict => "ACCOUNT_PROXY_PERSISTENCE_CONFLICT",
+            Self::Corrupt => "ACCOUNT_PROXY_PERSISTENCE_CORRUPT",
+        }
+    }
+}
+
+impl Display for ProxyPersistenceErrorCode {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+/// Redacted failure returned by a durable proxy snapshot port.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProxyPersistenceError {
+    code: ProxyPersistenceErrorCode,
+}
+
+impl ProxyPersistenceError {
+    /// Creates a redacted persistence failure.
+    #[must_use]
+    pub const fn new(code: ProxyPersistenceErrorCode) -> Self {
+        Self { code }
+    }
+
+    /// Returns the stable machine-readable code.
+    #[must_use]
+    pub const fn code(self) -> ProxyPersistenceErrorCode {
+        self.code
+    }
+}
+
+impl Display for ProxyPersistenceError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.code.as_str())
+    }
+}
+
+impl std::error::Error for ProxyPersistenceError {}
 
 /// A bounded proxy profile identity.
 #[derive(Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -655,6 +719,85 @@ impl ProxyExecutionSnapshot {
     }
 }
 
+/// One generation-checked durable proxy publication request.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProxyPublishRequest {
+    expected_generation: ProxyGeneration,
+    snapshot: ProxyExecutionSnapshot,
+}
+
+impl ProxyPublishRequest {
+    /// Creates a request to publish one exact successor snapshot.
+    #[must_use]
+    pub const fn new(
+        expected_generation: ProxyGeneration,
+        snapshot: ProxyExecutionSnapshot,
+    ) -> Self {
+        Self {
+            expected_generation,
+            snapshot,
+        }
+    }
+
+    /// Returns the generation observed by the caller before publication.
+    #[must_use]
+    pub const fn expected_generation(&self) -> ProxyGeneration {
+        self.expected_generation
+    }
+
+    /// Returns the complete immutable snapshot requested for publication.
+    #[must_use]
+    pub const fn snapshot(&self) -> &ProxyExecutionSnapshot {
+        &self.snapshot
+    }
+}
+
+/// Receipt proving that a durable proxy publication committed one generation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProxyPublishReceipt {
+    generation: ProxyGeneration,
+}
+
+impl ProxyPublishReceipt {
+    /// Creates a receipt for one committed generation.
+    #[must_use]
+    pub const fn committed(generation: ProxyGeneration) -> Self {
+        Self { generation }
+    }
+
+    /// Returns the generation durably committed by the store.
+    #[must_use]
+    pub const fn generation(self) -> ProxyGeneration {
+        self.generation
+    }
+}
+
+/// Durable port for complete immutable proxy snapshots.
+///
+/// Implementations own serialization, authorization, transactionality, and
+/// recovery. They must reject a stale expected generation, persist the entire
+/// requested snapshot as one bounded unit, and return a receipt containing the
+/// exact committed generation. Authentication metadata remains a [`SecretRef`]
+/// inside the typed profile and must never be replaced with secret bytes.
+pub trait ProxySnapshotStore: Send + Sync {
+    /// Loads the latest complete snapshot from durable storage.
+    ///
+    /// # Errors
+    /// Returns a redacted [`ProxyPersistenceError`] when storage is unavailable
+    /// or the persisted snapshot is corrupt.
+    fn load(&self) -> Result<ProxyExecutionSnapshot, ProxyPersistenceError>;
+
+    /// Persists one exact generation-checked snapshot.
+    ///
+    /// # Errors
+    /// Returns [`ProxyPersistenceErrorCode::Conflict`] for a stale expected
+    /// generation and never reports success without a matching receipt.
+    fn publish(
+        &self,
+        request: &ProxyPublishRequest,
+    ) -> Result<ProxyPublishReceipt, ProxyPersistenceError>;
+}
+
 /// Process-local atomic owner for complete immutable proxy snapshots.
 pub struct AtomicProxyExecutionBook {
     current: RwLock<Arc<ProxyExecutionSnapshot>>,
@@ -667,6 +810,17 @@ impl AtomicProxyExecutionBook {
         Self {
             current: RwLock::new(Arc::new(initial)),
         }
+    }
+
+    /// Loads one complete snapshot into a process-local owner.
+    ///
+    /// The store is read before the owner is created, so a failed load cannot
+    /// expose a partially initialized or synthetic in-memory state.
+    ///
+    /// # Errors
+    /// Returns the store's redacted persistence failure unchanged.
+    pub fn load_from_store(store: &dyn ProxySnapshotStore) -> Result<Self, ProxyPersistenceError> {
+        Ok(Self::new(store.load()?))
     }
 
     /// Reads the latest complete snapshot.
@@ -710,6 +864,52 @@ impl AtomicProxyExecutionBook {
         if next.generation() != required {
             return Err(AccountProxyError::new(
                 AccountProxyErrorCode::VersionConflict,
+            ));
+        }
+        let published = Arc::new(next);
+        *current = Arc::clone(&published);
+        Ok(published)
+    }
+
+    /// Persists and then publishes one exact successor snapshot.
+    ///
+    /// The write lock spans local generation validation, durable publication,
+    /// receipt validation, and pointer replacement. A store error or mismatched
+    /// receipt leaves the current in-memory snapshot unchanged.
+    ///
+    /// # Errors
+    /// Returns a redacted persistence failure when the store rejects the
+    /// request. A stale local generation is projected as a persistence conflict
+    /// without invoking the store.
+    pub fn publish_durable(
+        &self,
+        store: &dyn ProxySnapshotStore,
+        expected: ProxyGeneration,
+        next: ProxyExecutionSnapshot,
+    ) -> Result<Arc<ProxyExecutionSnapshot>, ProxyPersistenceError> {
+        let mut current = self
+            .current
+            .write()
+            .map_err(|_| ProxyPersistenceError::new(ProxyPersistenceErrorCode::Unavailable))?;
+        if current.generation() != expected {
+            return Err(ProxyPersistenceError::new(
+                ProxyPersistenceErrorCode::Conflict,
+            ));
+        }
+        let required = current
+            .generation()
+            .next()
+            .map_err(|_| ProxyPersistenceError::new(ProxyPersistenceErrorCode::Conflict))?;
+        if next.generation() != required {
+            return Err(ProxyPersistenceError::new(
+                ProxyPersistenceErrorCode::Conflict,
+            ));
+        }
+        let request = ProxyPublishRequest::new(expected, next.clone());
+        let receipt = store.publish(&request)?;
+        if receipt.generation() != next.generation() {
+            return Err(ProxyPersistenceError::new(
+                ProxyPersistenceErrorCode::Corrupt,
             ));
         }
         let published = Arc::new(next);
