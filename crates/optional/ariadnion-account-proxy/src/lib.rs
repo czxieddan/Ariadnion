@@ -88,10 +88,6 @@ pub enum AccountProxyErrorCode {
     StateUnavailable,
     /// The requested profile is absent from the immutable snapshot.
     ProfileNotFound,
-    /// A durable proxy snapshot could not be loaded or written.
-    PersistenceUnavailable,
-    /// A durable publication receipt did not match the requested generation.
-    PersistenceConflict,
 }
 
 impl AccountProxyErrorCode {
@@ -113,8 +109,6 @@ impl AccountProxyErrorCode {
             Self::VersionExhausted => "ACCOUNT_PROXY_VERSION_EXHAUSTED",
             Self::StateUnavailable => "ACCOUNT_PROXY_STATE_UNAVAILABLE",
             Self::ProfileNotFound => "ACCOUNT_PROXY_PROFILE_NOT_FOUND",
-            Self::PersistenceUnavailable => "ACCOUNT_PROXY_PERSISTENCE_UNAVAILABLE",
-            Self::PersistenceConflict => "ACCOUNT_PROXY_PERSISTENCE_CONFLICT",
         }
     }
 }
@@ -778,7 +772,10 @@ impl ProxyPublishReceipt {
 /// recovery. They must reject a stale expected generation, persist the entire
 /// requested snapshot as one bounded unit, and return a receipt containing the
 /// exact committed generation. Authentication metadata remains a [`SecretRef`]
-/// inside the typed profile and must never be replaced with secret bytes.
+/// inside the typed profile and must never be replaced with secret bytes. A
+/// store must not reenter the owning [`AtomicProxyExecutionBook`] while a
+/// publication call is active; the owner holds its write lock through the
+/// durable commit and local pointer replacement.
 pub trait ProxySnapshotStore: Send + Sync {
     /// Loads the latest complete snapshot from durable storage.
     ///
