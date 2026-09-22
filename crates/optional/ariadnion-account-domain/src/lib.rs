@@ -332,6 +332,86 @@ impl AccountConfigVersion {
     }
 }
 
+/// A UTC instant represented as signed seconds from the Unix epoch.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct AccountUtcTimestamp(i64);
+
+impl AccountUtcTimestamp {
+    /// Creates a UTC instant from signed Unix seconds.
+    #[must_use]
+    pub const fn from_unix_seconds(seconds: i64) -> Self {
+        Self(seconds)
+    }
+
+    /// Returns signed seconds from the Unix epoch.
+    #[must_use]
+    pub const fn unix_seconds(self) -> i64 {
+        self.0
+    }
+}
+
+/// Optional half-open UTC interval in which an account configuration is effective.
+///
+/// A missing start or end leaves that side unbounded. The start is inclusive and
+/// the end is exclusive. The fully unbounded default preserves legacy behavior.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct AccountEffectiveWindow {
+    effective_start: Option<AccountUtcTimestamp>,
+    effective_end: Option<AccountUtcTimestamp>,
+}
+
+impl AccountEffectiveWindow {
+    /// The fully unbounded interval used when no effective boundaries are configured.
+    pub const OPEN: Self = Self {
+        effective_start: None,
+        effective_end: None,
+    };
+
+    /// Creates a validated optional effective interval.
+    ///
+    /// # Errors
+    /// Returns [`AccountDomainErrorCode::InvalidArgument`] when both boundaries
+    /// exist and the start is not strictly earlier than the end.
+    pub fn new(
+        effective_start: Option<AccountUtcTimestamp>,
+        effective_end: Option<AccountUtcTimestamp>,
+    ) -> Result<Self, AccountDomainError> {
+        if matches!((effective_start, effective_end), (Some(start), Some(end)) if start >= end) {
+            return Err(error(AccountDomainErrorCode::InvalidArgument));
+        }
+        Ok(Self {
+            effective_start,
+            effective_end,
+        })
+    }
+
+    /// Returns the inclusive effective-start boundary when configured.
+    #[must_use]
+    pub const fn effective_start(self) -> Option<AccountUtcTimestamp> {
+        self.effective_start
+    }
+
+    /// Returns the exclusive effective-end boundary when configured.
+    #[must_use]
+    pub const fn effective_end(self) -> Option<AccountUtcTimestamp> {
+        self.effective_end
+    }
+
+    /// Reports whether the supplied UTC instant is inside the half-open interval.
+    #[must_use]
+    pub fn is_effective_at(self, observed_at: AccountUtcTimestamp) -> bool {
+        self.effective_start
+            .is_none_or(|start| observed_at >= start)
+            && self.effective_end.is_none_or(|end| observed_at < end)
+    }
+}
+
+impl Default for AccountEffectiveWindow {
+    fn default() -> Self {
+        Self::OPEN
+    }
+}
+
 /// Persisted routing priority where lower numeric values are preferred.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct RoutingPriority(u16);
@@ -548,6 +628,7 @@ pub struct AccountConfig {
     max_concurrency: NonZeroU32,
     routing_priority: RoutingPriority,
     routing_weight: RoutingWeight,
+    effective_window: AccountEffectiveWindow,
 }
 
 impl AccountConfig {
@@ -598,7 +679,15 @@ impl AccountConfig {
             max_concurrency,
             routing_priority,
             routing_weight,
+            effective_window: AccountEffectiveWindow::default(),
         })
+    }
+
+    /// Attaches the effective interval owned by this configuration version.
+    #[must_use]
+    pub const fn with_effective_window(mut self, effective_window: AccountEffectiveWindow) -> Self {
+        self.effective_window = effective_window;
+        self
     }
 
     /// Returns the configuration version.
@@ -636,6 +725,12 @@ impl AccountConfig {
     pub const fn routing_weight(&self) -> RoutingWeight {
         self.routing_weight
     }
+
+    /// Returns the optional half-open UTC effective interval.
+    #[must_use]
+    pub const fn effective_window(&self) -> AccountEffectiveWindow {
+        self.effective_window
+    }
 }
 
 impl Debug for AccountConfig {
@@ -648,6 +743,7 @@ impl Debug for AccountConfig {
             .field("max_concurrency", &self.max_concurrency)
             .field("routing_priority", &self.routing_priority)
             .field("routing_weight", &self.routing_weight)
+            .field("effective_window", &self.effective_window)
             .finish()
     }
 }
