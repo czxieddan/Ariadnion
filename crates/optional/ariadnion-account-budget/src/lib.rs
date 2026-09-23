@@ -36,6 +36,8 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+mod reservation;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{self, Debug, Display, Formatter};
 use std::sync::{Arc, Mutex};
@@ -67,7 +69,8 @@ pub enum BudgetErrorCode {
     HardLimitExceeded,
     /// An arithmetic operation would overflow its integer representation.
     ArithmeticOverflow,
-    /// A reservation identity was replayed with different immutable input.
+    /// A reservation identity was reused where fresh ownership was required,
+    /// or replayed with different immutable input.
     ReplayConflict,
     /// A reservation identity does not exist.
     ReservationNotFound,
@@ -94,14 +97,26 @@ impl BudgetErrorCode {
             Self::DuplicateScopeCurrency => "ACCOUNT_BUDGET_DUPLICATE_SCOPE_CURRENCY",
             Self::NoApplicablePolicy => "ACCOUNT_BUDGET_NO_APPLICABLE_POLICY",
             Self::HardLimitExceeded => "ACCOUNT_BUDGET_HARD_LIMIT_EXCEEDED",
+            other => other.as_lifecycle_str(),
+        }
+    }
+
+    const fn as_lifecycle_str(self) -> &'static str {
+        match self {
             Self::ArithmeticOverflow => "ACCOUNT_BUDGET_ARITHMETIC_OVERFLOW",
             Self::ReplayConflict => "ACCOUNT_BUDGET_REPLAY_CONFLICT",
             Self::ReservationNotFound => "ACCOUNT_BUDGET_RESERVATION_NOT_FOUND",
             Self::ReservationFinalized => "ACCOUNT_BUDGET_RESERVATION_FINALIZED",
             Self::PolicyNotFound => "ACCOUNT_BUDGET_POLICY_NOT_FOUND",
+            other => other.as_state_str(),
+        }
+    }
+
+    const fn as_state_str(self) -> &'static str {
+        match self {
             Self::GenerationConflict => "ACCOUNT_BUDGET_GENERATION_CONFLICT",
             Self::GenerationExhausted => "ACCOUNT_BUDGET_GENERATION_EXHAUSTED",
-            Self::StateUnavailable => "ACCOUNT_BUDGET_STATE_UNAVAILABLE",
+            _ => "ACCOUNT_BUDGET_STATE_UNAVAILABLE",
         }
     }
 }
@@ -110,17 +125,49 @@ impl BudgetErrorCode {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BudgetError {
     code: BudgetErrorCode,
+    refusal_scope: Option<BudgetRefusalScope>,
+}
+
+/// Redacted provenance for a hard budget-capacity refusal.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+pub enum BudgetRefusalScope {
+    /// Every proven hard capacity refusal was local to the selected account.
+    Account,
+    /// The refusal involved a tenant, group, mixed, or otherwise non-account-only scope.
+    Request,
 }
 
 impl BudgetError {
     const fn new(code: BudgetErrorCode) -> Self {
-        Self { code }
+        Self {
+            code,
+            refusal_scope: None,
+        }
+    }
+
+    const fn with_refusal_scope(code: BudgetErrorCode, refusal_scope: BudgetRefusalScope) -> Self {
+        Self {
+            code,
+            refusal_scope: Some(refusal_scope),
+        }
     }
 
     /// Returns the stable machine-readable code.
     #[must_use]
     pub const fn code(self) -> BudgetErrorCode {
         self.code
+    }
+
+    /// Returns the authoritative scope of a hard capacity refusal, when known.
+    ///
+    /// `Some(BudgetRefusalScope::Account)` is emitted only after all applicable
+    /// hard-capacity checks prove that the refusal is account-local. Missing
+    /// policy, replay, lifecycle, arithmetic, and infrastructure failures return
+    /// `None`; higher layers must project those failures conservatively.
+    #[must_use]
+    pub const fn refusal_scope(self) -> Option<BudgetRefusalScope> {
+        self.refusal_scope
     }
 }
 
@@ -836,41 +883,6 @@ impl BudgetBook {
         })
     }
 
-    /// Atomically reserves all applicable hierarchy budgets.
-    ///
-    /// Replaying byte-equivalent typed input with the same active reservation
-    /// identity returns the original receipt without charging twice. Reusing the
-    /// identity for different input fails closed.
-    ///
-    /// # Errors
-    /// Returns a stable failure for expired input, replay conflicts, missing
-    /// policies, hard-limit crossings, arithmetic overflow, capacity exhaustion,
-    /// or poisoned state.
-    pub fn reserve(
-        &self,
-        request: ReservationRequest,
-        now: UnixTimeSeconds,
-    ) -> Result<ReservationReceipt, BudgetError> {
-        let mut state = self.lock_state()?;
-        expire_records(&mut state, now)?;
-        if let Some(record) = state.reservations.get(request.id()) {
-            return replay_reservation(record, &request);
-        }
-        validate_new_reservation(&state, &request, now)?;
-        let policy_ids = applicable_policy_ids(&state, &request)?;
-        let soft_breaches = validate_capacity(&state, &policy_ids, request.amount())?;
-        reserve_capacity(&mut state, &policy_ids, request.amount().minor_units())?;
-        let record = ReservationRecord {
-            request,
-            state: ReservationState::Reserved,
-            applied_policies: policy_ids.into_boxed_slice(),
-            soft_limit_breaches: soft_breaches.into_boxed_slice(),
-        };
-        let receipt = record.receipt();
-        state.reservations.insert(receipt.id.clone(), record);
-        Ok(receipt)
-    }
-
     /// Converts one active reservation into committed usage atomically.
     ///
     /// Repeating a successful commit returns the same committed receipt.
@@ -1007,18 +1019,48 @@ fn validate_capacity(
     amount: &Money,
 ) -> Result<Vec<BudgetPolicyId>, BudgetError> {
     let mut soft_breaches = Vec::new();
+    let mut hard_scope = None;
     for id in policy_ids {
         let policy = policy_state(state, id)?;
         let projected = projected_usage(policy, amount.minor_units())?;
-        if projected <= policy.policy.limit.minor_units() {
-            continue;
-        }
-        match policy.policy.enforcement {
-            Enforcement::Hard => return Err(error(BudgetErrorCode::HardLimitExceeded)),
-            Enforcement::Soft => soft_breaches.push(id.clone()),
+        if projected > policy.policy.limit.minor_units() {
+            record_capacity_breach(policy, id, &mut hard_scope, &mut soft_breaches);
         }
     }
+    if let Some(scope) = hard_scope {
+        return Err(BudgetError::with_refusal_scope(
+            BudgetErrorCode::HardLimitExceeded,
+            scope,
+        ));
+    }
     Ok(soft_breaches)
+}
+
+fn record_capacity_breach(
+    policy: &PolicyState,
+    id: &BudgetPolicyId,
+    hard_scope: &mut Option<BudgetRefusalScope>,
+    soft_breaches: &mut Vec<BudgetPolicyId>,
+) {
+    match policy.policy.enforcement {
+        Enforcement::Hard => {
+            *hard_scope = Some(merge_hard_scope(*hard_scope, policy.policy.scope()));
+        }
+        Enforcement::Soft => soft_breaches.push(id.clone()),
+    }
+}
+
+fn merge_hard_scope(
+    current: Option<BudgetRefusalScope>,
+    policy_scope: &BudgetScope,
+) -> BudgetRefusalScope {
+    if matches!(current, Some(BudgetRefusalScope::Request))
+        || !matches!(policy_scope, BudgetScope::Account { .. })
+    {
+        BudgetRefusalScope::Request
+    } else {
+        BudgetRefusalScope::Account
+    }
 }
 
 fn projected_usage(policy: &PolicyState, amount: u64) -> Result<u64, BudgetError> {
@@ -1133,23 +1175,9 @@ fn expire_records(state: &mut BudgetState, now: UnixTimeSeconds) -> Result<usize
         })
         .cloned()
         .collect();
-    let mut decrements = BTreeMap::<BudgetPolicyId, u64>::new();
-    for record in &expired {
-        for policy_id in &record.applied_policies {
-            let amount = record.request.amount.minor_units();
-            let total = decrements.get(policy_id).copied().unwrap_or(0);
-            let next = total
-                .checked_add(amount)
-                .ok_or_else(|| error(BudgetErrorCode::ArithmeticOverflow))?;
-            decrements.insert(policy_id.clone(), next);
-        }
-    }
-    for (policy_id, amount) in &decrements {
-        let policy = policy_state(state, policy_id)?;
-        if policy.reserved < *amount {
-            return Err(error(BudgetErrorCode::ArithmeticOverflow));
-        }
-    }
+    let decrements = expiry_decrements(&expired)?;
+    // Validate the complete plan before changing any counter or record state.
+    validate_expiry_decrements(state, &decrements)?;
     for (policy_id, amount) in decrements {
         let policy = policy_state_mut(state, &policy_id)?;
         policy.reserved -= amount;
@@ -1162,6 +1190,36 @@ fn expire_records(state: &mut BudgetState, now: UnixTimeSeconds) -> Result<usize
         stored.state = ReservationState::Expired;
     }
     Ok(expired.len())
+}
+
+fn expiry_decrements(
+    expired: &[ReservationRecord],
+) -> Result<BTreeMap<BudgetPolicyId, u64>, BudgetError> {
+    let mut decrements = BTreeMap::<BudgetPolicyId, u64>::new();
+    for record in expired {
+        for policy_id in &record.applied_policies {
+            let amount = record.request.amount.minor_units();
+            let total = decrements.get(policy_id).copied().unwrap_or(0);
+            let next = total
+                .checked_add(amount)
+                .ok_or_else(|| error(BudgetErrorCode::ArithmeticOverflow))?;
+            decrements.insert(policy_id.clone(), next);
+        }
+    }
+    Ok(decrements)
+}
+
+fn validate_expiry_decrements(
+    state: &BudgetState,
+    decrements: &BTreeMap<BudgetPolicyId, u64>,
+) -> Result<(), BudgetError> {
+    for (policy_id, amount) in decrements {
+        let policy = policy_state(state, policy_id)?;
+        if policy.reserved < *amount {
+            return Err(error(BudgetErrorCode::ArithmeticOverflow));
+        }
+    }
+    Ok(())
 }
 
 fn policy_state<'a>(
