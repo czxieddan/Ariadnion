@@ -28,14 +28,14 @@
 //
 //! Deterministic cross-domain filtering, selection, and coupled admission.
 
+mod admission;
+
+use admission::admit;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ariadnion_account_affinity::AffinitySnapshot;
-use ariadnion_account_budget::{
-    BudgetContext, CurrencyCode as BudgetCurrency, Money, ReservationRequest,
-};
-use ariadnion_account_circuit::{CircuitSnapshot, CircuitState};
-use ariadnion_account_domain::{AccountId, ProviderId};
+use ariadnion_account_circuit::{CircuitSnapshot, CircuitState, UtcMillis};
+use ariadnion_account_domain::{AccountId, AccountUtcTimestamp, ProviderId};
 use ariadnion_account_health::{HealthSnapshot, HealthState};
 use ariadnion_account_pool::{Availability as PoolAvailability, CandidateMetadata};
 use ariadnion_account_proxy::AccountProxyProfile;
@@ -45,12 +45,7 @@ use ariadnion_core::CapabilityId;
 use ariadnion_model_catalog::{CatalogEntry, ModelCatalogSnapshot};
 use ariadnion_model_domain::{ModelCapability, ProviderId as ModelProviderId, ProviderModelId};
 use ariadnion_model_pricing::{PriceQuote, PricingCatalog};
-use ariadnion_rate_limit::{
-    AccountLimitId, AccountLimitKey, AdmissionRequest, LimitKey, ModelLimitId, TenantLimitId,
-};
-use ariadnion_routing_admission::{
-    RoutingAdmissionCoordinator, RoutingAdmissionErrorCode, RoutingAdmissionRequest,
-};
+use ariadnion_routing_admission::RoutingAdmissionCoordinator;
 use ariadnion_routing_cost::{
     CandidateCostInput, CostCandidateId, CostEstimate, CostExclusionReason, CostUnits,
 };
@@ -126,7 +121,13 @@ pub(crate) fn coordinate(
         .get(selected_index)
         .ok_or_else(|| CoordinatorError::new(CoordinatorErrorCode::StateUnavailable))?;
     let retry_plan = build_retry_plan(&request, &states, selected_index)?;
-    let admission_lease = admit(admission, &request, selected, &exclusions)?;
+    let admission_lease = match admit(admission, &request, selected, &exclusions) {
+        Ok(lease) => lease,
+        Err(mut error) => {
+            error.attach_initial_admission_retry_context(selected.key.clone(), retry_plan);
+            return Err(error);
+        }
+    };
     let provider_model = selected
         .provider_model
         .clone()
@@ -331,21 +332,24 @@ fn apply_eligibility(
     degradations: &mut BTreeSet<SignalKind>,
 ) -> Result<(), CoordinatorError> {
     let eligibility = snapshots.eligibility();
+    let times = request.admission().times();
+    let now = times.budget_now().get();
+    apply_effective_windows(now, states)?;
     apply_health(eligibility.health(), states, degradations)?;
-    apply_circuit(eligibility.circuit(), states, degradations)?;
+    apply_circuit(
+        eligibility.circuit(),
+        times.circuit_now(),
+        states,
+        degradations,
+    )?;
     apply_quota(
         eligibility.quota(),
-        request.admission().times().budget_now().get(),
+        now,
         request.pricing().quantity().get(),
         states,
         degradations,
     );
-    apply_schedule(
-        eligibility.schedule(),
-        request.admission().times().budget_now().get(),
-        states,
-        degradations,
-    )?;
+    apply_schedule(eligibility.schedule(), now, states, degradations)?;
     apply_proxy(
         eligibility.proxy(),
         request
@@ -354,6 +358,21 @@ fn apply_eligibility(
         states,
         degradations,
     )?;
+    Ok(())
+}
+
+fn apply_effective_windows(
+    now: u64,
+    states: &mut [CandidateState<'_>],
+) -> Result<(), CoordinatorError> {
+    let seconds = i64::try_from(now)
+        .map_err(|_| CoordinatorError::new(CoordinatorErrorCode::InvalidArgument))?;
+    let observed_at = AccountUtcTimestamp::from_unix_seconds(seconds);
+    for state in states.iter_mut().filter(|state| state.eligible()) {
+        if !state.source.effective_window().is_effective_at(observed_at) {
+            state.exclude(CandidateExclusionReason::ScheduleClosed);
+        }
+    }
     Ok(())
 }
 
@@ -411,6 +430,7 @@ fn apply_health_state(
 
 fn apply_circuit(
     snapshot: OptionalSnapshot<'_, [CircuitSnapshot]>,
+    observed_at: UtcMillis,
     states: &mut [CandidateState<'_>],
     degradations: &mut BTreeSet<SignalKind>,
 ) -> Result<(), CoordinatorError> {
@@ -426,7 +446,7 @@ fn apply_circuit(
     let index = unique_account_index(values, CircuitSnapshot::account_id)?;
     for state in states.iter_mut().filter(|state| state.eligible()) {
         match index.get(state.source.account_id()).copied() {
-            Some(value) => apply_circuit_state(state, value.state()),
+            Some(value) => apply_circuit_state(state, value, observed_at),
             None => apply_missing_candidate(
                 snapshot.missing_policy(),
                 SignalKind::Circuit,
@@ -438,14 +458,24 @@ fn apply_circuit(
     Ok(())
 }
 
-fn apply_circuit_state(state: &mut CandidateState<'_>, circuit: CircuitState) {
-    match circuit {
-        CircuitState::Closed => {}
+fn apply_circuit_state(
+    state: &mut CandidateState<'_>,
+    circuit: &CircuitSnapshot,
+    observed_at: UtcMillis,
+) {
+    match circuit.state() {
+        CircuitState::Closed | CircuitState::HalfOpen => {}
+        CircuitState::Open if circuit_recovery_ready(circuit, observed_at) => {}
         CircuitState::Open | CircuitState::Terminal => {
             state.exclude(CandidateExclusionReason::CircuitOpen);
         }
-        CircuitState::HalfOpen => state.exclude(CandidateExclusionReason::CircuitHalfOpen),
     }
+}
+
+fn circuit_recovery_ready(circuit: &CircuitSnapshot, observed_at: UtcMillis) -> bool {
+    circuit
+        .recovery_eligible_at()
+        .is_some_and(|eligible_at| observed_at >= eligible_at)
 }
 
 fn unique_account_index<T>(
@@ -1046,76 +1076,4 @@ fn build_retry_plan(
         DeterministicFailoverPlanner::new(plan),
         request.retry().operation(),
     ))
-}
-
-fn admit(
-    coordinator: &RoutingAdmissionCoordinator,
-    request: &CoordinationRequest,
-    selected: &CandidateState<'_>,
-    exclusions: &[CandidateExclusion],
-) -> Result<ariadnion_routing_admission::RoutingAdmissionLease, CoordinatorError> {
-    let quote = selected
-        .quote
-        .as_ref()
-        .ok_or_else(|| CoordinatorError::new(CoordinatorErrorCode::PricingUnavailable))?;
-    let tenant = request.context().tenant_id();
-    let tenant_limit = TenantLimitId::parse(tenant.as_str())
-        .map_err(|_| CoordinatorError::new(CoordinatorErrorCode::InvalidArgument))?;
-    let account_limit = AccountLimitId::parse(selected.source.account_id().as_str())
-        .map_err(|_| CoordinatorError::new(CoordinatorErrorCode::InvalidArgument))?;
-    let account_key = LimitKey::Account(AccountLimitKey::new(tenant_limit.clone(), account_limit));
-    let rate_keys = vec![
-        LimitKey::Tenant(tenant_limit),
-        LimitKey::Model(
-            ModelLimitId::parse(request.context().model().as_str())
-                .map_err(|_| CoordinatorError::new(CoordinatorErrorCode::InvalidArgument))?,
-        ),
-        account_key,
-    ];
-    let rate = AdmissionRequest::new(rate_keys, request.admission().units())
-        .map_err(|_| CoordinatorError::new(CoordinatorErrorCode::InvalidArgument))?;
-    let currency = BudgetCurrency::parse(quote.currency().as_str())
-        .map_err(|_| CoordinatorError::new(CoordinatorErrorCode::StateUnavailable))?;
-    let budget = ReservationRequest::new(
-        request.admission().reservation_id().clone(),
-        BudgetContext::new(tenant.clone(), None, selected.source.account_id().clone()),
-        Money::new(currency, quote.total().minor_units()),
-        request.admission().times().budget_expires_at(),
-    )
-    .map_err(|_| CoordinatorError::new(CoordinatorErrorCode::InvalidArgument))?;
-    let times = request.admission().times();
-    coordinator
-        .admit(RoutingAdmissionRequest::new(
-            rate,
-            budget,
-            times.monotonic_now(),
-            times.budget_now(),
-        ))
-        .map_err(|error| map_admission_error(error.code(), error.retry_after(), exclusions))
-}
-
-fn map_admission_error(
-    code: RoutingAdmissionErrorCode,
-    retry_after: Option<std::time::Duration>,
-    exclusions: &[CandidateExclusion],
-) -> CoordinatorError {
-    let mapped = match code {
-        RoutingAdmissionErrorCode::RateLimited => CoordinatorErrorCode::RateLimited,
-        RoutingAdmissionErrorCode::ConcurrencyLimited => CoordinatorErrorCode::ConcurrencyLimited,
-        RoutingAdmissionErrorCode::BudgetRejected => CoordinatorErrorCode::BudgetRejected,
-        RoutingAdmissionErrorCode::TenantMismatch => CoordinatorErrorCode::TenantMismatch,
-        RoutingAdmissionErrorCode::InvalidArgument => CoordinatorErrorCode::InvalidArgument,
-        RoutingAdmissionErrorCode::StateUnavailable
-        | RoutingAdmissionErrorCode::ClockRegressed
-        | RoutingAdmissionErrorCode::LeaseExpired
-        | RoutingAdmissionErrorCode::LeaseClosed
-        | RoutingAdmissionErrorCode::CommitIncomplete
-        | RoutingAdmissionErrorCode::RollbackFailed => CoordinatorErrorCode::AdmissionUnavailable,
-        _ => CoordinatorErrorCode::AdmissionUnavailable,
-    };
-    let mut error = CoordinatorError::with_retry_after(mapped, retry_after);
-    let (bounded, truncated) = bound_exclusions(exclusions.to_vec());
-    error.exclusions = bounded;
-    error.exclusions_truncated = truncated;
-    error
 }

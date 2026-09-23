@@ -31,21 +31,31 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+mod admission_assembly;
 mod engine;
+mod retry;
 
-use std::collections::BTreeMap;
+use admission_assembly::CandidateSnapshotBinding;
+pub use retry::RoutingRetryPlan;
+
+pub use admission_assembly::{
+    RoutingAdmissionAssembly, build_account_concurrency_policies,
+    build_routing_admission_coordinator,
+};
+
 use std::fmt::{self, Display, Formatter};
 use std::num::{NonZeroU32, NonZeroU64};
-#[cfg(feature = "wasm-policy")]
 use std::sync::Arc;
 use std::time::Duration;
 
 use ariadnion_account_affinity::{AffinityKey, AffinitySnapshot, UtcSeconds as AffinityTime};
-use ariadnion_account_budget::{ReservationId, UnixTimeSeconds as BudgetTime};
-use ariadnion_account_circuit::CircuitSnapshot;
+use ariadnion_account_budget::{
+    BudgetGeneration, GroupId, ReservationId, UnixTimeSeconds as BudgetTime,
+};
+use ariadnion_account_circuit::{CircuitSnapshot, UtcMillis};
 use ariadnion_account_domain::AccountId;
 use ariadnion_account_health::HealthSnapshot;
-use ariadnion_account_pool::{CandidateMetadata, CandidateSnapshot};
+use ariadnion_account_pool::CandidateSnapshot;
 use ariadnion_account_proxy::{AccountProxyProfile, ProxyProfileId, RegionConstraint};
 use ariadnion_account_quota::QuotaSnapshotSet;
 use ariadnion_account_schedule::ScheduleSnapshot;
@@ -53,18 +63,13 @@ use ariadnion_core::{AttemptId, RequestId, TenantId};
 use ariadnion_model_catalog::ModelCatalogSnapshot;
 use ariadnion_model_domain::ProviderModelId;
 use ariadnion_model_pricing::{PriceDimension, PricingCatalog};
-use ariadnion_rate_limit::{
-    AccountLimitId, AccountLimitKey, ConcurrencyRule, LimitKey, LimitPolicy, MonotonicTime,
-    TenantLimitId,
-};
+pub use ariadnion_rate_limit::AdmissionRefusalScope;
+use ariadnion_rate_limit::MonotonicTime;
 use ariadnion_routing_admission::{
     RoutingAdmissionCoordinator, RoutingAdmissionLease, RoutingAdmissionLeaseState,
 };
 use ariadnion_routing_cost::CostConstraints;
-use ariadnion_routing_failover::{
-    AttemptContext, CandidateKey, DeterministicFailoverPlanner, FailoverDecision, FailureClass,
-    MAX_ATTEMPTS, OperationSafety, StreamCommitment,
-};
+use ariadnion_routing_failover::{CandidateKey, MAX_ATTEMPTS, OperationSafety};
 use ariadnion_routing_usage::UsageConfirmationId;
 #[cfg(feature = "wasm-policy")]
 use ariadnion_routing_wasm::RoutingWasmEvaluator;
@@ -167,6 +172,38 @@ impl Display for CoordinatorErrorCode {
     }
 }
 
+/// Bounded retry inputs preserved for an account-scoped initial admission refusal.
+///
+/// The context contains the candidate already selected by the coordinator and
+/// the immutable retry plan already built for that request. It does not perform
+/// admission, reselect a candidate, or authorize a second reservation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InitialAdmissionRetryContext {
+    candidate: CandidateKey,
+    retry_plan: RoutingRetryPlan,
+}
+
+impl InitialAdmissionRetryContext {
+    pub(crate) fn new(candidate: CandidateKey, retry_plan: RoutingRetryPlan) -> Self {
+        Self {
+            candidate,
+            retry_plan,
+        }
+    }
+
+    /// Returns the candidate selected before the admission refusal.
+    #[must_use]
+    pub const fn candidate(&self) -> &CandidateKey {
+        &self.candidate
+    }
+
+    /// Returns the bounded immutable retry plan built for the request.
+    #[must_use]
+    pub const fn retry_plan(&self) -> &RoutingRetryPlan {
+        &self.retry_plan
+    }
+}
+
 /// Redacted coordination failure with deterministic exclusion evidence.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CoordinatorError {
@@ -174,6 +211,8 @@ pub struct CoordinatorError {
     exclusions: Vec<CandidateExclusion>,
     exclusions_truncated: bool,
     retry_after: Option<Duration>,
+    admission_scope: Option<AdmissionRefusalScope>,
+    initial_admission_retry_context: Option<InitialAdmissionRetryContext>,
 }
 
 impl CoordinatorError {
@@ -183,6 +222,8 @@ impl CoordinatorError {
             exclusions: Vec::new(),
             exclusions_truncated: false,
             retry_after: None,
+            admission_scope: None,
+            initial_admission_retry_context: None,
         }
     }
 
@@ -196,6 +237,8 @@ impl CoordinatorError {
             exclusions,
             exclusions_truncated,
             retry_after: None,
+            admission_scope: None,
+            initial_admission_retry_context: None,
         }
     }
 
@@ -208,6 +251,8 @@ impl CoordinatorError {
             exclusions: Vec::new(),
             exclusions_truncated: false,
             retry_after,
+            admission_scope: None,
+            initial_admission_retry_context: None,
         }
     }
 
@@ -233,6 +278,29 @@ impl CoordinatorError {
     #[must_use]
     pub const fn retry_after(&self) -> Option<Duration> {
         self.retry_after
+    }
+
+    /// Returns the redacted admission scope associated with a capacity refusal.
+    #[must_use]
+    pub const fn admission_scope(&self) -> Option<AdmissionRefusalScope> {
+        self.admission_scope
+    }
+
+    /// Returns the bounded retry context preserved for an account refusal.
+    #[must_use]
+    pub const fn initial_admission_retry_context(&self) -> Option<&InitialAdmissionRetryContext> {
+        self.initial_admission_retry_context.as_ref()
+    }
+
+    pub(crate) fn attach_initial_admission_retry_context(
+        &mut self,
+        candidate: CandidateKey,
+        retry_plan: RoutingRetryPlan,
+    ) {
+        if self.admission_scope == Some(AdmissionRefusalScope::Account) {
+            self.initial_admission_retry_context =
+                Some(InitialAdmissionRetryContext::new(candidate, retry_plan));
+        }
     }
 }
 
@@ -542,64 +610,13 @@ impl ProxyRoutingProfile {
     }
 }
 
-/// Builds tenant-bound account concurrency policies from authoritative candidates.
-///
-/// The returned policies contain concurrency limits only. Callers combine them
-/// with tenant, model, user, or rate policies before constructing the admission
-/// controller. Every candidate must carry the tenant and persisted account bound
-/// produced by account import publication; incomplete metadata fails closed.
-///
-/// # Errors
-/// Returns a stable error for oversized input, missing authoritative metadata,
-/// duplicate tenant/account identities, malformed admission identities, or an
-/// invalid lease duration.
-pub fn build_account_concurrency_policies(
-    candidates: &[CandidateMetadata],
-    lease_duration: Duration,
-) -> Result<Vec<LimitPolicy>, CoordinatorError> {
-    if candidates.len() > MAX_CANDIDATES {
-        return Err(CoordinatorError::new(CoordinatorErrorCode::InvalidArgument));
-    }
-    let mut policies = BTreeMap::new();
-    for candidate in candidates {
-        let (key, policy) = account_concurrency_policy(candidate, lease_duration)?;
-        if policies.insert(key, policy).is_some() {
-            return Err(CoordinatorError::new(
-                CoordinatorErrorCode::StateUnavailable,
-            ));
-        }
-    }
-    Ok(policies.into_values().collect())
-}
-
-fn account_concurrency_policy(
-    candidate: &CandidateMetadata,
-    lease_duration: Duration,
-) -> Result<(LimitKey, LimitPolicy), CoordinatorError> {
-    let tenant = candidate
-        .tenant_id()
-        .ok_or_else(|| CoordinatorError::new(CoordinatorErrorCode::TenantMismatch))?;
-    let limit = candidate
-        .max_concurrency()
-        .ok_or_else(|| CoordinatorError::new(CoordinatorErrorCode::StateUnavailable))?;
-    let tenant = TenantLimitId::parse(tenant.as_str())
-        .map_err(|_| CoordinatorError::new(CoordinatorErrorCode::InvalidArgument))?;
-    let account = AccountLimitId::parse(candidate.account_id().as_str())
-        .map_err(|_| CoordinatorError::new(CoordinatorErrorCode::InvalidArgument))?;
-    let key = LimitKey::Account(AccountLimitKey::new(tenant, account));
-    let rule = ConcurrencyRule::new(limit, lease_duration)
-        .map_err(|_| CoordinatorError::new(CoordinatorErrorCode::InvalidArgument))?;
-    let policy = LimitPolicy::new(key.clone(), None, Some(rule))
-        .map_err(|_| CoordinatorError::new(CoordinatorErrorCode::InvalidArgument))?;
-    Ok((key, policy))
-}
-
 /// Explicit clocks used by rate and budget admission.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AdmissionTimes {
     monotonic_now: MonotonicTime,
     budget_now: BudgetTime,
     budget_expires_at: BudgetTime,
+    circuit_now: UtcMillis,
 }
 
 impl AdmissionTimes {
@@ -614,13 +631,38 @@ impl AdmissionTimes {
         budget_now: BudgetTime,
         budget_expires_at: BudgetTime,
     ) -> Result<Self, CoordinatorError> {
-        if budget_expires_at <= budget_now {
+        let circuit_now = budget_now
+            .get()
+            .checked_mul(1_000)
+            .map(UtcMillis::new)
+            .ok_or_else(|| CoordinatorError::new(CoordinatorErrorCode::InvalidArgument))?;
+        Self::new_with_circuit_time(monotonic_now, budget_now, budget_expires_at, circuit_now)
+    }
+
+    /// Creates clocks with an exact UTC millisecond circuit observation.
+    ///
+    /// The circuit reading must belong to the same UTC second as `budget_now`,
+    /// preventing eligibility and budget decisions from observing unrelated
+    /// request times.
+    ///
+    /// # Errors
+    /// Returns [`CoordinatorErrorCode::InvalidArgument`] for a non-forward
+    /// budget expiry or inconsistent UTC observations.
+    pub fn new_with_circuit_time(
+        monotonic_now: MonotonicTime,
+        budget_now: BudgetTime,
+        budget_expires_at: BudgetTime,
+        circuit_now: UtcMillis,
+    ) -> Result<Self, CoordinatorError> {
+        let same_second = circuit_now.get() / 1_000 == budget_now.get();
+        if budget_expires_at <= budget_now || !same_second {
             return Err(CoordinatorError::new(CoordinatorErrorCode::InvalidArgument));
         }
         Ok(Self {
             monotonic_now,
             budget_now,
             budget_expires_at,
+            circuit_now,
         })
     }
 
@@ -635,6 +677,10 @@ impl AdmissionTimes {
     pub(crate) const fn budget_expires_at(self) -> BudgetTime {
         self.budget_expires_at
     }
+
+    pub(crate) const fn circuit_now(self) -> UtcMillis {
+        self.circuit_now
+    }
 }
 
 /// Admission identity, units, and clocks applied after deterministic selection.
@@ -643,6 +689,7 @@ pub struct AdmissionTemplate {
     reservation_id: ReservationId,
     units: NonZeroU32,
     times: AdmissionTimes,
+    group_id: Option<GroupId>,
 }
 
 impl AdmissionTemplate {
@@ -657,6 +704,28 @@ impl AdmissionTemplate {
             reservation_id,
             units,
             times,
+            group_id: None,
+        }
+    }
+
+    /// Creates one admission template with an explicit tenant-local budget group.
+    ///
+    /// The group identity is request-scoped and immutable for the admission
+    /// attempt. Omitting it preserves the legacy tenant/account budget context;
+    /// supplying it enables matching group policies from the published budget
+    /// snapshot without re-resolving mutable account metadata.
+    #[must_use]
+    pub const fn new_with_group(
+        reservation_id: ReservationId,
+        units: NonZeroU32,
+        times: AdmissionTimes,
+        group_id: Option<GroupId>,
+    ) -> Self {
+        Self {
+            reservation_id,
+            units,
+            times,
+            group_id,
         }
     }
 
@@ -670,6 +739,10 @@ impl AdmissionTemplate {
 
     pub(crate) const fn times(&self) -> AdmissionTimes {
         self.times
+    }
+
+    pub(crate) const fn group_id(&self) -> Option<&GroupId> {
+        self.group_id.as_ref()
     }
 }
 
@@ -923,45 +996,6 @@ impl<'a> CoordinationSnapshots<'a> {
     }
 }
 
-/// Request-bound wrapper around the pure failover state machine.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RoutingRetryPlan {
-    planner: DeterministicFailoverPlanner,
-    operation: OperationSafety,
-}
-
-impl RoutingRetryPlan {
-    pub(crate) const fn new(
-        planner: DeterministicFailoverPlanner,
-        operation: OperationSafety,
-    ) -> Self {
-        Self { planner, operation }
-    }
-
-    /// Classifies one failed provider attempt without permitting post-first-byte switching.
-    ///
-    /// # Errors
-    ///
-    /// Returns a stable failover error when the candidate or attempt is outside
-    /// the immutable plan.
-    pub fn decide(
-        &self,
-        candidate: &CandidateKey,
-        attempt: u8,
-        stream: StreamCommitment,
-        failure: FailureClass,
-    ) -> Result<FailoverDecision, ariadnion_routing_failover::FailoverError> {
-        let context = AttemptContext::new(candidate.clone(), attempt, self.operation, stream)?;
-        self.planner.decide(&context, failure)
-    }
-
-    /// Returns candidates in deterministic provider-attempt order.
-    #[must_use]
-    pub fn candidates(&self) -> &[CandidateKey] {
-        self.planner.plan().candidates()
-    }
-}
-
 /// Successful explainable route with its owned admission lifecycle lease.
 pub struct CoordinatedRoute {
     selected_candidate: CandidateKey,
@@ -1082,6 +1116,8 @@ impl CoordinatedRoute {
 #[derive(Clone)]
 pub struct RoutingCoordinator {
     admission: RoutingAdmissionCoordinator,
+    candidate_snapshot_binding: Option<CandidateSnapshotBinding>,
+    budget_generation: Option<BudgetGeneration>,
     #[cfg(feature = "wasm-policy")]
     wasm_policy: Option<Arc<dyn RoutingWasmEvaluator>>,
 }
@@ -1090,6 +1126,11 @@ impl fmt::Debug for RoutingCoordinator {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         let mut debug = formatter.debug_struct("RoutingCoordinator");
         debug.field("admission", &self.admission);
+        debug.field(
+            "candidate_snapshot_generation_bound",
+            &self.candidate_snapshot_binding.is_some(),
+        );
+        debug.field("budget_generation_bound", &self.budget_generation);
         #[cfg(feature = "wasm-policy")]
         debug.field("wasm_policy_installed", &self.wasm_policy.is_some());
         debug.finish()
@@ -1098,10 +1139,31 @@ impl fmt::Debug for RoutingCoordinator {
 
 impl RoutingCoordinator {
     /// Creates a coordinator from the coupled rate, concurrency, and budget engine.
+    ///
+    /// This legacy construction path has no candidate-snapshot generation to
+    /// validate. New combined-admission assembly should use
+    /// [`build_routing_admission_coordinator`] so persisted account concurrency
+    /// remains bound to the snapshot that supplied it.
     #[must_use]
     pub const fn new(admission: RoutingAdmissionCoordinator) -> Self {
         Self {
             admission,
+            candidate_snapshot_binding: None,
+            budget_generation: None,
+            #[cfg(feature = "wasm-policy")]
+            wasm_policy: None,
+        }
+    }
+
+    pub(crate) fn new_generation_bound(
+        admission: RoutingAdmissionCoordinator,
+        snapshot: &Arc<CandidateSnapshot>,
+        budget_generation: Option<BudgetGeneration>,
+    ) -> Self {
+        Self {
+            admission,
+            candidate_snapshot_binding: Some(CandidateSnapshotBinding::new(snapshot)),
+            budget_generation,
             #[cfg(feature = "wasm-policy")]
             wasm_policy: None,
         }
@@ -1127,7 +1189,10 @@ impl RoutingCoordinator {
     /// The function consumes immutable cross-domain snapshots and never reads a
     /// credential. Admission occurs only after deterministic selection. Failure
     /// before admission has no external effect; admission failures preserve the
-    /// coupled engine's rollback or reconciliation semantics.
+    /// coupled engine's rollback or reconciliation semantics. Coordinators built
+    /// through combined-admission assembly reject a different pool generation
+    /// or altered candidate metadata before selection or admission. Exact subsets
+    /// of the authoritative snapshot remain valid for bounded retry coordination.
     ///
     /// # Errors
     ///
@@ -1137,6 +1202,7 @@ impl RoutingCoordinator {
         request: CoordinationRequest,
         snapshots: CoordinationSnapshots<'_>,
     ) -> Result<CoordinatedRoute, CoordinatorError> {
+        self.validate_candidate_snapshot(snapshots.pool())?;
         engine::coordinate(
             &self.admission,
             #[cfg(feature = "wasm-policy")]
@@ -1144,6 +1210,22 @@ impl RoutingCoordinator {
             request,
             snapshots,
         )
+    }
+
+    fn validate_candidate_snapshot(
+        &self,
+        snapshot: &CandidateSnapshot,
+    ) -> Result<(), CoordinatorError> {
+        if self
+            .candidate_snapshot_binding
+            .as_ref()
+            .is_some_and(|binding| !binding.matches(snapshot))
+        {
+            return Err(CoordinatorError::new(
+                CoordinatorErrorCode::StateUnavailable,
+            ));
+        }
+        Ok(())
     }
 }
 
