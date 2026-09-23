@@ -41,12 +41,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use ariadnion_account_budget::{
-    BudgetBook, BudgetError, BudgetErrorCode, ReservationId, ReservationReceipt,
-    ReservationRequest, UnixTimeSeconds,
+    BudgetBook, BudgetError, BudgetErrorCode, BudgetRefusalScope, ReservationId,
+    ReservationReceipt, ReservationRequest, UnixTimeSeconds,
 };
 use ariadnion_rate_limit::{
-    AdmissionController, AdmissionError, AdmissionErrorCode, AdmissionLease, AdmissionRequest,
-    MonotonicTime,
+    AcceptedFinalization, AdmissionController, AdmissionError, AdmissionErrorCode, AdmissionLease,
+    AdmissionRefusalScope, AdmissionRequest, MonotonicTime,
 };
 
 /// Stable machine-readable failures for composed routing admission.
@@ -109,11 +109,28 @@ impl RoutingAdmissionErrorCode {
 pub struct RoutingAdmissionError {
     code: RoutingAdmissionErrorCode,
     retry_after: Option<Duration>,
+    refusal_scope: Option<AdmissionRefusalScope>,
 }
 
 impl RoutingAdmissionError {
     const fn new(code: RoutingAdmissionErrorCode, retry_after: Option<Duration>) -> Self {
-        Self { code, retry_after }
+        Self {
+            code,
+            retry_after,
+            refusal_scope: None,
+        }
+    }
+
+    const fn with_scope(
+        code: RoutingAdmissionErrorCode,
+        retry_after: Option<Duration>,
+        refusal_scope: AdmissionRefusalScope,
+    ) -> Self {
+        Self {
+            code,
+            retry_after,
+            refusal_scope: Some(refusal_scope),
+        }
     }
 
     /// Returns the stable machine-readable code.
@@ -126,6 +143,12 @@ impl RoutingAdmissionError {
     #[must_use]
     pub const fn retry_after(self) -> Option<Duration> {
         self.retry_after
+    }
+
+    /// Returns the redacted capacity scope associated with this refusal.
+    #[must_use]
+    pub const fn refusal_scope(self) -> Option<AdmissionRefusalScope> {
+        self.refusal_scope
     }
 }
 
@@ -225,10 +248,17 @@ impl RoutingAdmissionCoordinator {
     /// Creates a coordinator from independent in-process component stores.
     #[must_use]
     pub fn new(rate: AdmissionController, budget: BudgetBook) -> Self {
-        Self {
-            rate,
-            budget: Arc::new(budget),
-        }
+        Self::from_shared_budget(rate, Arc::new(budget))
+    }
+
+    /// Creates a coordinator over an already published budget snapshot.
+    ///
+    /// The shared handle keeps the immutable policy snapshot alive for every
+    /// admission that uses this coordinator. Publishing a later snapshot does
+    /// not migrate or invalidate reservations held by this coordinator.
+    #[must_use]
+    pub fn from_shared_budget(rate: AdmissionController, budget: Arc<BudgetBook>) -> Self {
+        Self { rate, budget }
     }
 
     /// Reserves both dimensions and returns their coupled lifecycle lease.
@@ -237,6 +267,8 @@ impl RoutingAdmissionCoordinator {
     /// If the budget reservation fails, the pending rate lease is cancelled and
     /// all capacity is restored before the rejection is returned. A failed
     /// rollback is reported as [`RoutingAdmissionErrorCode::RollbackFailed`].
+    /// Reservation identities must be fresh: replay never creates a second
+    /// lifecycle owner, including when coordinators share a published budget book.
     ///
     /// This method is intentionally local and in-memory; it does not publish a
     /// durable intent or provide a cross-process transaction guarantee.
@@ -251,7 +283,7 @@ impl RoutingAdmissionCoordinator {
             .map_err(map_rate_error)?;
         let receipt = match self
             .budget
-            .reserve(request.budget().clone(), request.budget_now())
+            .reserve_fresh(request.budget().clone(), request.budget_now())
         {
             Ok(receipt) => receipt,
             Err(budget_error) => {
@@ -268,6 +300,7 @@ impl RoutingAdmissionCoordinator {
             reservation_id: receipt.id().clone(),
             budget_receipt: receipt,
             budget_finalized: false,
+            budget_retained: false,
             closed: false,
             state: RoutingAdmissionLeaseState::Pending,
         })
@@ -277,14 +310,31 @@ impl RoutingAdmissionCoordinator {
 fn validate_tenant_binding(request: &RoutingAdmissionRequest) -> Result<(), RoutingAdmissionError> {
     let budget_tenant = request.budget().context().tenant_id().as_str();
     for key in request.rate().keys() {
-        let key_tenant = match key {
-            ariadnion_rate_limit::LimitKey::Tenant(tenant) => Some(tenant.as_str()),
-            ariadnion_rate_limit::LimitKey::Account(account) => Some(account.tenant().as_str()),
-            _ => None,
-        };
+        let key_tenant = key_tenant(key);
         if key_tenant.is_some_and(|tenant| tenant != budget_tenant) {
             return Err(error(RoutingAdmissionErrorCode::TenantMismatch));
         }
+        validate_account_binding(key, request)?;
+    }
+    Ok(())
+}
+
+fn key_tenant(key: &ariadnion_rate_limit::LimitKey) -> Option<&str> {
+    match key {
+        ariadnion_rate_limit::LimitKey::Tenant(tenant) => Some(tenant.as_str()),
+        ariadnion_rate_limit::LimitKey::Account(account) => Some(account.tenant().as_str()),
+        _ => None,
+    }
+}
+
+fn validate_account_binding(
+    key: &ariadnion_rate_limit::LimitKey,
+    request: &RoutingAdmissionRequest,
+) -> Result<(), RoutingAdmissionError> {
+    if let ariadnion_rate_limit::LimitKey::Account(account) = key
+        && account.account().as_str() != request.budget().context().account_id().as_str()
+    {
+        return Err(error(RoutingAdmissionErrorCode::InvalidArgument));
     }
     Ok(())
 }
@@ -296,6 +346,7 @@ pub struct RoutingAdmissionLease {
     reservation_id: ReservationId,
     budget_receipt: ReservationReceipt,
     budget_finalized: bool,
+    budget_retained: bool,
     closed: bool,
     state: RoutingAdmissionLeaseState,
 }
@@ -328,6 +379,76 @@ impl RoutingAdmissionLease {
         Ok(())
     }
 
+    /// Finalizes a provider execution known to be physically accepted.
+    ///
+    /// The method consumes the lease so no later drop path can refund accepted
+    /// usage. With a reliable monotonic observation and a successful budget
+    /// commit, rate usage is charged and concurrency is released. Otherwise,
+    /// every component that remains available is committed conservatively and
+    /// concurrency stays occupied until its original expiry.
+    ///
+    /// # Errors
+    /// Returns [`RoutingAdmissionErrorCode::CommitIncomplete`] whenever the
+    /// accepted execution requires reconciliation. The consumed lease never
+    /// performs ordinary budget or rate compensation after this method starts.
+    pub fn finalize_accepted(
+        mut self,
+        now: Option<MonotonicTime>,
+    ) -> Result<(), RoutingAdmissionError> {
+        self.ensure_open()?;
+        let budget = self.commit_budget();
+        let rate_now = if budget.is_ok() { now } else { None };
+        let rate = self.finalize_accepted_rate(rate_now);
+        self.finish_accepted(budget, rate)
+    }
+
+    fn finish_accepted(
+        &mut self,
+        budget: Result<(), RoutingAdmissionError>,
+        rate: Result<AcceptedFinalization, RoutingAdmissionError>,
+    ) -> Result<(), RoutingAdmissionError> {
+        self.budget_retained = budget.is_err();
+        self.closed = true;
+        if budget.is_ok() && matches!(rate, Ok(AcceptedFinalization::Completed)) {
+            self.state = RoutingAdmissionLeaseState::Committed;
+            Ok(())
+        } else {
+            self.state = RoutingAdmissionLeaseState::ReconciliationRequired;
+            Err(error(RoutingAdmissionErrorCode::CommitIncomplete))
+        }
+    }
+
+    /// Conservatively commits an execution whose physical acceptance is unknown.
+    ///
+    /// Budget and rate usage are committed when their stores remain available,
+    /// while concurrency stays occupied until the original rate lease expires.
+    /// The method consumes the lease so ordinary drop cleanup cannot release an
+    /// account permit that may still correspond to provider work. If either
+    /// component transition fails, any surviving budget reservation and rate
+    /// lease remain retained for bounded expiry and reconciliation.
+    ///
+    /// # Errors
+    /// Returns [`RoutingAdmissionErrorCode::CommitIncomplete`] when either
+    /// component could not record the conservative disposition. The method never
+    /// restores concurrency before the original lease expiry.
+    pub fn commit_dispatch_unknown(
+        mut self,
+        now: MonotonicTime,
+    ) -> Result<(), RoutingAdmissionError> {
+        self.ensure_open()?;
+        let budget = self.commit_budget();
+        let rate = self.commit_rate_and_retain_concurrency(now);
+        if budget.is_err() {
+            self.budget_retained = true;
+        }
+        self.closed = true;
+        if budget.is_ok() && rate.is_ok() {
+            return Ok(());
+        }
+        self.state = RoutingAdmissionLeaseState::ReconciliationRequired;
+        Err(error(RoutingAdmissionErrorCode::CommitIncomplete))
+    }
+
     fn commit_budget(&mut self) -> Result<(), RoutingAdmissionError> {
         let receipt = self
             .budget
@@ -339,17 +460,37 @@ impl RoutingAdmissionLease {
     }
 
     fn commit_rate_and_release(&mut self, now: MonotonicTime) -> Result<(), RoutingAdmissionError> {
-        let Some(mut rate) = self.rate.take() else {
+        let Some(rate) = self.rate.take() else {
             return self.commit_incomplete();
         };
-        if rate.commit_rate(now).is_err() {
-            drop(rate);
-            return self.commit_incomplete();
-        }
-        if rate.release(now).is_err() {
+        if !matches!(
+            rate.finalize_accepted(Some(now)),
+            Ok(AcceptedFinalization::Completed)
+        ) {
             return self.commit_incomplete();
         }
         Ok(())
+    }
+
+    fn finalize_accepted_rate(
+        &mut self,
+        now: Option<MonotonicTime>,
+    ) -> Result<AcceptedFinalization, RoutingAdmissionError> {
+        let Some(rate) = self.rate.take() else {
+            return Err(error(RoutingAdmissionErrorCode::LeaseClosed));
+        };
+        rate.finalize_accepted(now).map_err(map_rate_error)
+    }
+
+    fn commit_rate_and_retain_concurrency(
+        &mut self,
+        now: MonotonicTime,
+    ) -> Result<(), RoutingAdmissionError> {
+        let Some(rate) = self.rate.take() else {
+            return Err(error(RoutingAdmissionErrorCode::LeaseClosed));
+        };
+        rate.commit_rate_and_retain_concurrency(now)
+            .map_err(map_rate_error)
     }
 
     fn commit_incomplete(&mut self) -> Result<(), RoutingAdmissionError> {
@@ -399,6 +540,7 @@ impl Debug for RoutingAdmissionLease {
             .debug_struct("RoutingAdmissionLease")
             .field("budget_state", &self.budget_receipt.state())
             .field("budget_finalized", &self.budget_finalized)
+            .field("budget_retained", &self.budget_retained)
             .field("state", &self.state)
             .field("closed", &self.closed)
             .finish_non_exhaustive()
@@ -407,7 +549,7 @@ impl Debug for RoutingAdmissionLease {
 
 impl Drop for RoutingAdmissionLease {
     fn drop(&mut self) {
-        if !self.budget_finalized {
+        if !self.budget_finalized && !self.budget_retained {
             let _ = self.budget.release(self.reservation_id.clone());
         }
     }
@@ -418,7 +560,19 @@ fn error(code: RoutingAdmissionErrorCode) -> RoutingAdmissionError {
 }
 
 fn map_rate_error(value: AdmissionError) -> RoutingAdmissionError {
-    let code = match value.code() {
+    RoutingAdmissionError {
+        code: rate_error_code(value.code()),
+        retry_after: value.retry_after(),
+        refusal_scope: Some(
+            value
+                .refusal_scope()
+                .unwrap_or(AdmissionRefusalScope::Request),
+        ),
+    }
+}
+
+fn rate_error_code(code: AdmissionErrorCode) -> RoutingAdmissionErrorCode {
+    match code {
         AdmissionErrorCode::RateLimited => RoutingAdmissionErrorCode::RateLimited,
         AdmissionErrorCode::ConcurrencyLimited => RoutingAdmissionErrorCode::ConcurrencyLimited,
         AdmissionErrorCode::ClockRegressed => RoutingAdmissionErrorCode::ClockRegressed,
@@ -426,15 +580,29 @@ fn map_rate_error(value: AdmissionError) -> RoutingAdmissionError {
         AdmissionErrorCode::LeaseClosed => RoutingAdmissionErrorCode::LeaseClosed,
         AdmissionErrorCode::StateUnavailable => RoutingAdmissionErrorCode::StateUnavailable,
         _ => RoutingAdmissionErrorCode::InvalidArgument,
-    };
-    RoutingAdmissionError::new(code, value.retry_after())
+    }
 }
 
 fn map_budget_error(value: BudgetError) -> RoutingAdmissionError {
     if value.code() == BudgetErrorCode::StateUnavailable {
-        error(RoutingAdmissionErrorCode::StateUnavailable)
+        RoutingAdmissionError::with_scope(
+            RoutingAdmissionErrorCode::StateUnavailable,
+            None,
+            AdmissionRefusalScope::Request,
+        )
     } else {
-        error(RoutingAdmissionErrorCode::BudgetRejected)
+        RoutingAdmissionError::with_scope(
+            RoutingAdmissionErrorCode::BudgetRejected,
+            None,
+            map_budget_scope(value.refusal_scope()),
+        )
+    }
+}
+
+fn map_budget_scope(scope: Option<BudgetRefusalScope>) -> AdmissionRefusalScope {
+    match scope {
+        Some(BudgetRefusalScope::Account) => AdmissionRefusalScope::Account,
+        Some(BudgetRefusalScope::Request) | None | Some(_) => AdmissionRefusalScope::Request,
     }
 }
 
