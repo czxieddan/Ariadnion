@@ -31,6 +31,14 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+mod snapshot_book;
+
+pub use snapshot_book::{
+    CircuitSnapshotBook, CircuitSnapshotBookError, CircuitSnapshotBookErrorCode,
+    CircuitSnapshotBookGeneration, CircuitSnapshotBookPort, CircuitSnapshotBookSnapshot,
+    MAX_CIRCUIT_SNAPSHOTS,
+};
+
 use ariadnion_account_domain::AccountId;
 use std::fmt;
 use std::sync::{Arc, RwLock};
@@ -99,9 +107,7 @@ const fn circuit_request_error_code(code: AccountCircuitErrorCode) -> &'static s
         AccountCircuitErrorCode::GenerationConflict => "ACCOUNT_CIRCUIT_GENERATION_CONFLICT",
         AccountCircuitErrorCode::TimestampOutOfOrder => "ACCOUNT_CIRCUIT_TIMESTAMP_OUT_OF_ORDER",
         AccountCircuitErrorCode::InvalidTransition => "ACCOUNT_CIRCUIT_INVALID_TRANSITION",
-        AccountCircuitErrorCode::RecoveryWindowClosed => {
-            "ACCOUNT_CIRCUIT_RECOVERY_WINDOW_CLOSED"
-        }
+        AccountCircuitErrorCode::RecoveryWindowClosed => "ACCOUNT_CIRCUIT_RECOVERY_WINDOW_CLOSED",
         _ => "ACCOUNT_CIRCUIT_INVALID_ARGUMENT",
     }
 }
@@ -244,6 +250,12 @@ pub enum CircuitState {
 pub enum CircuitOutcome {
     /// The operation completed successfully.
     Success,
+    /// The operation completed without producing account-health evidence.
+    ///
+    /// Provider-side invalid-request and policy outcomes belong to this class:
+    /// they must not reopen a half-open account circuit because they do not
+    /// establish that the account or provider credential is unavailable.
+    Neutral,
     /// The operation failed in a potentially recoverable way.
     RetryableFailure,
     /// The account is unusable until an explicit administrative change.
@@ -445,6 +457,7 @@ pub struct CircuitSnapshot {
     recovery_successes: u32,
     half_open_in_flight: u16,
     opened_at: Option<UtcMillis>,
+    recovery_eligible_at: Option<UtcMillis>,
     last_observed_at: Option<UtcMillis>,
     last_monotonic: Option<MonotonicMillis>,
 }
@@ -459,6 +472,7 @@ impl CircuitSnapshot {
             recovery_successes: 0,
             half_open_in_flight: 0,
             opened_at: None,
+            recovery_eligible_at: None,
             last_observed_at: None,
             last_monotonic: None,
         }
@@ -506,6 +520,12 @@ impl CircuitSnapshot {
         self.opened_at
     }
 
+    /// Returns the first UTC millisecond eligible for a recovery probe.
+    #[must_use]
+    pub const fn recovery_eligible_at(&self) -> Option<UtcMillis> {
+        self.recovery_eligible_at
+    }
+
     /// Returns the latest accepted UTC timestamp.
     #[must_use]
     pub const fn last_observed_at(&self) -> Option<UtcMillis> {
@@ -532,6 +552,7 @@ pub trait CircuitSnapshotPort: Send + Sync {
 #[derive(Clone, Debug)]
 struct LeaseRecord {
     id: ProbeLeaseId,
+    expires_at: MonotonicMillis,
 }
 
 #[derive(Debug)]
@@ -542,6 +563,10 @@ struct CircuitStateData {
 }
 
 /// Concurrent deterministic account circuit breaker.
+///
+/// One read/write lock owns the snapshot and outstanding leases together.
+/// Transitions hold only this lock and never invoke caller code while it is held;
+/// poisoned state fails closed instead of reconstructing partial lease state.
 #[derive(Debug)]
 pub struct AccountCircuit {
     account_id: AccountId,
@@ -596,16 +621,7 @@ impl AccountCircuit {
         if state.snapshot.state != CircuitState::Closed {
             return Err(error(AccountCircuitErrorCode::InvalidTransition));
         }
-        let mut next = state.snapshot.clone();
-        advance_clock(
-            &mut next,
-            observation.observed_at(),
-            observation.monotonic(),
-        );
-        apply_closed_outcome(&mut next, observation.outcome(), self.policy)?;
-        if next.state != state.snapshot.state {
-            next.generation = next.generation.next()?;
-        }
+        let next = next_closed_snapshot(&state.snapshot, &observation, self.policy)?;
         state.snapshot = next.clone();
         Ok(next)
     }
@@ -613,7 +629,9 @@ impl AccountCircuit {
     /// Admits one bounded recovery probe after the open window elapsed.
     ///
     /// The lease binds account, generation, and a monotonic expiry. Callers must
-    /// complete it exactly once with [`Self::complete_probe`].
+    /// complete it exactly once with [`Self::complete_probe`]. An acquisition
+    /// that observes an expired outstanding lease reopens the circuit and
+    /// invalidates every lease from that generation.
     ///
     /// # Errors
     /// Returns a stable generation, ordering, transition, window, capacity, or
@@ -632,6 +650,7 @@ impl AccountCircuit {
         if state.snapshot.generation != expected_generation {
             return Err(error(AccountCircuitErrorCode::GenerationConflict));
         }
+        reclaim_expired_leases(&mut state, self.policy, observed_at, monotonic)?;
         admit_probe(
             &mut state,
             &self.account_id,
@@ -641,10 +660,40 @@ impl AccountCircuit {
         )
     }
 
+    /// Revalidates an outstanding half-open probe before physical dispatch.
+    ///
+    /// The check uses the same lock and paired clock boundary as completion.
+    /// If the lease expired while the caller was preparing credentials, this
+    /// method reopens the circuit and invalidates every lease from that
+    /// generation before returning [`AccountCircuitErrorCode::LeaseExpired`].
+    ///
+    /// # Errors
+    /// Returns a stable account, generation, ordering, lease, clock, or state
+    /// error. A successful result does not consume the lease.
+    pub fn validate_probe(
+        &self,
+        lease: &ProbeLease,
+        observed_at: UtcMillis,
+        monotonic: MonotonicMillis,
+    ) -> Result<(), AccountCircuitError> {
+        let mut state = self
+            .state
+            .write()
+            .map_err(|_| error(AccountCircuitErrorCode::StateUnavailable))?;
+        let index =
+            validate_lease_request(&state, &self.account_id, lease, observed_at, monotonic)?;
+        if monotonic >= lease.expires_at {
+            return expire_probe(&mut state, index, self.policy, observed_at, monotonic)
+                .map(|_| ());
+        }
+        Ok(())
+    }
+
     /// Completes one half-open probe and publishes its deterministic result.
     ///
-    /// Expired or replayed leases fail closed: the circuit returns to `Open`,
-    /// outstanding leases are discarded, and the generation advances.
+    /// An expired current lease reopens the circuit, discards outstanding
+    /// leases, and advances the generation. Unknown or stale leases are rejected
+    /// without changing the authoritative state.
     ///
     /// # Errors
     /// Returns stable account, generation, lease, ordering, or state errors.
@@ -659,17 +708,19 @@ impl AccountCircuit {
             .state
             .write()
             .map_err(|_| error(AccountCircuitErrorCode::StateUnavailable))?;
-        let index = validate_lease_request(
-            &state,
-            &self.account_id,
-            &lease,
+        let index =
+            validate_lease_request(&state, &self.account_id, &lease, observed_at, monotonic)?;
+        if monotonic >= lease.expires_at {
+            return expire_probe(&mut state, index, self.policy, observed_at, monotonic);
+        }
+        let next = complete_valid_probe(
+            &mut state,
+            index,
+            outcome,
             observed_at,
             monotonic,
+            self.policy,
         )?;
-        if monotonic >= lease.expires_at {
-            return expire_probe(&mut state, index, observed_at, monotonic);
-        }
-        let next = complete_valid_probe(&mut state, index, outcome, observed_at, monotonic, self.policy)?;
         state.snapshot = next.clone();
         Ok(next)
     }
@@ -779,23 +830,42 @@ fn apply_closed_outcome(
         CircuitOutcome::Success => {
             snapshot.consecutive_failures = 0;
         }
+        CircuitOutcome::Neutral => {}
         CircuitOutcome::RetryableFailure => {
             snapshot.consecutive_failures = snapshot
                 .consecutive_failures
                 .checked_add(1)
                 .ok_or_else(|| error(AccountCircuitErrorCode::VersionExhausted))?;
             if snapshot.consecutive_failures >= policy.failure_threshold {
-                snapshot.state = CircuitState::Open;
-                snapshot.opened_at = snapshot.last_observed_at;
+                mark_open(snapshot, policy)?;
             }
         }
         CircuitOutcome::TerminalFailure => {
             snapshot.consecutive_failures = policy.failure_threshold;
             snapshot.state = CircuitState::Terminal;
             snapshot.opened_at = snapshot.last_observed_at;
+            snapshot.recovery_eligible_at = None;
         }
     }
     Ok(())
+}
+
+fn next_closed_snapshot(
+    snapshot: &CircuitSnapshot,
+    observation: &CircuitObservation,
+    policy: CircuitPolicy,
+) -> Result<CircuitSnapshot, AccountCircuitError> {
+    let mut next = snapshot.clone();
+    advance_clock(
+        &mut next,
+        observation.observed_at(),
+        observation.monotonic(),
+    );
+    apply_closed_outcome(&mut next, observation.outcome(), policy)?;
+    if next.state != snapshot.state {
+        next.generation = next.generation.next()?;
+    }
+    Ok(next)
 }
 
 fn admit_probe(
@@ -806,10 +876,11 @@ fn admit_probe(
     monotonic: MonotonicMillis,
 ) -> Result<ProbeLease, AccountCircuitError> {
     validate_probe_admission(state, policy, observed_at)?;
-    let (id, next_lease_id, expires_at) = prepare_probe_lease(state.next_lease_id, monotonic, policy)?;
+    let (id, next_lease_id, expires_at) =
+        prepare_probe_lease(state.next_lease_id, monotonic, policy)?;
     transition_to_half_open(&mut state.snapshot);
     state.next_lease_id = next_lease_id;
-    state.leases.push(LeaseRecord { id });
+    state.leases.push(LeaseRecord { id, expires_at });
     state.snapshot.half_open_in_flight = state.leases.len() as u16;
     advance_clock(&mut state.snapshot, observed_at, monotonic);
     Ok(ProbeLease {
@@ -832,18 +903,25 @@ fn apply_probe_outcome(
                 .recovery_successes
                 .checked_add(1)
                 .ok_or_else(|| error(AccountCircuitErrorCode::VersionExhausted))?;
-            if snapshot.recovery_successes >= policy.recovery_successes
-                && snapshot.half_open_in_flight == 0
-            {
-                snapshot.state = CircuitState::Closed;
-                snapshot.consecutive_failures = 0;
-                snapshot.opened_at = None;
-            }
         }
-        CircuitOutcome::RetryableFailure => mark_open(snapshot),
+        CircuitOutcome::Neutral => {}
+        CircuitOutcome::RetryableFailure => mark_open(snapshot, policy)?,
         CircuitOutcome::TerminalFailure => mark_terminal(snapshot),
     }
+    close_recovered_circuit(snapshot, policy);
     Ok(())
+}
+
+fn close_recovered_circuit(snapshot: &mut CircuitSnapshot, policy: CircuitPolicy) {
+    if snapshot.state == CircuitState::HalfOpen
+        && snapshot.recovery_successes >= policy.recovery_successes
+        && snapshot.half_open_in_flight == 0
+    {
+        snapshot.state = CircuitState::Closed;
+        snapshot.consecutive_failures = 0;
+        snapshot.opened_at = None;
+        snapshot.recovery_eligible_at = None;
+    }
 }
 
 fn validate_lease_request(
@@ -870,12 +948,13 @@ fn validate_lease_request(
 fn expire_probe(
     state: &mut CircuitStateData,
     index: usize,
+    policy: CircuitPolicy,
     observed_at: UtcMillis,
     monotonic: MonotonicMillis,
 ) -> Result<CircuitSnapshot, AccountCircuitError> {
     let mut next = state.snapshot.clone();
     advance_clock(&mut next, observed_at, monotonic);
-    fail_closed(&mut next)?;
+    fail_closed(&mut next, policy)?;
     state.leases.remove(index);
     state.leases.clear();
     state.snapshot = next;
@@ -910,8 +989,29 @@ fn validate_probe_admission(
     observed_at: UtcMillis,
 ) -> Result<(), AccountCircuitError> {
     validate_probe_state(state)?;
-    validate_recovery_window(state, policy, observed_at)?;
+    validate_recovery_window(state, observed_at)?;
     validate_probe_capacity(state, policy)
+}
+
+fn reclaim_expired_leases(
+    state: &mut CircuitStateData,
+    policy: CircuitPolicy,
+    observed_at: UtcMillis,
+    monotonic: MonotonicMillis,
+) -> Result<(), AccountCircuitError> {
+    let expired = state
+        .leases
+        .iter()
+        .any(|lease| monotonic >= lease.expires_at);
+    if !expired {
+        return Ok(());
+    }
+    let mut next = state.snapshot.clone();
+    advance_clock(&mut next, observed_at, monotonic);
+    fail_closed(&mut next, policy)?;
+    state.leases.clear();
+    state.snapshot = next;
+    Err(error(AccountCircuitErrorCode::LeaseExpired))
 }
 
 fn validate_probe_state(state: &CircuitStateData) -> Result<(), AccountCircuitError> {
@@ -926,12 +1026,13 @@ fn validate_probe_state(state: &CircuitStateData) -> Result<(), AccountCircuitEr
 
 fn validate_recovery_window(
     state: &CircuitStateData,
-    policy: CircuitPolicy,
     observed_at: UtcMillis,
 ) -> Result<(), AccountCircuitError> {
-    if let Some(opened_at) = state.snapshot.opened_at
-        && observed_at.get().saturating_sub(opened_at.get()) < policy.recovery_window_millis
-    {
+    let eligible_at = state
+        .snapshot
+        .recovery_eligible_at
+        .ok_or_else(|| error(AccountCircuitErrorCode::StateUnavailable))?;
+    if observed_at < eligible_at {
         return Err(error(AccountCircuitErrorCode::RecoveryWindowClosed));
     }
     Ok(())
@@ -977,26 +1078,44 @@ fn clear_recovery_state(snapshot: &mut CircuitSnapshot) {
     snapshot.recovery_successes = 0;
     snapshot.half_open_in_flight = 0;
     snapshot.opened_at = None;
+    snapshot.recovery_eligible_at = None;
 }
 
 fn mark_terminal(snapshot: &mut CircuitSnapshot) {
     snapshot.state = CircuitState::Terminal;
     snapshot.opened_at = snapshot.last_observed_at;
+    snapshot.recovery_eligible_at = None;
     snapshot.recovery_successes = 0;
     snapshot.half_open_in_flight = 0;
 }
 
-fn fail_closed(snapshot: &mut CircuitSnapshot) -> Result<(), AccountCircuitError> {
-    mark_open(snapshot);
+fn fail_closed(
+    snapshot: &mut CircuitSnapshot,
+    policy: CircuitPolicy,
+) -> Result<(), AccountCircuitError> {
+    mark_open(snapshot, policy)?;
     snapshot.generation = snapshot.generation.next()?;
     Ok(())
 }
 
-fn mark_open(snapshot: &mut CircuitSnapshot) {
+fn mark_open(
+    snapshot: &mut CircuitSnapshot,
+    policy: CircuitPolicy,
+) -> Result<(), AccountCircuitError> {
+    let opened_at = snapshot
+        .last_observed_at
+        .ok_or_else(|| error(AccountCircuitErrorCode::StateUnavailable))?;
+    let eligible_at = opened_at
+        .get()
+        .checked_add(policy.recovery_window_millis)
+        .map(UtcMillis::new)
+        .ok_or_else(|| error(AccountCircuitErrorCode::VersionExhausted))?;
     snapshot.state = CircuitState::Open;
-    snapshot.opened_at = snapshot.last_observed_at;
+    snapshot.opened_at = Some(opened_at);
+    snapshot.recovery_eligible_at = Some(eligible_at);
     snapshot.recovery_successes = 0;
     snapshot.half_open_in_flight = 0;
+    Ok(())
 }
 
 const fn error(code: AccountCircuitErrorCode) -> AccountCircuitError {
