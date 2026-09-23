@@ -31,6 +31,10 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+mod candidate;
+
+pub use candidate::CandidateMetadata;
+
 // crates/optional/ariadnion-account-pool/src/error.rs - Account pool errors.
 //
 // Copyright (C) 2026 czxieddan
@@ -205,14 +209,11 @@ impl std::error::Error for AccountPoolError {}
 // SPDX-License-Identifier: LicenseRef-AHCL-1.1
 
 use std::fmt::{Debug, Display, Formatter};
-use std::num::NonZeroU32;
 use std::sync::Arc;
 
 pub use ariadnion_account_domain::MAX_ROUTING_WEIGHT as MAX_WEIGHT;
-use ariadnion_account_domain::{
-    Account, AccountId, ModelName, ProviderId, RoutingPriority, RoutingWeight,
-};
-use ariadnion_account_import::{AccountProjectionSnapshot, DurableAccountProjection};
+use ariadnion_account_domain::{Account, AccountId, RoutingPriority, RoutingWeight};
+use ariadnion_account_import::AccountProjectionSnapshot;
 use ariadnion_core::TenantId;
 use ariadnion_routing_domain::{CandidateRef, RouteModel, RouteSnapshot, RouteSnapshotVersion};
 
@@ -557,158 +558,6 @@ impl AccountImport {
     #[must_use]
     pub fn records(&self) -> &[AccountImportRecord] {
         &self.records
-    }
-}
-
-/// Secret-free routing metadata projected from an account import record.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CandidateMetadata {
-    id: CandidateId,
-    tenant_id: Option<TenantId>,
-    account_id: AccountId,
-    provider_id: ProviderId,
-    model: Option<ModelName>,
-    max_concurrency: Option<NonZeroU32>,
-    priority: Priority,
-    weight: Weight,
-    load: Load,
-    availability: Availability,
-}
-
-impl CandidateMetadata {
-    /// Creates secret-free metadata for one routing candidate.
-    #[must_use]
-    pub const fn new(
-        id: CandidateId,
-        account_id: AccountId,
-        provider_id: ProviderId,
-        model: Option<ModelName>,
-        routing: CandidateRoutingMetadata,
-    ) -> Self {
-        Self {
-            id,
-            tenant_id: None,
-            account_id,
-            provider_id,
-            model,
-            max_concurrency: None,
-            priority: routing.priority,
-            weight: routing.weight,
-            load: routing.load,
-            availability: routing.availability,
-        }
-    }
-
-    pub(crate) fn from_record(record: &AccountImportRecord) -> Self {
-        let account = record.account();
-        let mut candidate = Self::new(
-            CandidateId::from_account(account.id()),
-            account.id().clone(),
-            account.provider().id().clone(),
-            account.config().default_model().cloned(),
-            CandidateRoutingMetadata::new(
-                record.priority(),
-                record.weight(),
-                record.load(),
-                record.availability(),
-            ),
-        );
-        candidate.tenant_id = Some(account.tenant_id().clone());
-        candidate.max_concurrency = Some(account.config().max_concurrency());
-        candidate
-    }
-
-    fn from_durable_account(account: DurableAccountProjection) -> Result<Self, AccountPoolError> {
-        let availability =
-            if account.status() == AccountStatus::Active && account.default_model().is_some() {
-                Availability::Available
-            } else {
-                Availability::Unavailable
-            };
-        let routing = CandidateRoutingMetadata::new(
-            account.routing_priority().into(),
-            account.routing_weight().into(),
-            Load::new(0)?,
-            availability,
-        );
-        let id = CandidateId::from_account(account.account_id());
-        let max_concurrency = NonZeroU32::new(account.max_concurrency())
-            .ok_or_else(|| model_error(AccountPoolErrorCode::InvalidCandidate))?;
-        Ok(Self {
-            id,
-            tenant_id: Some(account.tenant_id().clone()),
-            account_id: account.account_id().clone(),
-            provider_id: account.provider_id().clone(),
-            model: account.default_model().cloned(),
-            max_concurrency: Some(max_concurrency),
-            priority: routing.priority,
-            weight: routing.weight,
-            load: routing.load,
-            availability: routing.availability,
-        })
-    }
-
-    /// Returns the stable candidate identity.
-    #[must_use]
-    pub const fn id(&self) -> &CandidateId {
-        &self.id
-    }
-
-    /// Returns the account identity.
-    #[must_use]
-    pub const fn account_id(&self) -> &AccountId {
-        &self.account_id
-    }
-
-    /// Returns the source tenant when this candidate came from an account record.
-    #[must_use]
-    pub const fn tenant_id(&self) -> Option<&TenantId> {
-        self.tenant_id.as_ref()
-    }
-
-    /// Returns the provider identity.
-    #[must_use]
-    pub const fn provider_id(&self) -> &ProviderId {
-        &self.provider_id
-    }
-
-    /// Returns the configured provider model, when present.
-    #[must_use]
-    pub const fn model(&self) -> Option<&ModelName> {
-        self.model.as_ref()
-    }
-
-    /// Returns the persisted simultaneous-attempt bound for this account.
-    ///
-    /// Manually constructed, tenant-unbound metadata has no authoritative
-    /// account configuration and therefore returns `None`.
-    #[must_use]
-    pub const fn max_concurrency(&self) -> Option<NonZeroU32> {
-        self.max_concurrency
-    }
-
-    /// Returns the priority tier.
-    #[must_use]
-    pub const fn priority(&self) -> Priority {
-        self.priority
-    }
-
-    /// Returns the relative routing weight.
-    #[must_use]
-    pub const fn weight(&self) -> Weight {
-        self.weight
-    }
-
-    /// Returns the captured instantaneous load.
-    #[must_use]
-    pub const fn load(&self) -> Load {
-        self.load
-    }
-
-    /// Returns the captured availability fact.
-    #[must_use]
-    pub const fn availability(&self) -> Availability {
-        self.availability
     }
 }
 
