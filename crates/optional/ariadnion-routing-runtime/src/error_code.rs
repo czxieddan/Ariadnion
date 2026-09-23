@@ -82,6 +82,9 @@ const fn adapter_error_code(code: RoutingRuntimeErrorCode) -> Option<&'static st
         }
         RoutingRuntimeErrorCode::CredentialMismatch => Some("ROUTING_RUNTIME_CREDENTIAL_MISMATCH"),
         RoutingRuntimeErrorCode::VaultUnavailable => Some("ROUTING_RUNTIME_VAULT_UNAVAILABLE"),
+        RoutingRuntimeErrorCode::CircuitProbeUnavailable => {
+            Some("ROUTING_RUNTIME_CIRCUIT_PROBE_UNAVAILABLE")
+        }
         _ => None,
     }
 }
@@ -94,6 +97,9 @@ const fn execution_error_code(code: RoutingRuntimeErrorCode) -> &'static str {
         }
         RoutingRuntimeErrorCode::AdmissionFinalizeFailed => {
             "ROUTING_RUNTIME_ADMISSION_FINALIZE_FAILED"
+        }
+        RoutingRuntimeErrorCode::CircuitProbeFinalizeFailed => {
+            "ROUTING_RUNTIME_CIRCUIT_PROBE_FINALIZE_FAILED"
         }
         RoutingRuntimeErrorCode::AttemptsExhausted => "ROUTING_RUNTIME_ATTEMPTS_EXHAUSTED",
         RoutingRuntimeErrorCode::InvariantViolation => "ROUTING_RUNTIME_INVARIANT_VIOLATION",
