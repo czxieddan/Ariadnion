@@ -549,6 +549,7 @@ name = "ariadnion-routing-runtime"
 version = "0.1.0"
 dependencies = [
  "ariadnion-account-affinity",
+ "ariadnion-account-circuit",
  "ariadnion-account-domain",
  "ariadnion-account-import",
  "ariadnion-account-pool",
@@ -648,6 +649,7 @@ dependencies = [
  "ariadnion-account-batch",
  "ariadnion-account-domain",
  "ariadnion-account-import",
+ "ariadnion-account-proxy",
  "ariadnion-account-vault",
  "ariadnion-api-admin",
  "ariadnion-api-files",

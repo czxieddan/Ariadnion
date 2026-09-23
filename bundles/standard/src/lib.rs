@@ -57,7 +57,10 @@ use ariadnion_provider_mock::{
 };
 use ariadnion_provider_sdk::{ProviderModelId, ProviderPort};
 use ariadnion_routing_admission::RoutingAdmissionCoordinator;
-use ariadnion_routing_coordinator::{MAX_CANDIDATES, RoutingCoordinator};
+use ariadnion_routing_coordinator::{
+    CoordinatorError, MAX_CANDIDATES, RoutingAdmissionAssembly, RoutingCoordinator,
+    build_routing_admission_coordinator,
+};
 use ariadnion_routing_runtime::{
     MAX_RUNTIME_ATTEMPTS, RoutingRuntime, RoutingRuntimeError, RuntimePorts,
 };
@@ -138,6 +141,23 @@ impl RoutingCoordinatorAssembly {
     }
 }
 
+/// Assembles the standard bundle's routing coordinator from combined admission inputs.
+///
+/// The coordinator crate owns construction of the coupled rate, concurrency,
+/// and budget engine, including binding account concurrency to the exact source
+/// snapshot generation. This bundle only wraps the resulting coordinator through
+/// its existing process-local assembly path.
+///
+/// # Errors
+///
+/// Returns the coordinator's redacted stable error when admission assembly fails.
+#[must_use = "handle the assembly result and retain the coordinator for dependency injection"]
+pub fn assemble_routing_coordinator(
+    assembly: RoutingAdmissionAssembly,
+) -> Result<RoutingCoordinatorAssembly, CoordinatorError> {
+    build_routing_admission_coordinator(assembly).map(assemble_process_local_routing_coordinator)
+}
+
 /// Assembles the standard bundle's existing routing coordinator in process.
 ///
 /// The caller supplies an already configured coupled admission engine. This
@@ -149,8 +169,14 @@ impl RoutingCoordinatorAssembly {
 pub fn assemble_in_process_routing_coordinator(
     admission: RoutingAdmissionCoordinator,
 ) -> RoutingCoordinatorAssembly {
+    assemble_process_local_routing_coordinator(RoutingCoordinator::new(admission))
+}
+
+fn assemble_process_local_routing_coordinator(
+    coordinator: RoutingCoordinator,
+) -> RoutingCoordinatorAssembly {
     RoutingCoordinatorAssembly {
-        coordinator: Arc::new(RoutingCoordinator::new(admission)),
+        coordinator: Arc::new(coordinator),
         report: RoutingCoordinatorAssemblyReport {
             state_scope: RoutingCoordinatorStateScope::ProcessLocal,
             max_candidates: MAX_CANDIDATES,
