@@ -30,7 +30,8 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use ariadnion_account_domain::{AccountId, ProviderId, SecretPurpose};
+use ariadnion_account_circuit::CircuitOutcome;
+use ariadnion_account_domain::{AccountConfigVersion, AccountId, ProviderId, SecretPurpose};
 use ariadnion_account_import::{
     AccountCredentialReference, AccountCredentialReferenceRequest, AccountProjectionSnapshot,
     ImportGeneration, ImportPortError, ImportPortErrorCode,
@@ -40,14 +41,20 @@ use ariadnion_account_vault::{SecretLease, VaultError, VaultErrorCode};
 use ariadnion_core::{ErrorCode, ModuleId, RequestContext, TenantId};
 use ariadnion_model_catalog::ModelCatalogSnapshot;
 use ariadnion_rate_limit::MonotonicTime;
-use ariadnion_routing_coordinator::{CoordinatedRoute, CoordinationRequest, RoutingRetryPlan};
-use ariadnion_routing_failover::{CandidateKey, FailoverAction, FailureClass, StreamCommitment};
+use ariadnion_routing_coordinator::{
+    AdmissionRefusalScope, CoordinatedRoute, CoordinationRequest, CoordinatorError,
+    CoordinatorErrorCode, InitialAdmissionRetryContext, RoutingRetryPlan,
+};
+use ariadnion_routing_failover::{
+    AdmissionRefusal, AttemptOutcome, CandidateKey, FailoverAction, FailureClass, StreamCommitment,
+};
 use ariadnion_routing_usage::UsageConfirmationId;
 
+use crate::circuit_probe::{CircuitProbeGuard, CircuitProbeKey};
 use crate::{
-    PhysicalAttemptIdentity, PhysicalExecutionAcceptance, ProviderExecutionRequest,
-    RoutingRuntimeError, RoutingRuntimeErrorCode, RuntimeAttempt, RuntimeFailure,
-    RuntimeFailureReason, RuntimeOutcome, RuntimeSuccess,
+    CircuitProbeError, CircuitProbeErrorCode, PhysicalAttemptIdentity, PhysicalExecutionAcceptance,
+    ProviderExecutionRequest, RoutingRuntimeError, RoutingRuntimeErrorCode, RuntimeAttempt,
+    RuntimeFailure, RuntimeFailureReason, RuntimeMonotonicClock, RuntimeOutcome, RuntimeSuccess,
 };
 
 pub(super) struct LoadedState {
@@ -88,10 +95,19 @@ pub(super) struct RetryDirective {
     pub(super) commitment: StreamCommitment,
 }
 
+pub(super) enum TargetCoordinationFailure {
+    Admission {
+        refusal: AdmissionRefusal,
+        initial_retry_context: Option<InitialAdmissionRetryContext>,
+    },
+    Runtime(RoutingRuntimeError),
+}
+
 pub(super) struct OwnedTarget {
     pub(super) account_id: AccountId,
     pub(super) provider_id: ProviderId,
-    pub(super) config_version: u64,
+    pub(super) config_version: AccountConfigVersion,
+    pub(super) import_generation: ImportGeneration,
 }
 
 pub(super) enum AttemptProgress {
@@ -109,6 +125,97 @@ pub(super) struct PreparedRoute {
     pub(super) route: CoordinatedRoute,
     pub(super) execution: ProviderExecutionRequest,
     pub(super) identity: PhysicalAttemptIdentity,
+    pub(super) probe: Option<CircuitProbeGuard>,
+}
+
+pub(super) struct FinalizationState {
+    pub(super) probe: Option<CircuitProbeGuard>,
+    pub(super) dispatch_time: MonotonicTime,
+}
+
+pub(super) struct RetrySlot {
+    pub(super) attempt: RuntimeAttempt,
+    pub(super) request: CoordinationRequest,
+}
+
+pub(super) fn take_retry_slot(
+    remainder: &mut ExecutionRemainder,
+) -> Result<Option<RetrySlot>, RoutingRuntimeError> {
+    let Some(attempt) = remainder.remaining_attempts.pop_front() else {
+        return Ok(None);
+    };
+    let request = remainder
+        .remaining_coordination
+        .pop_front()
+        .ok_or_else(|| runtime_error(RoutingRuntimeErrorCode::InvariantViolation))?;
+    remainder.ordinal = remainder
+        .ordinal
+        .checked_add(1)
+        .ok_or_else(|| runtime_error(RoutingRuntimeErrorCode::InvariantViolation))?;
+    Ok(Some(RetrySlot { attempt, request }))
+}
+
+pub(super) struct PendingExecutionGuard {
+    route: Option<CoordinatedRoute>,
+    identity: Option<PhysicalAttemptIdentity>,
+    probe: Option<CircuitProbeGuard>,
+    clock: Arc<dyn RuntimeMonotonicClock>,
+    dispatch_time: MonotonicTime,
+}
+
+impl PendingExecutionGuard {
+    pub(super) fn new(
+        route: CoordinatedRoute,
+        identity: PhysicalAttemptIdentity,
+        mut probe: Option<CircuitProbeGuard>,
+        clock: Arc<dyn RuntimeMonotonicClock>,
+        dispatch_time: MonotonicTime,
+    ) -> Self {
+        if let Some(probe) = &mut probe {
+            probe.arm_retryable_drop();
+        }
+        Self {
+            route: Some(route),
+            identity: Some(identity),
+            probe,
+            clock,
+            dispatch_time,
+        }
+    }
+
+    pub(super) fn disarm(
+        mut self,
+    ) -> Result<
+        (
+            CoordinatedRoute,
+            PhysicalAttemptIdentity,
+            Option<CircuitProbeGuard>,
+        ),
+        RoutingRuntimeError,
+    > {
+        let route = self
+            .route
+            .take()
+            .ok_or_else(|| runtime_error(RoutingRuntimeErrorCode::InvariantViolation))?;
+        let identity = self
+            .identity
+            .take()
+            .ok_or_else(|| runtime_error(RoutingRuntimeErrorCode::InvariantViolation))?;
+        Ok((route, identity, self.probe.take()))
+    }
+}
+
+impl Drop for PendingExecutionGuard {
+    fn drop(&mut self) {
+        let Some(route) = self.route.take() else {
+            return;
+        };
+        let now = match self.clock.now() {
+            Ok(now) => now,
+            Err(_) => self.dispatch_time,
+        };
+        let _ = route.into_admission_lease().commit_dispatch_unknown(now);
+    }
 }
 
 pub(super) fn authenticated_tenant(
@@ -174,13 +281,14 @@ pub(super) fn validate_route_target(
 ) -> Result<OwnedTarget, RoutingRuntimeError> {
     let candidate = find_candidate(&loaded.pool, route.selected_candidate())?;
     validate_candidate_binding(candidate, route, &loaded.tenant)?;
-    let config_version =
+    let (config_version, import_generation) =
         validate_projection_binding(candidate, &loaded.projection, &loaded.tenant)?;
     validate_provider_model(candidate, route)?;
     Ok(OwnedTarget {
         account_id: candidate.account_id().clone(),
         provider_id: candidate.provider_id().clone(),
         config_version,
+        import_generation,
     })
 }
 
@@ -199,7 +307,7 @@ fn validate_projection_binding(
     candidate: &CandidateMetadata,
     projection: &AccountProjectionSnapshot,
     tenant: &TenantId,
-) -> Result<u64, RoutingRuntimeError> {
+) -> Result<(AccountConfigVersion, ImportGeneration), RoutingRuntimeError> {
     let row = projection
         .accounts()
         .iter()
@@ -208,7 +316,18 @@ fn validate_projection_binding(
     if row.provider_id() != candidate.provider_id() || row.tenant_id() != tenant {
         return Err(runtime_error(RoutingRuntimeErrorCode::InvariantViolation));
     }
-    Ok(row.config_version())
+    let config_version = AccountConfigVersion::new(row.config_version())
+        .map_err(|_| runtime_error(RoutingRuntimeErrorCode::InvariantViolation))?;
+    Ok((config_version, row.import_generation()))
+}
+
+pub(super) fn circuit_probe_key(target: &OwnedTarget, loaded: &LoadedState) -> CircuitProbeKey {
+    CircuitProbeKey::new(
+        loaded.tenant.clone(),
+        target.account_id.clone(),
+        target.config_version,
+        target.import_generation,
+    )
 }
 
 fn validate_provider_model(
@@ -269,6 +388,18 @@ pub(super) fn map_vault_error(error: VaultError) -> RoutingRuntimeError {
             runtime_error(RoutingRuntimeErrorCode::DeadlineExceeded)
         }
         _ => runtime_error(RoutingRuntimeErrorCode::VaultUnavailable),
+    }
+}
+
+pub(super) fn map_circuit_probe_acquire_error(error: CircuitProbeError) -> RoutingRuntimeError {
+    match error.code() {
+        CircuitProbeErrorCode::Cancelled => runtime_error(RoutingRuntimeErrorCode::Cancelled),
+        CircuitProbeErrorCode::DeadlineExceeded => {
+            runtime_error(RoutingRuntimeErrorCode::DeadlineExceeded)
+        }
+        CircuitProbeErrorCode::Unavailable | CircuitProbeErrorCode::Rejected => {
+            runtime_error(RoutingRuntimeErrorCode::CircuitProbeUnavailable)
+        }
     }
 }
 
@@ -346,47 +477,61 @@ pub(super) fn validate_usage_binding(
     Ok(())
 }
 
-pub(super) fn release_with_error<T>(
+pub(super) fn release_route(
     route: CoordinatedRoute,
     now: MonotonicTime,
-    original: RoutingRuntimeError,
-) -> Result<T, RoutingRuntimeError> {
+) -> Result<(), RoutingRuntimeError> {
     route
         .into_admission_lease()
         .release(now)
-        .map_err(|_| runtime_error(RoutingRuntimeErrorCode::AdmissionFinalizeFailed))?;
-    Err(original)
+        .map_err(|_| runtime_error(RoutingRuntimeErrorCode::AdmissionFinalizeFailed))
 }
 
-pub(super) fn commit_route(
-    route: &mut CoordinatedRoute,
-    now: MonotonicTime,
+pub(super) fn finalize_accepted_route(
+    route: CoordinatedRoute,
+    now: Option<MonotonicTime>,
     identity: &PhysicalAttemptIdentity,
 ) -> Result<(), RoutingRuntimeError> {
-    route.admission_lease_mut().commit(now).map_err(|_| {
-        runtime_error(RoutingRuntimeErrorCode::AdmissionFinalizeFailed)
-            .with_accepted(identity.clone())
-    })
+    route
+        .into_admission_lease()
+        .finalize_accepted(now)
+        .map_err(|_| {
+            runtime_error(RoutingRuntimeErrorCode::AdmissionFinalizeFailed)
+                .with_accepted(identity.clone())
+        })
 }
 
-pub(super) fn finalize_failed_route(
-    mut route: CoordinatedRoute,
-    now: MonotonicTime,
+pub(super) fn combine_finalizations<T>(
+    admission: Result<T, RoutingRuntimeError>,
+    probe: Result<(), RoutingRuntimeError>,
+    accepted: Option<&PhysicalAttemptIdentity>,
+) -> Result<T, RoutingRuntimeError> {
+    let value = admission?;
+    match probe {
+        Ok(()) => Ok(value),
+        Err(error) => Err(match accepted {
+            Some(identity) => error.with_accepted(identity.clone()),
+            None => error,
+        }),
+    }
+}
+
+pub(super) const fn circuit_failure_outcome(failure: FailureClass) -> CircuitOutcome {
+    match failure {
+        FailureClass::Authentication => CircuitOutcome::TerminalFailure,
+        FailureClass::Transport | FailureClass::TransientServer | FailureClass::RateLimited => {
+            CircuitOutcome::RetryableFailure
+        }
+        FailureClass::InvalidRequest | FailureClass::Policy => CircuitOutcome::Neutral,
+    }
+}
+
+pub(super) const fn circuit_interruption_outcome(
     acceptance: PhysicalExecutionAcceptance,
-    identity: PhysicalAttemptIdentity,
-) -> Result<Option<PhysicalAttemptIdentity>, RoutingRuntimeError> {
+) -> CircuitOutcome {
     match acceptance {
-        PhysicalExecutionAcceptance::NotAccepted => {
-            route
-                .into_admission_lease()
-                .release(now)
-                .map_err(|_| runtime_error(RoutingRuntimeErrorCode::AdmissionFinalizeFailed))?;
-            Ok(None)
-        }
-        PhysicalExecutionAcceptance::Accepted => {
-            commit_route(&mut route, now, &identity)?;
-            Ok(Some(identity))
-        }
+        PhysicalExecutionAcceptance::NotAccepted => CircuitOutcome::Neutral,
+        PhysicalExecutionAcceptance::Accepted => CircuitOutcome::RetryableFailure,
     }
 }
 
@@ -399,6 +544,56 @@ pub(super) fn next_candidate(
         FailoverAction::SwitchCandidate(candidate) => Some(candidate.clone()),
         FailoverAction::Stop => None,
     }
+}
+
+pub(super) fn map_target_coordination_error(error: CoordinatorError) -> TargetCoordinationFailure {
+    let refusal = match error.code() {
+        CoordinatorErrorCode::ConcurrencyLimited | CoordinatorErrorCode::RateLimited => {
+            Some(refusal_from_scope(error.admission_scope()))
+        }
+        CoordinatorErrorCode::BudgetRejected => Some(refusal_from_scope(error.admission_scope())),
+        CoordinatorErrorCode::AdmissionUnavailable | CoordinatorErrorCode::PolicyUnavailable => {
+            Some(AdmissionRefusal::RequestRejected)
+        }
+        _ => None,
+    };
+    match refusal {
+        Some(refusal) => TargetCoordinationFailure::Admission {
+            refusal,
+            initial_retry_context: error.initial_admission_retry_context().cloned(),
+        },
+        None => TargetCoordinationFailure::Runtime(runtime_error(
+            RoutingRuntimeErrorCode::CoordinationFailed,
+        )),
+    }
+}
+
+fn refusal_from_scope(scope: Option<AdmissionRefusalScope>) -> AdmissionRefusal {
+    match scope {
+        Some(AdmissionRefusalScope::Account) => AdmissionRefusal::CandidateUnavailable,
+        _ => AdmissionRefusal::RequestRejected,
+    }
+}
+
+pub(super) fn next_candidate_after_admission(
+    retry_plan: &RoutingRetryPlan,
+    candidate: &CandidateKey,
+    ordinal: u8,
+    commitment: StreamCommitment,
+    refusal: AdmissionRefusal,
+) -> Result<Option<CandidateKey>, RoutingRuntimeError> {
+    let decision = retry_plan
+        .decide_outcome(
+            candidate,
+            ordinal,
+            commitment,
+            AttemptOutcome::AdmissionRejected(refusal),
+        )
+        .map_err(|_| runtime_error(RoutingRuntimeErrorCode::InvariantViolation))?;
+    Ok(match decision.action() {
+        FailoverAction::SwitchCandidate(next) => Some(next.clone()),
+        FailoverAction::RetrySame | FailoverAction::Stop => None,
+    })
 }
 
 pub(super) fn failed_runtime_outcome(

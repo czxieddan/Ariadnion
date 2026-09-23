@@ -44,7 +44,9 @@ use ariadnion_model_domain::ProviderModelId;
 use ariadnion_routing_failover::{CandidateKey, FailureClass, StreamCommitment};
 use ariadnion_routing_usage::UsageConfirmationId;
 
-use crate::{RoutingRuntimeError, RoutingRuntimeErrorCode, RuntimeMonotonicClock};
+use crate::{
+    CircuitProbePort, RoutingRuntimeError, RoutingRuntimeErrorCode, RuntimeMonotonicClock,
+};
 
 /// Whether the provider physically accepted a request attempt.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -285,7 +287,7 @@ pub trait ProviderExecutionPort: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = ProviderExecutionOutcome> + Send + 'a>>;
 }
 
-/// Injected durable state, credential, vault, and clock ports used by the runtime.
+/// Injected durable state, credential, vault, circuit, and clock ports used by the runtime.
 ///
 /// The final provider executor remains request-scoped and is supplied through
 /// [`crate::RuntimeRequest`].
@@ -297,10 +299,12 @@ pub struct RuntimePorts {
     pub(super) credentials: Arc<dyn AccountCredentialReferencePort>,
     pub(super) vault: Arc<dyn VaultPort>,
     pub(super) clock: Arc<dyn RuntimeMonotonicClock>,
+    pub(super) circuit_probes: Option<Arc<dyn CircuitProbePort>>,
 }
 
 impl RuntimePorts {
     /// Groups the required typed ports without a global service container.
+    ///
     #[must_use]
     pub const fn new(
         account_projection: Arc<dyn AccountProjectionPort>,
@@ -317,7 +321,19 @@ impl RuntimePorts {
             credentials,
             vault,
             clock,
+            circuit_probes: None,
         }
+    }
+
+    /// Injects the authoritative account-circuit probe owner.
+    ///
+    /// The owner returns `Closed` only for a currently closed circuit and
+    /// otherwise issues or rejects a bounded half-open lease before credential
+    /// access. A runtime without this port fails closed before credential work.
+    #[must_use]
+    pub fn with_circuit_probes(mut self, circuit_probes: Arc<dyn CircuitProbePort>) -> Self {
+        self.circuit_probes = Some(circuit_probes);
+        self
     }
 }
 
