@@ -34,8 +34,8 @@ use std::pin::Pin;
 use std::time::SystemTime;
 
 use ariadnion_account_domain::{
-    AccountId, AccountStatus, ModelName, ProviderId, RoutingPriority, RoutingWeight, SecretPurpose,
-    SecretRef,
+    AccountEffectiveWindow, AccountId, AccountStatus, ModelName, ProviderId, RoutingPriority,
+    RoutingWeight, SecretPurpose, SecretRef,
 };
 use ariadnion_core::{RequestContext, TenantId};
 
@@ -467,6 +467,7 @@ pub struct DurableAccountState {
     status: AccountStatus,
     import_generation: ImportGeneration,
     routing: DurableRoutingState,
+    effective_window: AccountEffectiveWindow,
 }
 
 /// Typed persisted routing priority and weight reconstructed by storage.
@@ -547,7 +548,15 @@ impl DurableAccountState {
             status,
             import_generation,
             routing,
+            effective_window: AccountEffectiveWindow::default(),
         })
+    }
+
+    /// Attaches the effective interval reconstructed for this configuration version.
+    #[must_use]
+    pub const fn with_effective_window(mut self, effective_window: AccountEffectiveWindow) -> Self {
+        self.effective_window = effective_window;
+        self
     }
 }
 
@@ -564,6 +573,7 @@ pub struct DurableAccountProjection {
     status: AccountStatus,
     import_generation: ImportGeneration,
     routing: DurableRoutingState,
+    effective_window: AccountEffectiveWindow,
 }
 
 impl DurableAccountProjection {
@@ -582,6 +592,7 @@ impl DurableAccountProjection {
             status: state.status,
             import_generation: state.import_generation,
             routing: state.routing,
+            effective_window: state.effective_window,
         }
     }
 
@@ -649,6 +660,12 @@ impl DurableAccountProjection {
     #[must_use]
     pub const fn routing_weight(&self) -> RoutingWeight {
         self.routing.weight()
+    }
+
+    /// Returns the optional half-open UTC effective interval.
+    #[must_use]
+    pub const fn effective_window(&self) -> AccountEffectiveWindow {
+        self.effective_window
     }
 }
 

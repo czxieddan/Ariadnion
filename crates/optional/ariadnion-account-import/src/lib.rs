@@ -44,8 +44,8 @@ use std::num::NonZeroU32;
 use std::sync::RwLock;
 
 use ariadnion_account_domain::{
-    AccountConfig, AccountConfigVersion, AccountLabel, AccountMetadata, ExternalAccountId,
-    ModelName, ProviderLabel, ProviderMetadata, RoutingPriority, RoutingWeight,
+    AccountConfig, AccountConfigVersion, AccountEffectiveWindow, AccountLabel, AccountMetadata,
+    ExternalAccountId, ModelName, ProviderLabel, ProviderMetadata, RoutingPriority, RoutingWeight,
 };
 pub use ariadnion_account_domain::{AccountId, ProviderId, SecretRef};
 
@@ -293,6 +293,7 @@ pub struct ImportEntry {
     max_concurrency: NonZeroU32,
     routing_priority: RoutingPriority,
     routing_weight: RoutingWeight,
+    effective_window: AccountEffectiveWindow,
     credential_digest: OpaqueDigest,
 }
 
@@ -320,6 +321,7 @@ impl ImportEntry {
             max_concurrency: NonZeroU32::MIN,
             routing_priority: RoutingPriority::DEFAULT,
             routing_weight: RoutingWeight::DEFAULT,
+            effective_window: AccountEffectiveWindow::OPEN,
             credential_digest,
         }
     }
@@ -349,6 +351,7 @@ impl ImportEntry {
             max_concurrency: config.max_concurrency(),
             routing_priority: config.routing_priority(),
             routing_weight: config.routing_weight(),
+            effective_window: config.effective_window(),
             credential_digest,
         }
     }
@@ -423,6 +426,12 @@ impl ImportEntry {
         self.routing_weight
     }
 
+    /// Returns the imported optional half-open UTC effective interval.
+    #[must_use]
+    pub const fn effective_window(&self) -> AccountEffectiveWindow {
+        self.effective_window
+    }
+
     /// Reports whether the caller supplied structured registry configuration.
     #[must_use]
     pub const fn has_explicit_configuration(&self) -> bool {
@@ -451,6 +460,7 @@ impl Debug for ImportEntry {
             .field("max_concurrency", &self.max_concurrency)
             .field("routing_priority", &self.routing_priority)
             .field("routing_weight", &self.routing_weight)
+            .field("effective_window", &self.effective_window)
             .field("credential_digest", &self.credential_digest)
             .finish()
     }

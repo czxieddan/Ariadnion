@@ -108,3 +108,34 @@ pub const ACCOUNT_ROUTING_POLICY_MIGRATION_CANONICAL_V1_SHA256: [u8; 32] = [
     0x9a, 0x1b, 0xef, 0xa7, 0x38, 0xe3, 0x7c, 0x4e, 0xc7, 0xc8, 0x3f, 0xfa, 0x50, 0xdc, 0x90, 0xec,
     0x20, 0x2c, 0x77, 0xc5, 0x80, 0xd0, 0x98, 0xb1, 0x0d, 0xe2, 0xc8, 0x1f, 0xac, 0x8a, 0x22, 0x34,
 ];
+
+/// Stable identifier of the additive durable effective-window migration.
+pub const ACCOUNT_EFFECTIVE_WINDOW_MIGRATION_ID: &str = "account.0003.effective-window";
+
+/// Stable domain recorded for durable account effective windows.
+pub const ACCOUNT_EFFECTIVE_WINDOW_MIGRATION_DOMAIN: &str = "account";
+
+/// Global schema version required before effective-window persistence is installed.
+pub const ACCOUNT_EFFECTIVE_WINDOW_MIGRATION_FROM_VERSION: u64 = 25;
+
+/// Global schema version produced by durable effective-window persistence.
+pub const ACCOUNT_EFFECTIVE_WINDOW_MIGRATION_TO_VERSION: u64 = 26;
+
+/// Whether the additive effective-window migration requires another backup.
+pub const ACCOUNT_EFFECTIVE_WINDOW_MIGRATION_REQUIRES_BACKUP: bool = false;
+
+/// Fixed schema, tenant-policy, and runtime grant statements.
+pub const ACCOUNT_EFFECTIVE_WINDOW_MIGRATION_STATEMENTS: &[&str] = &[
+    "CREATE TABLE account_registry_effective_windows (tenant_id TEXT NOT NULL, account_id TEXT NOT NULL, config_version TEXT NOT NULL, effective_start_unix_seconds INT64, effective_end_unix_seconds INT64);",
+    "CREATE UNIQUE INDEX account_registry_effective_windows_identity_uq ON account_registry_effective_windows (tenant_id, account_id);",
+    "CREATE POLICY tenant_account_registry_effective_windows ON account_registry_effective_windows USING (tenant_id = current_tenant());",
+    "GRANT SELECT ON TABLE account_registry_effective_windows TO ariadnion_identity_runtime;",
+    "GRANT INSERT ON TABLE account_registry_effective_windows TO ariadnion_identity_runtime;",
+    "GRANT UPDATE ON TABLE account_registry_effective_windows TO ariadnion_identity_runtime;",
+];
+
+/// Canonical-AST-v1 SHA-256 of the ordered effective-window statements.
+pub const ACCOUNT_EFFECTIVE_WINDOW_MIGRATION_CANONICAL_V1_SHA256: [u8; 32] = [
+    0x53, 0xc1, 0xb2, 0x17, 0x0c, 0x6f, 0x41, 0xf2, 0x26, 0xce, 0xc0, 0xc6, 0xd7, 0x04, 0xfc, 0xbb,
+    0x0a, 0x76, 0x0f, 0xf2, 0x42, 0x34, 0xb9, 0x6c, 0x81, 0x33, 0xf2, 0x26, 0x25, 0xb4, 0x38, 0xc3,
+];
