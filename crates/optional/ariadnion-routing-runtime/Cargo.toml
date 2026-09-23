@@ -39,6 +39,7 @@ publish = false
 
 [dependencies]
 ariadnion-account-affinity = { path = "../ariadnion-account-affinity" }
+ariadnion-account-circuit = { path = "../ariadnion-account-circuit" }
 ariadnion-account-domain = { path = "../ariadnion-account-domain" }
 ariadnion-account-import = { path = "../ariadnion-account-import" }
 ariadnion-account-pool = { path = "../ariadnion-account-pool" }

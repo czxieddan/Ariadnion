@@ -209,6 +209,7 @@ version = "0.1.0"
 dependencies = [
  "ariadnion-account-affinity",
  "ariadnion-account-budget",
+ "ariadnion-account-circuit",
  "ariadnion-account-domain",
  "ariadnion-account-import",
  "ariadnion-account-pool",
