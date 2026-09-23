@@ -29,6 +29,7 @@
 /target/
 **/target/
 /debug/
+/tmp/
 /AGENTS.md
 /plans/
 /.codex/
