@@ -31,6 +31,8 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod migrations;
+
 use std::fmt::{self, Debug, Display, Formatter};
 use std::num::{NonZeroU16, NonZeroU32, NonZeroU64};
 use std::sync::{Arc, RwLock};
@@ -94,21 +96,44 @@ impl AccountProxyErrorCode {
     /// Returns the stable external machine code.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
+        if let Some(code) = self.validation_code() {
+            return code;
+        }
+        if let Some(code) = self.publication_code() {
+            return code;
+        }
+        self.egress_code()
+    }
+
+    const fn egress_code(self) -> &'static str {
         match self {
-            Self::InvalidArgument => "ACCOUNT_PROXY_INVALID_ARGUMENT",
-            Self::InvalidHost => "ACCOUNT_PROXY_INVALID_HOST",
-            Self::InvalidPort => "ACCOUNT_PROXY_INVALID_PORT",
-            Self::InvalidRegion => "ACCOUNT_PROXY_INVALID_REGION",
-            Self::InvalidSecretReference => "ACCOUNT_PROXY_INVALID_SECRET_REFERENCE",
-            Self::ConnectivityOutOfBounds => "ACCOUNT_PROXY_CONNECTIVITY_OUT_OF_BOUNDS",
             Self::InvalidEgressConstraint => "ACCOUNT_PROXY_INVALID_EGRESS_CONSTRAINT",
             Self::UnsupportedScheme => "ACCOUNT_PROXY_UNSUPPORTED_SCHEME",
-            Self::DuplicateProfile => "ACCOUNT_PROXY_DUPLICATE_PROFILE",
-            Self::LimitExceeded => "ACCOUNT_PROXY_LIMIT_EXCEEDED",
-            Self::VersionConflict => "ACCOUNT_PROXY_VERSION_CONFLICT",
-            Self::VersionExhausted => "ACCOUNT_PROXY_VERSION_EXHAUSTED",
-            Self::StateUnavailable => "ACCOUNT_PROXY_STATE_UNAVAILABLE",
             Self::ProfileNotFound => "ACCOUNT_PROXY_PROFILE_NOT_FOUND",
+            _ => "ACCOUNT_PROXY_INVALID_ARGUMENT",
+        }
+    }
+
+    const fn validation_code(self) -> Option<&'static str> {
+        match self {
+            Self::InvalidArgument => Some("ACCOUNT_PROXY_INVALID_ARGUMENT"),
+            Self::InvalidHost => Some("ACCOUNT_PROXY_INVALID_HOST"),
+            Self::InvalidPort => Some("ACCOUNT_PROXY_INVALID_PORT"),
+            Self::InvalidRegion => Some("ACCOUNT_PROXY_INVALID_REGION"),
+            Self::InvalidSecretReference => Some("ACCOUNT_PROXY_INVALID_SECRET_REFERENCE"),
+            Self::ConnectivityOutOfBounds => Some("ACCOUNT_PROXY_CONNECTIVITY_OUT_OF_BOUNDS"),
+            _ => None,
+        }
+    }
+
+    const fn publication_code(self) -> Option<&'static str> {
+        match self {
+            Self::DuplicateProfile => Some("ACCOUNT_PROXY_DUPLICATE_PROFILE"),
+            Self::LimitExceeded => Some("ACCOUNT_PROXY_LIMIT_EXCEEDED"),
+            Self::VersionConflict => Some("ACCOUNT_PROXY_VERSION_CONFLICT"),
+            Self::VersionExhausted => Some("ACCOUNT_PROXY_VERSION_EXHAUSTED"),
+            Self::StateUnavailable => Some("ACCOUNT_PROXY_STATE_UNAVAILABLE"),
+            _ => None,
         }
     }
 }
@@ -446,20 +471,10 @@ impl ConnectivityPolicy {
         max_connections: u32,
         max_redirects: u8,
     ) -> Result<Self, AccountProxyError> {
-        let Some(connect_timeout_ms) = NonZeroU32::new(connect_timeout_ms) else {
-            return Err(connectivity_error());
-        };
-        let Some(request_timeout_ms) = NonZeroU32::new(request_timeout_ms) else {
-            return Err(connectivity_error());
-        };
-        let Some(max_connections) = NonZeroU32::new(max_connections) else {
-            return Err(connectivity_error());
-        };
-        if connect_timeout_ms.get() > MAX_CONNECT_TIMEOUT_MS
-            || request_timeout_ms.get() > MAX_REQUEST_TIMEOUT_MS
-            || max_connections.get() > MAX_CONNECTIONS
-            || max_redirects > MAX_REDIRECTS
-        {
+        let connect_timeout_ms = bounded_connectivity(connect_timeout_ms, MAX_CONNECT_TIMEOUT_MS)?;
+        let request_timeout_ms = bounded_connectivity(request_timeout_ms, MAX_REQUEST_TIMEOUT_MS)?;
+        let max_connections = bounded_connectivity(max_connections, MAX_CONNECTIONS)?;
+        if max_redirects > MAX_REDIRECTS {
             return Err(connectivity_error());
         }
         Ok(Self {
@@ -888,20 +903,7 @@ impl AtomicProxyExecutionBook {
             .current
             .write()
             .map_err(|_| ProxyPersistenceError::new(ProxyPersistenceErrorCode::Unavailable))?;
-        if current.generation() != expected {
-            return Err(ProxyPersistenceError::new(
-                ProxyPersistenceErrorCode::Conflict,
-            ));
-        }
-        let required = current
-            .generation()
-            .next()
-            .map_err(|_| ProxyPersistenceError::new(ProxyPersistenceErrorCode::Conflict))?;
-        if next.generation() != required {
-            return Err(ProxyPersistenceError::new(
-                ProxyPersistenceErrorCode::Conflict,
-            ));
-        }
+        validate_durable_successor(current.generation(), expected, next.generation())?;
         let request = ProxyPublishRequest::new(expected, next.clone());
         let receipt = store.publish(&request)?;
         if receipt.generation() != next.generation() {
@@ -920,6 +922,35 @@ pub type ProxyProfileSnapshot = ProxyExecutionSnapshot;
 
 /// Compatibility alias for the process-local profile snapshot owner.
 pub type AtomicProxyProfileBook = AtomicProxyExecutionBook;
+
+fn validate_durable_successor(
+    current: ProxyGeneration,
+    expected: ProxyGeneration,
+    next: ProxyGeneration,
+) -> Result<(), ProxyPersistenceError> {
+    if current != expected {
+        return Err(ProxyPersistenceError::new(
+            ProxyPersistenceErrorCode::Conflict,
+        ));
+    }
+    let required = current
+        .next()
+        .map_err(|_| ProxyPersistenceError::new(ProxyPersistenceErrorCode::Conflict))?;
+    if next != required {
+        return Err(ProxyPersistenceError::new(
+            ProxyPersistenceErrorCode::Conflict,
+        ));
+    }
+    Ok(())
+}
+
+fn bounded_connectivity(value: u32, maximum: u32) -> Result<NonZeroU32, AccountProxyError> {
+    let value = NonZeroU32::new(value).ok_or_else(connectivity_error)?;
+    if value.get() > maximum {
+        return Err(connectivity_error());
+    }
+    Ok(value)
+}
 
 fn valid_ascii(value: &str, max_bytes: usize) -> bool {
     !value.is_empty()
@@ -947,12 +978,7 @@ where
         .into_iter()
         .map(|region| region.as_ref().to_owned())
         .collect::<Vec<_>>();
-    if values.is_empty() || values.len() > MAX_REGIONS {
-        return Err(region_error());
-    }
-    if values.iter().any(|region| !valid_region(region.as_str())) {
-        return Err(region_error());
-    }
+    validate_regions(&values)?;
     values.sort_unstable();
     if values.windows(2).any(|pair| pair[0] == pair[1]) {
         return Err(region_error());
@@ -967,6 +993,16 @@ where
     } else {
         RegionConstraint::Allowlist(values)
     })
+}
+
+fn validate_regions(values: &[String]) -> Result<(), AccountProxyError> {
+    if values.is_empty() || values.len() > MAX_REGIONS {
+        return Err(region_error());
+    }
+    if values.iter().any(|region| !valid_region(region.as_str())) {
+        return Err(region_error());
+    }
+    Ok(())
 }
 
 fn valid_region(value: &str) -> bool {
