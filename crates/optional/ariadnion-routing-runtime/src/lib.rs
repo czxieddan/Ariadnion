@@ -512,16 +512,14 @@ impl RoutingRuntime {
         signals: RuntimeSignals<'_>,
         context: &RequestContext,
     ) -> Result<RuntimeOutcome, RoutingRuntimeError> {
-        let mut state = match self.start_state(&loaded, attempts, coordination, signals)? {
-            LoopControl::Continue(state) => *state,
-            LoopControl::Finished(outcome) => return Ok(outcome),
-        };
+        let mut control = self.start_state(&loaded, attempts, coordination, signals)?;
         loop {
-            match self
-                .run_state(state, &loaded, executor, signals, context)
-                .await?
-            {
-                LoopControl::Continue(next) => state = *next,
+            match control {
+                LoopControl::Continue(state) => {
+                    control = self
+                        .run_state(*state, &loaded, executor, signals, context)
+                        .await?;
+                }
                 LoopControl::Finished(outcome) => return Ok(outcome),
             }
         }
