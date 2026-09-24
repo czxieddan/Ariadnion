@@ -32,6 +32,7 @@
 #![deny(missing_docs)]
 
 mod circuit_probe;
+mod clock;
 mod error_code;
 mod execution;
 mod runtime_support;
@@ -44,6 +45,7 @@ pub use circuit_probe::{
     CircuitProbeRegistryErrorCode, CircuitProbeValidation, MAX_CIRCUIT_PROBE_ACCOUNTS,
     ProcessCircuitProbeClock,
 };
+pub use clock::{ProcessMonotonicClock, RuntimeMonotonicClock, RuntimeMonotonicClockError};
 pub use execution::{
     PhysicalAttemptIdentity, PhysicalExecutionAcceptance, ProviderExecutionInterruption,
     ProviderExecutionOutcome, ProviderExecutionPort, ProviderExecutionRequest, RuntimeFailure,
@@ -55,7 +57,6 @@ use runtime_support::*;
 use std::collections::BTreeSet;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::sync::Arc;
-use std::time::Instant;
 
 use ariadnion_account_affinity::AffinitySnapshot;
 use ariadnion_account_circuit::CircuitOutcome;
@@ -222,60 +223,6 @@ impl RuntimeAttempt {
     #[must_use]
     pub const fn attempt_id(&self) -> &AttemptId {
         &self.attempt_id
-    }
-}
-
-/// Redacted failure returned by a monotonic clock implementation.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct RuntimeMonotonicClockError;
-
-impl Display for RuntimeMonotonicClockError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter.write_str("ROUTING_RUNTIME_MONOTONIC_CLOCK_UNAVAILABLE")
-    }
-}
-
-impl std::error::Error for RuntimeMonotonicClockError {}
-
-/// Adapter-owned monotonic clock sharing the origin used by admission requests.
-pub trait RuntimeMonotonicClock: Send + Sync {
-    /// Samples nanoseconds from the clock's stable origin.
-    ///
-    /// # Errors
-    /// Returns a redacted error when a monotonic observation is unavailable.
-    fn now(&self) -> Result<MonotonicTime, RuntimeMonotonicClockError>;
-}
-
-/// Process-local monotonic clock backed by one stable [`Instant`] origin.
-///
-/// Callers must use observations from this same instance when constructing
-/// admission requests passed to a runtime that owns it.
-#[derive(Clone, Debug)]
-pub struct ProcessMonotonicClock {
-    origin: Instant,
-}
-
-impl ProcessMonotonicClock {
-    /// Creates a clock whose zero point is the current process-local instant.
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            origin: Instant::now(),
-        }
-    }
-}
-
-impl Default for ProcessMonotonicClock {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl RuntimeMonotonicClock for ProcessMonotonicClock {
-    fn now(&self) -> Result<MonotonicTime, RuntimeMonotonicClockError> {
-        u64::try_from(self.origin.elapsed().as_nanos())
-            .map(MonotonicTime::from_nanos)
-            .map_err(|_| RuntimeMonotonicClockError)
     }
 }
 
