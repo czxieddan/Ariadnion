@@ -40,6 +40,10 @@ use ariadnion_account_batch::migrations::{
     ACCOUNT_BATCH_MIGRATION_TO_VERSION,
 };
 use ariadnion_account_import::migrations::{
+    ACCOUNT_EFFECTIVE_WINDOW_MIGRATION_CANONICAL_V1_SHA256,
+    ACCOUNT_EFFECTIVE_WINDOW_MIGRATION_DOMAIN, ACCOUNT_EFFECTIVE_WINDOW_MIGRATION_FROM_VERSION,
+    ACCOUNT_EFFECTIVE_WINDOW_MIGRATION_ID, ACCOUNT_EFFECTIVE_WINDOW_MIGRATION_REQUIRES_BACKUP,
+    ACCOUNT_EFFECTIVE_WINDOW_MIGRATION_STATEMENTS, ACCOUNT_EFFECTIVE_WINDOW_MIGRATION_TO_VERSION,
     ACCOUNT_REGISTRY_MIGRATION_CANONICAL_V1_SHA256, ACCOUNT_REGISTRY_MIGRATION_DOMAIN,
     ACCOUNT_REGISTRY_MIGRATION_FROM_VERSION, ACCOUNT_REGISTRY_MIGRATION_ID,
     ACCOUNT_REGISTRY_MIGRATION_REQUIRES_BACKUP, ACCOUNT_REGISTRY_MIGRATION_STATEMENTS,
@@ -47,6 +51,12 @@ use ariadnion_account_import::migrations::{
     ACCOUNT_ROUTING_POLICY_MIGRATION_DOMAIN, ACCOUNT_ROUTING_POLICY_MIGRATION_FROM_VERSION,
     ACCOUNT_ROUTING_POLICY_MIGRATION_ID, ACCOUNT_ROUTING_POLICY_MIGRATION_REQUIRES_BACKUP,
     ACCOUNT_ROUTING_POLICY_MIGRATION_STATEMENTS, ACCOUNT_ROUTING_POLICY_MIGRATION_TO_VERSION,
+};
+use ariadnion_account_proxy::migrations::{
+    ACCOUNT_PROXY_MIGRATION_CANONICAL_V1_SHA256, ACCOUNT_PROXY_MIGRATION_DOMAIN,
+    ACCOUNT_PROXY_MIGRATION_FROM_VERSION, ACCOUNT_PROXY_MIGRATION_ID,
+    ACCOUNT_PROXY_MIGRATION_REQUIRES_BACKUP, ACCOUNT_PROXY_MIGRATION_STATEMENTS,
+    ACCOUNT_PROXY_MIGRATION_TO_VERSION,
 };
 use ariadnion_account_vault::migrations::{
     ACCOUNT_VAULT_MIGRATION_CANONICAL_V1_SHA256, ACCOUNT_VAULT_MIGRATION_DOMAIN,
@@ -460,7 +470,14 @@ fn compile_account_definitions(
     ] {
         insert_definition(definitions, definition)?;
     }
-    Ok(())
+    compile_account_snapshot_definitions(definitions)
+}
+
+fn compile_account_snapshot_definitions(
+    definitions: &mut BTreeMap<MigrationId, RnmdbMigrationDefinition>,
+) -> Result<(), StorageError> {
+    insert_definition(definitions, compile_account_effective_window_definition()?)?;
+    insert_definition(definitions, compile_account_proxy_definition()?)
 }
 
 fn compile_identity_base_definitions(
@@ -918,6 +935,32 @@ fn compile_account_routing_policy_definition() -> Result<RnmdbMigrationDefinitio
         statements: ACCOUNT_ROUTING_POLICY_MIGRATION_STATEMENTS,
         expected_checksum: ACCOUNT_ROUTING_POLICY_MIGRATION_CANONICAL_V1_SHA256,
         requires_backup: ACCOUNT_ROUTING_POLICY_MIGRATION_REQUIRES_BACKUP,
+    };
+    compile_migration_definition(input, CanonicalAstV1)
+}
+
+fn compile_account_effective_window_definition() -> Result<RnmdbMigrationDefinition, StorageError> {
+    let input = CanonicalMigrationDefinitionInput {
+        id: ACCOUNT_EFFECTIVE_WINDOW_MIGRATION_ID,
+        domain: ACCOUNT_EFFECTIVE_WINDOW_MIGRATION_DOMAIN,
+        from: ACCOUNT_EFFECTIVE_WINDOW_MIGRATION_FROM_VERSION,
+        to: ACCOUNT_EFFECTIVE_WINDOW_MIGRATION_TO_VERSION,
+        statements: ACCOUNT_EFFECTIVE_WINDOW_MIGRATION_STATEMENTS,
+        expected_checksum: ACCOUNT_EFFECTIVE_WINDOW_MIGRATION_CANONICAL_V1_SHA256,
+        requires_backup: ACCOUNT_EFFECTIVE_WINDOW_MIGRATION_REQUIRES_BACKUP,
+    };
+    compile_migration_definition(input, CanonicalAstV1)
+}
+
+fn compile_account_proxy_definition() -> Result<RnmdbMigrationDefinition, StorageError> {
+    let input = CanonicalMigrationDefinitionInput {
+        id: ACCOUNT_PROXY_MIGRATION_ID,
+        domain: ACCOUNT_PROXY_MIGRATION_DOMAIN,
+        from: ACCOUNT_PROXY_MIGRATION_FROM_VERSION,
+        to: ACCOUNT_PROXY_MIGRATION_TO_VERSION,
+        statements: ACCOUNT_PROXY_MIGRATION_STATEMENTS,
+        expected_checksum: ACCOUNT_PROXY_MIGRATION_CANONICAL_V1_SHA256,
+        requires_backup: ACCOUNT_PROXY_MIGRATION_REQUIRES_BACKUP,
     };
     compile_migration_definition(input, CanonicalAstV1)
 }

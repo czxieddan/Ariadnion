@@ -31,8 +31,10 @@
 use std::sync::Arc;
 
 use ariadnion_account_import::migrations::{
-    ACCOUNT_REGISTRY_MIGRATION_ID, ACCOUNT_ROUTING_POLICY_MIGRATION_ID,
+    ACCOUNT_EFFECTIVE_WINDOW_MIGRATION_ID, ACCOUNT_REGISTRY_MIGRATION_ID,
+    ACCOUNT_ROUTING_POLICY_MIGRATION_ID,
 };
+use ariadnion_account_proxy::migrations::ACCOUNT_PROXY_MIGRATION_ID;
 use ariadnion_account_vault::migrations::{
     ACCOUNT_VAULT_MIGRATION_ID, ACCOUNT_VAULT_ROTATION_MIGRATION_ID,
 };
@@ -73,6 +75,10 @@ use crate::{RnmdbSessionOwner, UtcTimestampMicros};
 
 const MAX_LEDGER_LITERAL_BYTES: usize = 256;
 const LEGACY_API_KEY_PROBE: &str = "SELECT issued_at FROM identity_api_keys LIMIT 1;";
+// Migration memory is bounded independently of a tenant's snapshot capacity.
+const ACCOUNT_EFFECTIVE_WINDOW_BACKFILL_PAGE_ROWS: usize = 1 << 10;
+const ACCOUNT_EFFECTIVE_WINDOW_LEGACY_ACCOUNT_PROJECTION: &str =
+    "SELECT tenant_id, account_id, config_version FROM account_registry_accounts";
 
 /// Result of applying one immutable migration definition.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -409,6 +415,31 @@ pub fn account_routing_policy_migration() -> Result<MigrationDescriptor, Storage
     compiled_migration_definitions()?.descriptor(ACCOUNT_ROUTING_POLICY_MIGRATION_ID)
 }
 
+/// Returns the additive durable account effective-window migration.
+///
+/// The version-twenty-five to version-twenty-six transition preserves the
+/// immutable account registry and adds tenant-scoped optional UTC intervals.
+/// Migration execution remains explicit and performs no repository I/O.
+///
+/// # Errors
+/// Returns a stable integrity error when fixed metadata, statements, or the
+/// canonical checksum do not match the compiled migration registry.
+pub fn account_effective_window_migration() -> Result<MigrationDescriptor, StorageError> {
+    compiled_migration_definitions()?.descriptor(ACCOUNT_EFFECTIVE_WINDOW_MIGRATION_ID)
+}
+
+/// Returns the immutable schema 26 to 27 durable proxy snapshot migration.
+///
+/// The migration adds tenant-scoped generation and profile tables. It does not
+/// modify the schema 25 to 26 effective-window definition or perform I/O.
+///
+/// # Errors
+/// Returns an integrity error when compiled metadata, fixed statements, or their
+/// canonical checksum disagree.
+pub fn account_proxy_migration() -> Result<MigrationDescriptor, StorageError> {
+    compiled_migration_definitions()?.descriptor(ACCOUNT_PROXY_MIGRATION_ID)
+}
+
 fn migration_insert(
     descriptor: &MigrationDescriptor,
     applied_at: UtcTimestampMicros,
@@ -559,7 +590,126 @@ fn execute_migration_statements(
     for statement in definition.statements() {
         session.execute(statement)?;
     }
+    if definition.descriptor().id().as_str() == ACCOUNT_EFFECTIVE_WINDOW_MIGRATION_ID {
+        backfill_legacy_effective_windows(session)?;
+    }
     Ok(())
+}
+
+fn backfill_legacy_effective_windows(session: &mut LocalSession) -> Result<(), RnovError> {
+    let mut offset = 0usize;
+    loop {
+        let query = legacy_account_projection_query(offset);
+        let batch = load_legacy_account_projection(session, query.as_str())?;
+        let row_count = batch.rows().len();
+        insert_legacy_effective_windows(session, batch.rows())?;
+        if row_count < ACCOUNT_EFFECTIVE_WINDOW_BACKFILL_PAGE_ROWS {
+            return Ok(());
+        }
+        offset = offset
+            .checked_add(row_count)
+            .ok_or_else(|| migration_corruption("legacy account projection offset overflow"))?;
+    }
+}
+
+fn legacy_account_projection_query(offset: usize) -> String {
+    format!(
+        "{ACCOUNT_EFFECTIVE_WINDOW_LEGACY_ACCOUNT_PROJECTION} ORDER BY tenant_id, account_id LIMIT {ACCOUNT_EFFECTIVE_WINDOW_BACKFILL_PAGE_ROWS} OFFSET {offset};"
+    )
+}
+
+fn load_legacy_account_projection(
+    session: &mut LocalSession,
+    query: &str,
+) -> Result<VectorBatch, RnovError> {
+    let output = session.execute(query)?;
+    let CommandOutput::Rows(batch) = output else {
+        return Err(migration_corruption(
+            "legacy account projection did not return rows",
+        ));
+    };
+    validate_legacy_account_projection_columns(batch.columns())?;
+    validate_legacy_account_projection_bound(batch.rows())?;
+    Ok(batch)
+}
+
+fn validate_legacy_account_projection_bound(rows: &[Row]) -> Result<(), RnovError> {
+    if rows.len() > ACCOUNT_EFFECTIVE_WINDOW_BACKFILL_PAGE_ROWS {
+        return Err(migration_corruption(
+            "legacy account projection exceeds the bounded page limit",
+        ));
+    }
+    Ok(())
+}
+
+fn insert_legacy_effective_windows(
+    session: &mut LocalSession,
+    rows: &[Row],
+) -> Result<(), RnovError> {
+    for row in rows {
+        let statement = legacy_effective_window_insert(row)?;
+        require_single_insert(session.execute(statement.as_str())?)?;
+    }
+    Ok(())
+}
+
+fn validate_legacy_account_projection_columns(columns: &[ColumnSchema]) -> Result<(), RnovError> {
+    let expected = [
+        ("tenant_id", SqlType::Text),
+        ("account_id", SqlType::Text),
+        ("config_version", SqlType::Text),
+    ];
+    if columns.len() != expected.len() {
+        return Err(migration_corruption(
+            "legacy account projection column count changed",
+        ));
+    }
+    for (column, (name, data_type)) in columns.iter().zip(expected) {
+        if column.name() != name || column.data_type() != &data_type {
+            return Err(migration_corruption(
+                "legacy account projection schema changed",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn legacy_effective_window_insert(row: &Row) -> Result<String, RnovError> {
+    let [tenant_id, account_id, config_version] = row.values() else {
+        return Err(migration_corruption(
+            "legacy account projection row shape changed",
+        ));
+    };
+    let tenant_id = migration_text_literal(tenant_id)?;
+    let account_id = migration_text_literal(account_id)?;
+    let config_version = migration_text_literal(config_version)?;
+    Ok(format!(
+        "INSERT INTO account_registry_effective_windows (tenant_id, account_id, config_version, effective_start_unix_seconds, effective_end_unix_seconds) VALUES ({tenant_id}, {account_id}, {config_version}, NULL, NULL);"
+    ))
+}
+
+fn migration_text_literal(value: &SqlValue) -> Result<String, RnovError> {
+    let SqlValue::Text(value) = value else {
+        return Err(migration_corruption(
+            "legacy account projection value type changed",
+        ));
+    };
+    if value.len() > MAX_LEDGER_LITERAL_BYTES || !value.is_ascii() {
+        return Err(migration_corruption(
+            "legacy account projection text exceeds migration limits",
+        ));
+    }
+    let mut literal = String::with_capacity(value.len().saturating_add(2));
+    literal.push('\'');
+    for character in value.chars() {
+        if character == '\'' {
+            literal.push_str("''");
+        } else {
+            literal.push(character);
+        }
+    }
+    literal.push('\'');
+    Ok(literal)
 }
 
 fn record_migration(
