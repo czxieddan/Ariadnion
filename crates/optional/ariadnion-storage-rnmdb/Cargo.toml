@@ -46,6 +46,7 @@ ariadnion-api-files = { path = "../ariadnion-api-files" }
 ariadnion-account-batch = { path = "../ariadnion-account-batch" }
 ariadnion-account-domain = { path = "../ariadnion-account-domain" }
 ariadnion-account-import = { path = "../ariadnion-account-import" }
+ariadnion-account-proxy = { path = "../ariadnion-account-proxy" }
 ariadnion-account-vault = { path = "../ariadnion-account-vault" }
 ariadnion-audit-domain = { path = "../ariadnion-audit-domain" }
 ariadnion-audit-store = { path = "../ariadnion-audit-store" }

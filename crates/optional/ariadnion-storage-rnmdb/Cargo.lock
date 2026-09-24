@@ -76,6 +76,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ariadnion-account-proxy"
+version = "0.1.0"
+dependencies = [
+ "ariadnion-account-domain",
+]
+
+[[package]]
 name = "ariadnion-account-vault"
 version = "0.1.0"
 dependencies = [
@@ -340,6 +347,7 @@ dependencies = [
  "ariadnion-account-batch",
  "ariadnion-account-domain",
  "ariadnion-account-import",
+ "ariadnion-account-proxy",
  "ariadnion-account-vault",
  "ariadnion-api-admin",
  "ariadnion-api-files",
