@@ -42,6 +42,7 @@ const LEGACY_DOMAIN: &[u8] = b"ariadnion.account-import.publish-intent.hmac-sha2
 const CONFIGURED_DOMAIN: &[u8] = b"ariadnion.account-import.publish-intent.hmac-sha256.v3";
 const ROUTING_DOMAIN: &[u8] = b"ariadnion.account-import.publish-intent.hmac-sha256.v4";
 const EFFECTIVE_WINDOW_DOMAIN: &[u8] = b"ariadnion.account-import.publish-intent.hmac-sha256.v5";
+const CONFIGURATION_MODE_DOMAIN: &[u8] = b"ariadnion.account-import.publish-intent.hmac-sha256.v6";
 const PROVISIONING_POLICY: &[u8] = b"minimal-provisioning-v1";
 const REPLACEMENT_POLICY: &[u8] = b"advance-config-and-account-versions-preserve-status-v1";
 const INITIAL_VERSION: u64 = 1;
@@ -77,6 +78,7 @@ enum FingerprintShape {
     ConfiguredV3,
     RoutingV4,
     EffectiveWindowV5,
+    ConfigurationModeV6,
 }
 
 impl FingerprintShape {
@@ -86,12 +88,15 @@ impl FingerprintShape {
             Self::ConfiguredV3 => CONFIGURED_DOMAIN,
             Self::RoutingV4 => ROUTING_DOMAIN,
             Self::EffectiveWindowV5 => EFFECTIVE_WINDOW_DOMAIN,
+            Self::ConfigurationModeV6 => CONFIGURATION_MODE_DOMAIN,
         }
     }
 }
 
 fn fingerprint_shape(entries: &[ImportEntry]) -> FingerprintShape {
-    if entries.iter().any(has_effective_window) {
+    if requires_configuration_mode(entries) {
+        FingerprintShape::ConfigurationModeV6
+    } else if entries.iter().any(has_effective_window) {
         FingerprintShape::EffectiveWindowV5
     } else if entries.iter().any(has_nondefault_routing) {
         FingerprintShape::RoutingV4
@@ -100,6 +105,33 @@ fn fingerprint_shape(entries: &[ImportEntry]) -> FingerprintShape {
     } else {
         FingerprintShape::LegacyV2
     }
+}
+
+fn requires_configuration_mode(entries: &[ImportEntry]) -> bool {
+    // Equal-valued explicit entries could be legacy entries in an old receipt.
+    // Both forms must leave the old domain; otherwise a mode-changing replay
+    // could still authenticate against an ambiguous V3-V5 fingerprint.
+    entries.len() > 1
+        && entries.iter().any(ImportEntry::has_explicit_configuration)
+        && entries.iter().any(has_legacy_entry_values)
+}
+
+fn has_legacy_entry_values(entry: &ImportEntry) -> bool {
+    has_legacy_metadata(entry) && has_legacy_configuration(entry)
+}
+
+fn has_legacy_metadata(entry: &ImportEntry) -> bool {
+    entry.provider_label() == entry.provider_id().as_str()
+        && entry.account_label() == entry.account_id().as_str()
+        && entry.external_account_id().is_none()
+}
+
+fn has_legacy_configuration(entry: &ImportEntry) -> bool {
+    entry.config_version().get() == INITIAL_VERSION
+        && entry.default_model().is_none()
+        && entry.max_concurrency().get() == INITIAL_MAX_CONCURRENCY
+        && !has_nondefault_routing(entry)
+        && !has_effective_window(entry)
 }
 
 fn has_effective_window(entry: &ImportEntry) -> bool {
@@ -116,7 +148,13 @@ fn fingerprint_entry(hash: &mut Hmac<Sha256>, entry: &ImportEntry, shape: Finger
         FingerprintShape::ConfiguredV3 => fingerprint_configured_entry(hash, entry),
         FingerprintShape::RoutingV4 => fingerprint_routing_entry(hash, entry),
         FingerprintShape::EffectiveWindowV5 => fingerprint_effective_window_entry(hash, entry),
+        FingerprintShape::ConfigurationModeV6 => fingerprint_configuration_mode_entry(hash, entry),
     }
+}
+
+fn fingerprint_configuration_mode_entry(hash: &mut Hmac<Sha256>, entry: &ImportEntry) {
+    push_frame(hash, &[u8::from(entry.has_explicit_configuration())]);
+    fingerprint_effective_window_entry(hash, entry);
 }
 
 fn fingerprint_effective_window_entry(hash: &mut Hmac<Sha256>, entry: &ImportEntry) {

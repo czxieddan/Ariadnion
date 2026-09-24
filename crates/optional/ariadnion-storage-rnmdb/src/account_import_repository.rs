@@ -199,6 +199,12 @@ struct ImportEnvironment {
 /// An indeterminate commit permanently quarantines the underlying session owner;
 /// callers must reopen it with the same database and keys, then reconcile the
 /// original tenant-local mutation identity instead of publishing a new mutation.
+///
+/// Replay retains the exact V2-V5 fingerprints for unambiguous requests. Batches
+/// whose normalized values could hide legacy automatic-version entries use V6,
+/// which also binds each entry's explicit-configuration mode. Older ambiguous
+/// receipts cannot prove that mode and return `Conflict` on publication replay;
+/// callers can still recover the original receipt through read-only reconciliation.
 pub struct RnmdbAccountImportRepository {
     session: Arc<RnmdbSessionOwner>,
     worker: ImportWorker,
