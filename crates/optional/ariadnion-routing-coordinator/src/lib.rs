@@ -867,6 +867,52 @@ impl CoordinationRequest {
         Ok(self)
     }
 
+    /// Returns whether `other` preserves this request's routing scope.
+    ///
+    /// Equality includes tenant, request ID, model, required capabilities,
+    /// destination, pricing dimension, quantity and cost constraints, admission
+    /// units and budget group, retry safety and attempt ceiling, and affinity key.
+    /// Required capabilities are compared as sets, regardless of caller order.
+    ///
+    /// Reservation IDs, pricing timestamps, admission timing, and affinity
+    /// observation times are attempt-local and deliberately excluded. Each
+    /// attempt must still satisfy its own timing and authorization checks.
+    ///
+    /// This bounded, allocation-free comparison performs no I/O, reads no
+    /// credentials, and has no cancellation or error path. It does not grant
+    /// authorization. A `false` result forbids reusing the initial routing scope
+    /// for another admission attempt.
+    #[must_use]
+    pub fn has_same_routing_scope(&self, other: &Self) -> bool {
+        self.has_same_request_context(other)
+            && self.destination_region == other.destination_region
+            && self.pricing == other.pricing
+            && self.admission.units == other.admission.units
+            && self.admission.group_id == other.admission.group_id
+            && self.retry == other.retry
+            && self.affinity_key() == other.affinity_key()
+    }
+
+    fn has_same_request_context(&self, other: &Self) -> bool {
+        self.context.tenant_id() == other.context.tenant_id()
+            && self.context.request_id() == other.context.request_id()
+            && self.context.model() == other.context.model()
+            && self.has_same_required_capabilities(other)
+    }
+
+    fn has_same_required_capabilities(&self, other: &Self) -> bool {
+        let required = self.context.required_capabilities();
+        let other_required = other.context.required_capabilities();
+        required.len() == other_required.len()
+            && required
+                .iter()
+                .all(|capability| other_required.contains(capability))
+    }
+
+    fn affinity_key(&self) -> Option<&AffinityKey> {
+        self.affinity.as_ref().map(|(key, _)| key)
+    }
+
     pub(crate) const fn context(&self) -> &ariadnion_routing_domain::RoutingContext {
         &self.context
     }
