@@ -26,13 +26,13 @@
 //
 // SPDX-License-Identifier: LicenseRef-AHCL-1.1
 //
-//! Canonical request fingerprints and strict durable account-import decoding.
+//! Strict durable account-import decoding and transaction-scoped persistence.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use ariadnion_account_domain::{
-    AccountId, AccountStatus, ModelName, ProviderId, SecretPath, SecretProvider, SecretPurpose,
-    SecretRef, SecretVersion,
+    AccountEffectiveWindow, AccountId, AccountStatus, ModelName, ProviderId, SecretPath,
+    SecretProvider, SecretPurpose, SecretRef, SecretVersion,
 };
 use ariadnion_account_import::{
     AccountCredentialReference, AccountCredentialReferenceRequest, AccountProjectionRequest,
@@ -43,13 +43,11 @@ use ariadnion_account_import::{
 };
 use ariadnion_core::{RequestContext, TenantId};
 use ariadnion_storage_domain::{StorageError, StorageErrorCode};
-use hmac::{Hmac, Mac};
 use rnmdb_cli::LocalSession;
 use rnmdb_executor::vector::Row;
-use sha2::Sha256;
 use zeroize::Zeroizing;
 
-use super::{routing_policy, sql};
+use super::{effective_window, fingerprint, routing_policy, sql};
 use crate::identity_transaction::require_active_identity_transaction;
 use crate::session::check_context;
 
@@ -59,14 +57,7 @@ const ACCOUNT_STATE_PROJECTION: &str =
     "tenant_id, account_id, config_version, account_version, account_status, import_generation";
 const ROUTING_PROJECTION: &str = "tenant_id, account_id, provider_id, default_model, max_concurrency, config_version, account_version, account_status, import_generation";
 const CREDENTIAL_REFERENCE_PROJECTION: &str = "tenant_id, account_id, provider_id, config_version, secret_provider, secret_path, secret_version, secret_purpose, account_status, import_generation";
-const LEGACY_FINGERPRINT_DOMAIN: &[u8] = b"ariadnion.account-import.publish-intent.hmac-sha256.v2";
-const CONFIGURED_FINGERPRINT_DOMAIN: &[u8] =
-    b"ariadnion.account-import.publish-intent.hmac-sha256.v3";
-const ROUTING_FINGERPRINT_DOMAIN: &[u8] = b"ariadnion.account-import.publish-intent.hmac-sha256.v4";
-const PROVISIONING_POLICY: &[u8] = b"minimal-provisioning-v1";
-const REPLACEMENT_POLICY: &[u8] = b"advance-config-and-account-versions-preserve-status-v1";
 const INITIAL_VERSION: u64 = 1;
-const INITIAL_MAX_CONCURRENCY: u32 = 1;
 const INITIAL_STATUS: &str = "provisioning";
 
 pub(super) struct StoredMutation {
@@ -108,7 +99,7 @@ pub(super) fn publish(
     publication_boundary: impl FnOnce() -> Result<SystemTime, StorageError>,
 ) -> Result<DurablePublishReceipt, StorageError> {
     require_active_identity_transaction(session)?;
-    let fingerprint = request_fingerprint(tenant, request, fingerprint_key)?;
+    let fingerprint = fingerprint::request(tenant, request, fingerprint_key)?;
     if let Some(stored) = load_mutation(session, tenant, request.mutation_id())? {
         return replay(stored, &fingerprint);
     }
@@ -132,11 +123,27 @@ pub(super) fn load_projection_snapshot(
     let generation = require_projection_generation(session, tenant, request)?;
     let batch = load_projection_rows(session, tenant)?;
     let mut routing = routing_policy::load_for_tenant(session, tenant, context)?;
-    let accounts = decode_projection_rows(batch.rows(), tenant, generation, &mut routing, context)?;
-    if !routing.is_empty() {
+    let mut windows = effective_window::load_for_tenant(session, tenant, context)?;
+    let accounts = decode_projection_rows(
+        batch.rows(),
+        tenant,
+        generation,
+        &mut routing,
+        &mut windows,
+        context,
+    )?;
+    require_consumed_projection_metadata(&routing, &windows)?;
+    AccountProjectionSnapshot::new(generation, accounts).map_err(|_| sql::integrity())
+}
+
+fn require_consumed_projection_metadata(
+    routing: &routing_policy::RoutingPolicies,
+    windows: &effective_window::EffectiveWindows,
+) -> Result<(), StorageError> {
+    if !routing.is_empty() || !windows.is_empty() {
         return Err(sql::integrity());
     }
-    AccountProjectionSnapshot::new(generation, accounts).map_err(|_| sql::integrity())
+    Ok(())
 }
 
 pub(super) fn load_credential_reference(
@@ -353,12 +360,15 @@ fn decode_projection_rows(
     tenant: &TenantId,
     generation: ImportGeneration,
     routing: &mut routing_policy::RoutingPolicies,
+    windows: &mut effective_window::EffectiveWindows,
     context: &RequestContext,
 ) -> Result<Vec<DurableAccountProjection>, StorageError> {
     let mut accounts = Vec::with_capacity(rows.len());
     for row in rows {
         check_context(context)?;
-        accounts.push(decode_projection(row, tenant, generation, routing)?);
+        accounts.push(decode_projection(
+            row, tenant, generation, routing, windows,
+        )?);
     }
     Ok(accounts)
 }
@@ -368,13 +378,15 @@ fn decode_projection(
     tenant: &TenantId,
     generation: ImportGeneration,
     routing: &mut routing_policy::RoutingPolicies,
+    windows: &mut effective_window::EffectiveWindows,
 ) -> Result<DurableAccountProjection, StorageError> {
     let values = sql::row_values::<9>(row)?;
     let account = parse_account_id(&values[1])?;
     let config_version = nonzero_text_version(&values[5])?;
     let routing = routing_policy::take_routing(routing, &account, config_version)?;
+    let window = effective_window::take_window(windows, &account, config_version)?;
     let identity = decode_projection_identity(values, tenant, account)?;
-    let state = decode_projection_state(values, generation, routing)?;
+    let state = decode_projection_state(values, generation, routing, window)?;
     Ok(DurableAccountProjection::new(identity, state))
 }
 
@@ -398,6 +410,7 @@ fn decode_projection_state(
     values: &[rnmdb_types::SqlValue; 9],
     generation: ImportGeneration,
     routing: DurableRoutingState,
+    effective_window: AccountEffectiveWindow,
 ) -> Result<DurableAccountState, StorageError> {
     let (max_concurrency, config_version, account_version, import_generation) =
         decode_projection_versions(values)?;
@@ -411,6 +424,7 @@ fn decode_projection_state(
         import_generation,
         routing,
     )
+    .map(|state| state.with_effective_window(effective_window))
     .map_err(|_| sql::integrity())
 }
 
@@ -585,10 +599,14 @@ impl AppliedCounts {
             .published_count
             .checked_add(1)
             .ok_or_else(sql::exhausted)?;
+        self.record_inserted(effect, account_id);
+        Ok(())
+    }
+
+    fn record_inserted(&mut self, effect: EntryEffect, account_id: &AccountId) {
         if matches!(effect, EntryEffect::Inserted) {
             self.inserted_accounts.push(account_id.clone());
         }
-        Ok(())
     }
 }
 
@@ -656,7 +674,8 @@ fn insert_account(
         sql::text(&generation.get().to_string()),
     );
     sql::require_rows(sql::execute(session, statement)?, 1)?;
-    routing_policy::insert(session, tenant, entry, entry.config_version().get())
+    routing_policy::insert(session, tenant, entry, entry.config_version().get())?;
+    effective_window::insert(session, tenant, entry, entry.config_version().get())
 }
 
 fn persist_initial_events(
@@ -730,6 +749,13 @@ fn replace_account(
     );
     sql::require_rows(sql::execute(session, statement)?, 1)?;
     routing_policy::replace(
+        session,
+        tenant,
+        entry,
+        existing.config_version,
+        config_version,
+    )?;
+    effective_window::replace(
         session,
         tenant,
         entry,
@@ -1031,150 +1057,8 @@ fn decode_time(value: &rnmdb_types::SqlValue) -> Result<SystemTime, StorageError
         .ok_or_else(sql::integrity)
 }
 
-fn request_fingerprint(
-    tenant: &TenantId,
-    request: &DurablePublishRequest,
-    key: &[u8],
-) -> Result<Zeroizing<String>, StorageError> {
-    let mut hash = Hmac::<Sha256>::new_from_slice(key).map_err(|_| sql::integrity())?;
-    let shape = fingerprint_shape(request.intent().entries());
-    push_frame(&mut hash, shape.domain());
-    push_frame(&mut hash, tenant.as_str().as_bytes());
-    push_frame(&mut hash, request.mutation_id().as_str().as_bytes());
-    let intent = request.intent();
-    push_frame(&mut hash, &intent.expected_generation().get().to_be_bytes());
-    push_frame(&mut hash, strategy_label(intent.strategy()).as_bytes());
-    push_frame(&mut hash, PROVISIONING_POLICY);
-    push_frame(&mut hash, REPLACEMENT_POLICY);
-    let count = u64::try_from(intent.entries().len()).map_err(|_| sql::exhausted())?;
-    push_frame(&mut hash, &count.to_be_bytes());
-    for entry in intent.entries() {
-        fingerprint_entry(&mut hash, entry, shape);
-    }
-    Ok(Zeroizing::new(bytes_hex(&hash.finalize().into_bytes())))
-}
-
-#[derive(Clone, Copy)]
-enum FingerprintShape {
-    LegacyV2,
-    ConfiguredV3,
-    RoutingV4,
-}
-
-impl FingerprintShape {
-    const fn domain(self) -> &'static [u8] {
-        match self {
-            Self::LegacyV2 => LEGACY_FINGERPRINT_DOMAIN,
-            Self::ConfiguredV3 => CONFIGURED_FINGERPRINT_DOMAIN,
-            Self::RoutingV4 => ROUTING_FINGERPRINT_DOMAIN,
-        }
-    }
-}
-
-fn fingerprint_shape(entries: &[ImportEntry]) -> FingerprintShape {
-    if entries.iter().any(has_nondefault_routing) {
-        FingerprintShape::RoutingV4
-    } else if entries.iter().any(ImportEntry::has_explicit_configuration) {
-        FingerprintShape::ConfiguredV3
-    } else {
-        FingerprintShape::LegacyV2
-    }
-}
-
-fn has_nondefault_routing(entry: &ImportEntry) -> bool {
-    entry.routing_priority() != Default::default() || entry.routing_weight() != Default::default()
-}
-
-fn fingerprint_entry(hash: &mut Hmac<Sha256>, entry: &ImportEntry, shape: FingerprintShape) {
-    match shape {
-        FingerprintShape::LegacyV2 => fingerprint_legacy_entry(hash, entry),
-        FingerprintShape::ConfiguredV3 => fingerprint_configured_entry(hash, entry),
-        FingerprintShape::RoutingV4 => fingerprint_routing_entry(hash, entry),
-    }
-}
-
-fn fingerprint_routing_entry(hash: &mut Hmac<Sha256>, entry: &ImportEntry) {
-    fingerprint_configured_entry(hash, entry);
-    push_frame(hash, &entry.routing_priority().get().to_be_bytes());
-    push_frame(hash, &entry.routing_weight().get().to_be_bytes());
-}
-
-fn fingerprint_configured_entry(hash: &mut Hmac<Sha256>, entry: &ImportEntry) {
-    let secret = entry.secret_ref();
-    push_frame(hash, entry.account_id().as_str().as_bytes());
-    push_frame(hash, entry.provider_id().as_str().as_bytes());
-    push_frame(hash, entry.provider_label().as_bytes());
-    push_frame(hash, entry.account_label().as_bytes());
-    push_optional_text(
-        hash,
-        entry.external_account_id().map(|value| value.as_str()),
-    );
-    push_frame(hash, &entry.config_version().get().to_be_bytes());
-    push_frame(hash, secret.provider().as_str().as_bytes());
-    push_frame(hash, secret.path().as_str().as_bytes());
-    push_frame(hash, &secret.version().get().to_be_bytes());
-    push_frame(hash, secret.purpose().as_str().as_bytes());
-    push_frame(hash, &entry.credential_digest().as_bytes());
-    push_optional_text(hash, entry.default_model().map(|value| value.as_str()));
-    push_frame(hash, &entry.max_concurrency().get().to_be_bytes());
-    push_frame(hash, &INITIAL_VERSION.to_be_bytes());
-    push_frame(hash, INITIAL_STATUS.as_bytes());
-}
-
-fn fingerprint_legacy_entry(hash: &mut Hmac<Sha256>, entry: &ImportEntry) {
-    let secret = entry.secret_ref();
-    push_frame(hash, entry.account_id().as_str().as_bytes());
-    push_frame(hash, entry.provider_id().as_str().as_bytes());
-    push_frame(hash, entry.provider_id().as_str().as_bytes());
-    push_frame(hash, entry.account_id().as_str().as_bytes());
-    push_frame(hash, b"external-account-id:none");
-    push_frame(hash, &INITIAL_VERSION.to_be_bytes());
-    push_frame(hash, secret.provider().as_str().as_bytes());
-    push_frame(hash, secret.path().as_str().as_bytes());
-    push_frame(hash, &secret.version().get().to_be_bytes());
-    push_frame(hash, secret.purpose().as_str().as_bytes());
-    push_frame(hash, &entry.credential_digest().as_bytes());
-    push_frame(hash, b"default-model:none");
-    push_frame(hash, &INITIAL_MAX_CONCURRENCY.to_be_bytes());
-    push_frame(hash, &INITIAL_VERSION.to_be_bytes());
-    push_frame(hash, INITIAL_STATUS.as_bytes());
-}
-
-fn push_optional_text(hash: &mut Hmac<Sha256>, value: Option<&str>) {
-    match value {
-        Some(value) => {
-            push_frame(hash, b"some");
-            push_frame(hash, value.as_bytes());
-        }
-        None => push_frame(hash, b"none"),
-    }
-}
-
-fn push_frame(hash: &mut Hmac<Sha256>, value: &[u8]) {
-    hash.update(&(value.len() as u64).to_be_bytes());
-    hash.update(value);
-}
-
-const fn strategy_label(strategy: ConflictStrategy) -> &'static str {
-    match strategy {
-        ConflictStrategy::Reject => "reject",
-        ConflictStrategy::SkipExisting => "skip-existing",
-        ConflictStrategy::ReplaceExisting => "replace-existing",
-    }
-}
-
 fn digest_hex(digest: OpaqueDigest) -> Zeroizing<String> {
-    Zeroizing::new(bytes_hex(&digest.as_bytes()))
-}
-
-fn bytes_hex(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut output = String::with_capacity(bytes.len().saturating_mul(2));
-    for byte in bytes {
-        output.push(char::from(HEX[usize::from(byte >> 4)]));
-        output.push(char::from(HEX[usize::from(byte & 0x0f)]));
-    }
-    output
+    Zeroizing::new(fingerprint::bytes_hex(&digest.as_bytes()))
 }
 
 fn valid_fingerprint(value: &str) -> bool {

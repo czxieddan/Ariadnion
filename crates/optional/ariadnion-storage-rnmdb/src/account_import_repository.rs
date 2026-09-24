@@ -29,6 +29,8 @@
 //! Tenant-scoped RNMDB publication and reconciliation for account imports.
 
 mod codec;
+mod effective_window;
+mod fingerprint;
 mod routing_policy;
 mod sql;
 
