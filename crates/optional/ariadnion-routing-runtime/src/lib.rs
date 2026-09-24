@@ -320,15 +320,26 @@ impl RuntimeRequest {
     /// Couples each physical attempt with one independently identifiable
     /// coordination and admission request.
     ///
+    /// Every attempt must retain the same routing and admission policy scope.
+    /// Reservation identities and observation times may change between attempts;
+    /// tenant, request, model, placement, cost, budget, and retry constraints may
+    /// not. Validation performs no admission, credential access, or provider I/O.
+    ///
     /// # Errors
     /// Returns [`RoutingRuntimeErrorCode::InvalidArgument`] unless both arrays
-    /// have equal, non-zero bounded lengths.
+    /// have equal, non-zero bounded lengths and all requests have the same scope.
     pub fn new(
         schedule: AttemptSchedule,
         coordination: Vec<CoordinationRequest>,
         executor: Arc<dyn ProviderExecutionPort>,
     ) -> Result<Self, RoutingRuntimeError> {
         if coordination.len() != schedule.attempts().len() {
+            return Err(runtime_error(RoutingRuntimeErrorCode::InvalidArgument));
+        }
+        if coordination
+            .windows(2)
+            .any(|requests| !requests[0].has_same_routing_scope(&requests[1]))
+        {
             return Err(runtime_error(RoutingRuntimeErrorCode::InvalidArgument));
         }
         Ok(Self {
