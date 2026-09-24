@@ -71,12 +71,14 @@ impl CandidateSnapshotBinding {
 
 /// Owned inputs for assembling one process-local admission coordinator.
 ///
-/// `configured_policies` may contain tenant, user, API-key, and model dimensions.
-/// Account policies are rejected because account concurrency is derived only from
-/// the persisted, secret-free metadata carried by `candidate_snapshot`. The exact
-/// snapshot generation is retained by the resulting coordinator. The initial
-/// clock seeds rate windows, while `budget` remains the caller-owned budget state
-/// moved into the resulting coordinator.
+/// `configured_policies` may contain only tenant and model dimensions. User and
+/// API-key policies are rejected until request admission carries authenticated
+/// bindings for those dimensions. Caller-supplied account policies are rejected
+/// because account concurrency is derived only from the persisted, secret-free
+/// metadata carried by `candidate_snapshot`. The exact snapshot generation is
+/// retained by the resulting coordinator. The initial clock seeds rate windows,
+/// while `budget` remains the caller-owned budget state moved into the resulting
+/// coordinator.
 pub struct RoutingAdmissionAssembly {
     configured_policies: Vec<LimitPolicy>,
     candidate_snapshot: Arc<CandidateSnapshot>,
@@ -149,19 +151,23 @@ impl RoutingAdmissionAssembly {
 
 /// Assembles a generation-bound coordinator with durable account concurrency.
 ///
-/// Checks the combined bound before allocation, rejects supplied account
-/// policies, owns the budget book, and performs no I/O. Existing direct
-/// construction remains compatible and there is no cancellation boundary.
-/// Candidate metadata, policy keys, and budget state are never copied into errors.
-/// Request-time coordination fails closed before admission if it receives a pool
-/// snapshot with a different identity or version.
+/// Checks the combined bound before allocation, accepts only configured tenant
+/// and model policies, owns the budget book, and performs no I/O. User and API-key
+/// policies fail closed because request admission does not yet carry authenticated
+/// bindings for those dimensions. Account policies are derived from candidate
+/// metadata rather than accepted from the caller. Existing direct construction
+/// remains compatible and there is no cancellation boundary. Candidate metadata,
+/// policy keys, and budget state are never copied into errors. Request-time
+/// coordination fails closed before admission if it receives a pool snapshot with
+/// a different identity or version.
 ///
 /// # Errors
 ///
 /// Returns [`CoordinatorErrorCode::InvalidArgument`] for an oversized combined
-/// set, a caller-supplied account policy, duplicate configured dimensions,
-/// malformed admission identities, or an invalid account lease duration. Returns
-/// [`CoordinatorErrorCode::TenantMismatch`] for tenant-unbound account metadata.
+/// set, a configured user, API-key, or account policy, duplicate configured
+/// dimensions, malformed admission identities, or an invalid account lease
+/// duration. Returns [`CoordinatorErrorCode::TenantMismatch`] for tenant-unbound
+/// account metadata.
 /// Returns [`CoordinatorErrorCode::StateUnavailable`] when persisted concurrency
 /// is absent, account identities are duplicated, or bounded allocation fails.
 pub fn build_routing_admission_coordinator(
@@ -204,9 +210,12 @@ fn validate_policy_bounds(
         .checked_add(candidate_count)
         .ok_or_else(|| CoordinatorError::new(CoordinatorErrorCode::InvalidArgument))?;
     if combined_count > MAX_POLICIES
-        || configured
-            .iter()
-            .any(|policy| policy.key().dimension() == LimitDimension::Account)
+        || configured.iter().any(|policy| {
+            !matches!(
+                policy.key().dimension(),
+                LimitDimension::Tenant | LimitDimension::Model
+            )
+        })
     {
         return Err(CoordinatorError::new(CoordinatorErrorCode::InvalidArgument));
     }
@@ -234,10 +243,10 @@ impl BudgetAssembly {
 
 /// Builds tenant-bound account concurrency policies from authoritative candidates.
 ///
-/// The returned policies contain concurrency limits only. Callers combine them
-/// with tenant, model, user, or rate policies before constructing the admission
-/// controller. Every candidate must carry the tenant and persisted account bound
-/// produced by account import publication; incomplete metadata fails closed.
+/// The returned policies contain concurrency limits only. The routing admission
+/// builder combines them with configured tenant and model policies. Every
+/// candidate must carry the tenant and persisted account bound produced by account
+/// import publication; incomplete metadata fails closed.
 ///
 /// # Errors
 /// Returns a stable error for oversized input, missing authoritative metadata,
